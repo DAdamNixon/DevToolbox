@@ -16,10 +16,15 @@
         <div class="nav-item @GetActiveClass("/logs")">
             <a href="/logs">Log Viewer</a>
         </div>
+        <div class="nav-item @GetActiveClass("/powershell")">
+            <a href="/powershell">PowerShell</a>
+        </div>
         <div class="nav-item @GetActiveClass("/settings")">
             <a href="/settings">Settings</a>
         </div>
     </div>
+    
+    <DarkModeToggle />
 </nav>
 
 @code {

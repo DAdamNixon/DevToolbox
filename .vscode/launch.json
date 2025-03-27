@@ -1,0 +1,16 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch DevToolbox",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/DevToolbox.UI/bin/Debug/net9.0-windows/DevToolbox.UI.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/DevToolbox.UI",
+            "console": "internalConsole",
+            "stopAtEntry": false
+        }
+    ]
+} 

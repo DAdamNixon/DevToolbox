@@ -1,0 +1,10 @@
+{
+  "sdk": {
+    "rollForward": "latestMinor"
+  },
+  "solution": {
+    "properties": {
+      "startupProject": "DevToolbox.UI"
+    }
+  }
+} 

@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Components.WebView.WindowsForms;
 using Microsoft.Extensions.DependencyInjection;
 using System.Runtime.InteropServices;
+using DevToolbox.Services;
+using DevToolbox.UI.Services;
 
 namespace DevToolbox.UI
 {
@@ -21,6 +23,12 @@ namespace DevToolbox.UI
             
             var services = new ServiceCollection();
             services.AddWindowsFormsBlazorWebView();
+            
+            // Register our services
+            services.AddSingleton<PowerShellService>();
+            services.AddSingleton<ThemeService>();
+            services.AddScoped<ThemeJsInterop>();
+            
             blazorWebView1.HostPage = "wwwroot\\index.html";
             blazorWebView1.Services = services.BuildServiceProvider();
             blazorWebView1.RootComponents.Add<App>("#app");

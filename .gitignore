@@ -24,7 +24,9 @@
 *.vsp
 *.vspx
 *.sap
-.vscode/
+
+# Include .vscode configurations
+!.vscode/
 
 # ReSharper
 _ReSharper*/

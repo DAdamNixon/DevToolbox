@@ -9,6 +9,7 @@
     <title>DevToolbox</title>
     <base href="/" />
     <link href="css/app.css" rel="stylesheet" />
+    <link href="css/dark-mode.css" rel="stylesheet" />
     <script>
         // Fix for Windows scaling issues
         if (window.navigator.userAgent.indexOf('Windows') !== -1) {
@@ -18,6 +19,48 @@
                     'width=device-width, initial-scale=' + (1 / scale) + ', maximum-scale=' + (1 / scale) + ', user-scalable=no');
             }
         }
+        
+        // Initialize dark mode based on saved preference or system preference
+        document.addEventListener('DOMContentLoaded', function() {
+            const darkModeEnabled = localStorage.getItem('darkMode') === 'true' || 
+                (localStorage.getItem('darkMode') === null && 
+                window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            
+            if (darkModeEnabled) {
+                document.body.classList.add('dark-mode');
+            }
+            
+            // Listen for system theme changes
+            if (window.matchMedia) {
+                const colorSchemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+                colorSchemeQuery.addEventListener('change', (e) => {
+                    if (localStorage.getItem('darkMode') === null) {
+                        if (e.matches) {
+                            document.body.classList.add('dark-mode');
+                        } else {
+                            document.body.classList.remove('dark-mode');
+                        }
+                    }
+                });
+            }
+        });
+        
+        // JavaScript function to toggle dark mode (will be called from Blazor)
+        window.toggleDarkMode = function(enabled) {
+            if (enabled) {
+                document.body.classList.add('dark-mode');
+                localStorage.setItem('darkMode', 'true');
+            } else {
+                document.body.classList.remove('dark-mode');
+                localStorage.setItem('darkMode', 'false');
+            }
+            return true;
+        };
+        
+        // Function to get current dark mode state
+        window.isDarkModeEnabled = function() {
+            return document.body.classList.contains('dark-mode');
+        };
     </script>
 </head>
 <body>
