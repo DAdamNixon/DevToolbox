@@ -1,29 +1,35 @@
 @page "/logs"
 
-<div class="container">
-    <h1>Log Viewer</h1>
-    <p>View and analyze application logs.</p>
+<div class="container my-4">
+    <h1 class="mb-3">Log Viewer</h1>
+    <p class="lead mb-4">View and analyze application logs.</p>
     
-    <div class="log-filters">
-        <select class="filter-control">
-            <option value="all">All Logs</option>
-            <option value="info">Information</option>
-            <option value="warning">Warnings</option>
-            <option value="error">Errors</option>
-        </select>
-        
-        <input type="text" class="filter-control" placeholder="Search logs..." />
-        
-        <button class="filter-button">Apply Filters</button>
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <input type="text" class="form-control" @bind="SearchText" @bind:event="oninput" placeholder="Search logs..." />
+                </div>
+                
+                <div class="col-md-2">
+                    <button class="btn btn-primary w-100" @onclick="ApplyFilters">Apply Filters</button>
+                </div>
+            </div>
+        </div>
     </div>
     
-    <div class="log-display">
-        <div class="log-empty">
-            <p>No logs to display. Adjust your filters or check back later.</p>
+    <div class="card">
+        <div class="card-body text-center py-5">
+            <p class="text-muted mb-0">No logs to display. Adjust your filters or check back later.</p>
         </div>
     </div>
 </div>
 
 @code {
-    // Log viewing logic will go here
-} 
+    private string SearchText { get; set; } = string.Empty;
+
+    private void ApplyFilters()
+    {
+        // TODO: Implement when services are ready
+    }
+}

@@ -1,52 +1,76 @@
 @page "/"
 
-<div class="home-container">
-    <div class="hero-section">
-        <h1>Welcome to DevToolbox</h1>
-        <p class="subtitle">A comprehensive platform for development tools and utilities</p>
+<div class="container my-4">
+    <div class="p-5 rounded-3 mb-4">
+        <h1 class="display-4">Welcome to DevToolbox</h1>
+        <p class="lead">A comprehensive platform for development tools and utilities</p>
     </div>
 
-    <div class="quick-actions">
-        <h2>Quick Actions</h2>
-        <div class="action-grid">
-            <div class="action-card">
-                <div class="card-icon">📁</div>
-                <h3>Open Workspace</h3>
-                <p>Open an existing workspace or create a new one.</p>
-                <button @onclick="NavigateToWorkspaces">Go to Workspaces</button>
+    <div class="mb-4">
+        <h2 class="mb-4">Quick Actions</h2>
+        <div class="row g-4">
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <div class="display-4 mb-3">📁</div>
+                        <h3 class="card-title">Open Workspace</h3>
+                        <p class="card-text">Open an existing workspace or create a new one.</p>
+                        <button class="btn btn-primary" @onclick="NavigateToWorkspaces">Go to Workspaces</button>
+                    </div>
+                </div>
             </div>
-            <div class="action-card">
-                <div class="card-icon">📊</div>
-                <h3>View Logs</h3>
-                <p>Analyze and monitor log files.</p>
-                <button @onclick="NavigateToLogs">Go to Log Viewer</button>
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <div class="display-4 mb-3">📊</div>
+                        <h3 class="card-title">View Logs</h3>
+                        <p class="card-text">Analyze and monitor log files.</p>
+                        <button class="btn btn-primary" @onclick="NavigateToLogs">Go to Log Viewer</button>
+                    </div>
+                </div>
             </div>
-            <div class="action-card">
-                <div class="card-icon">⚙️</div>
-                <h3>Configure Settings</h3>
-                <p>Customize application settings and preferences.</p>
-                <button @onclick="NavigateToSettings">Go to Settings</button>
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <div class="display-4 mb-3">⚙️</div>
+                        <h3 class="card-title">Configure Settings</h3>
+                        <p class="card-text">Customize application settings and preferences.</p>
+                        <button class="btn btn-primary" @onclick="NavigateToSettings">Go to Settings</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
 @code {
+    /// <summary>
+    /// Navigation manager service for handling page navigation.
+    /// </summary>
     [Inject]
-    public required NavigationManager NavigationManager { get; set; }
+    private NavigationManager NavigationManager { get; set; } = default!;
 
+    /// <summary>
+    /// Navigates to the workspaces page.
+    /// </summary>
     private void NavigateToWorkspaces()
     {
-        NavigationManager.NavigateTo("/workspaces");
+        NavigationManager.NavigateTo("/workspaces", forceLoad: false);
     }
 
+    /// <summary>
+    /// Navigates to the logs page.
+    /// </summary>
     private void NavigateToLogs()
     {
-        NavigationManager.NavigateTo("/logs");
+        NavigationManager.NavigateTo("/logs", forceLoad: false);
     }
 
+    /// <summary>
+    /// Navigates to the settings page.
+    /// </summary>
     private void NavigateToSettings()
     {
-        NavigationManager.NavigateTo("/settings");
+        NavigationManager.NavigateTo("/settings", forceLoad: false);
     }
-} 
+}

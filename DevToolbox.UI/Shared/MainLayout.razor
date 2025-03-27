@@ -1,18 +1,18 @@
 @using Microsoft.AspNetCore.Components
 @inherits LayoutComponentBase
 
-<div class="app-container">
-    <header class="app-header">
+<div>
+    <header class="sticky-top">
         <NavMenu />
     </header>
 
-    <div class="app-content">
-        <main class="app-main">
+    <main class="main-content">
+        <div class="container-fluid py-3">
             @Body
-        </main>
-    </div>
+        </div>
+    </main>
 
-    <footer class="app-footer">
+    <footer>
         <StatusBar />
     </footer>
-</div> 
+</div>

@@ -1,7 +1,4 @@
-@inject DevToolbox.Services.ThemeService ThemeService
-@inject DevToolbox.UI.Services.ThemeJsInterop ThemeJsInterop
 
-<div class="app-wrapper">
     <Router AppAssembly="@typeof(App).Assembly">
         <Found Context="routeData">
             <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
@@ -14,15 +11,10 @@
             </div>
         </NotFound>
     </Router>
-</div>
 
 @code {
     protected override async Task OnInitializedAsync()
     {
-        // Initialize theme from browser state
-        var isDarkMode = await ThemeJsInterop.IsDarkModeEnabledAsync();
-        ThemeService.Initialize(isDarkMode);
-        
         await base.OnInitializedAsync();
     }
 }

@@ -1,6 +1,4 @@
 @page "/settings"
-@inject DevToolbox.Services.ThemeService ThemeService
-@inject DevToolbox.UI.Services.ThemeJsInterop ThemeJsInterop
 
 <div class="container">
     <h1>Settings</h1>
@@ -12,27 +10,6 @@
             
             <div class="setting-item">
                 <label for="theme">Theme</label>
-                <select id="theme" class="setting-control" @onchange="OnThemeChanged" value="@selectedTheme">
-                    <option value="light">Light</option>
-                    <option value="dark">Dark</option>
-                    <option value="system">System Default</option>
-                </select>
-            </div>
-            
-            <div class="setting-item">
-                <label>Theme Preview</label>
-                <div class="theme-preview">
-                    <div class="@(isDarkThemePreview ? "dark-preview" : "light-preview")">
-                        <div class="preview-header"></div>
-                        <div class="preview-content">
-                            <div class="preview-sidebar"></div>
-                            <div class="preview-main"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="setting-item">
                 <label for="auto-save">Auto-save</label>
                 <div class="toggle">
                     <input type="checkbox" id="auto-save" checked />
@@ -124,90 +101,16 @@
     
     protected override async Task OnInitializedAsync()
     {
-        // Initialize theme based on current system state
-        var isDarkMode = await ThemeJsInterop.IsDarkModeEnabledAsync();
-        isDarkThemePreview = isDarkMode;
-        
-        // Set the selected theme dropdown
-        if (isDarkMode)
-        {
-            selectedTheme = "dark";
-        }
-        else
-        {
-            // Check local storage for theme preference
-            var isSystem = await GetIsSystemPreferenceAsync();
-            selectedTheme = isSystem ? "system" : "light";
-        }
-        
         await base.OnInitializedAsync();
     }
-    
-    private async Task OnThemeChanged(ChangeEventArgs e)
-    {
-        string newTheme = e.Value?.ToString() ?? "system";
-        
-        switch (newTheme)
-        {
-            case "dark":
-                isDarkThemePreview = true;
-                await ThemeService.SetThemeAsync(true);
-                await ThemeJsInterop.ToggleDarkModeAsync(true);
-                await SaveThemePreferenceAsync("dark");
-                break;
-                
-            case "light":
-                isDarkThemePreview = false;
-                await ThemeService.SetThemeAsync(false);
-                await ThemeJsInterop.ToggleDarkModeAsync(false);
-                await SaveThemePreferenceAsync("light");
-                break;
-                
-            case "system":
-            default:
-                // Use system preference
-                var prefersDark = await GetSystemPrefersDarkModeAsync();
-                isDarkThemePreview = prefersDark;
-                await ThemeService.SetThemeAsync(prefersDark);
-                await ThemeJsInterop.ToggleDarkModeAsync(prefersDark);
-                await SaveThemePreferenceAsync("system");
-                break;
-        }
-    }
-    
-    private async Task<bool> GetSystemPrefersDarkModeAsync()
-    {
-        // This is a simplification; actually, we are relying on the browser's
-        // preference which was set in the JavaScript
-        return await ThemeJsInterop.IsDarkModeEnabledAsync();
-    }
-    
-    private async Task SaveThemePreferenceAsync(string preference)
-    {
-        // In a real app, this would save to some storage
-        // For now, we just use localStorage via JS interop
-        await Task.CompletedTask;
-    }
-    
-    private async Task<bool> GetIsSystemPreferenceAsync()
-    {
-        // In a real app, this would check if the user has set to follow system
-        // For now, we assume system if not explicitly set
-        return await Task.FromResult(true);
-    }
-    
+
     private async Task SaveSettings()
     {
-        // Save all settings - for now just do the theme which is handled immediately
         await Task.CompletedTask;
     }
     
     private async Task ResetToDefaults()
     {
-        selectedTheme = "system";
-        isDarkThemePreview = await GetSystemPrefersDarkModeAsync();
-        await ThemeService.SetThemeAsync(isDarkThemePreview);
-        await ThemeJsInterop.ToggleDarkModeAsync(isDarkThemePreview);
-        await SaveThemePreferenceAsync("system");
+        await Task.CompletedTask;
     }
 } 

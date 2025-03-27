@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html data-bs-theme="dark">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
@@ -8,8 +8,7 @@
     <meta name="format-detection" content="telephone=no" />
     <title>DevToolbox</title>
     <base href="/" />
-    <link href="css/app.css" rel="stylesheet" />
-    <link href="css/dark-mode.css" rel="stylesheet" />
+    <link href="css/bootstrap.min.css" rel="stylesheet" />
     <script>
         // Fix for Windows scaling issues
         if (window.navigator.userAgent.indexOf('Windows') !== -1) {
@@ -81,6 +80,7 @@
         };
     </script>
     <script src="_framework/blazor.webview.js"></script>
+    <script src="js/bootstrap.bundle.min.js"></script>
     <script>
         // Check if Blazor object exists
         setTimeout(function() {
