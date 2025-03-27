@@ -1,0 +1,50 @@
+@page "/settings"
+
+<div class="container">
+    <h1>Settings</h1>
+    <p>Configure application preferences and settings.</p>
+    
+    <div class="settings-container">
+        <div class="settings-group">
+            <h2>General Settings</h2>
+            
+            <div class="setting-item">
+                <label for="theme">Theme</label>
+                <select id="theme" class="setting-control">
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                    <option value="system">System Default</option>
+                </select>
+            </div>
+            
+            <div class="setting-item">
+                <label for="auto-save">Auto-save</label>
+                <div class="toggle">
+                    <input type="checkbox" id="auto-save" checked />
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="settings-group">
+            <h2>Workspace Settings</h2>
+            
+            <div class="setting-item">
+                <label for="default-workspace">Default Workspace Location</label>
+                <div class="file-input">
+                    <input type="text" id="default-workspace" value="C:\Projects" class="setting-control" />
+                    <button class="browse-button">Browse</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="form-actions">
+            <button class="save-button">Save Settings</button>
+            <button class="reset-button">Reset to Defaults</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    // Settings management logic will go here
+} 

@@ -1,0 +1,14 @@
+<div class="app-wrapper">
+    <Router AppAssembly="@typeof(App).Assembly">
+        <Found Context="routeData">
+            <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+        </Found>
+        <NotFound>
+            <div class="not-found">
+                <h1>Page not found</h1>
+                <p>The requested page could not be found.</p>
+                <a href="/">Go to Home</a>
+            </div>
+        </NotFound>
+    </Router>
+</div>

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="format-detection" content="telephone=no" />
+    <title>DevToolbox</title>
+    <base href="/" />
+    <link href="css/app.css" rel="stylesheet" />
+    <script>
+        // Fix for Windows scaling issues
+        if (window.navigator.userAgent.indexOf('Windows') !== -1) {
+            const scale = window.devicePixelRatio;
+            if (scale !== 1) {
+                document.querySelector('meta[name="viewport"]').setAttribute('content', 
+                    'width=device-width, initial-scale=' + (1 / scale) + ', maximum-scale=' + (1 / scale) + ', user-scalable=no');
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="app">
+        <div id="loading-message">
+            Loading DevToolbox...
+        </div>
+    </div>
+    <div id="blazor-error-ui" class="error-message" style="display:none;">
+        An error has occurred. The application may no longer respond.
+    </div>
+
+    <script>
+        window.onerror = function(message, source, lineno, colno, error) {
+            console.error('Error:', message, 'at', source, lineno, colno);
+            document.getElementById('blazor-error-ui').style.display = 'block';
+            document.getElementById('blazor-error-ui').textContent = 'JavaScript error: ' + message;
+        };
+    </script>
+    <script src="_framework/blazor.webview.js"></script>
+    <script>
+        // Check if Blazor object exists
+        setTimeout(function() {
+            if (window.Blazor) {
+                console.log("Blazor initialized successfully");
+            } else {
+                console.error("Blazor failed to initialize");
+                document.getElementById('blazor-error-ui').style.display = 'block';
+                document.getElementById('blazor-error-ui').textContent = 'Blazor failed to initialize after 5 seconds';
+            }
+        }, 5000);
+    </script>
+</body>
+</html> 

@@ -1,0 +1,29 @@
+@page "/logs"
+
+<div class="container">
+    <h1>Log Viewer</h1>
+    <p>View and analyze application logs.</p>
+    
+    <div class="log-filters">
+        <select class="filter-control">
+            <option value="all">All Logs</option>
+            <option value="info">Information</option>
+            <option value="warning">Warnings</option>
+            <option value="error">Errors</option>
+        </select>
+        
+        <input type="text" class="filter-control" placeholder="Search logs..." />
+        
+        <button class="filter-button">Apply Filters</button>
+    </div>
+    
+    <div class="log-display">
+        <div class="log-empty">
+            <p>No logs to display. Adjust your filters or check back later.</p>
+        </div>
+    </div>
+</div>
+
+@code {
+    // Log viewing logic will go here
+} 

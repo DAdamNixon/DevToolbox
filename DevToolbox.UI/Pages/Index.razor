@@ -1,0 +1,52 @@
+@page "/"
+
+<div class="home-container">
+    <div class="hero-section">
+        <h1>Welcome to DevToolbox</h1>
+        <p class="subtitle">A comprehensive platform for development tools and utilities</p>
+    </div>
+
+    <div class="quick-actions">
+        <h2>Quick Actions</h2>
+        <div class="action-grid">
+            <div class="action-card">
+                <div class="card-icon">📁</div>
+                <h3>Open Workspace</h3>
+                <p>Open an existing workspace or create a new one.</p>
+                <button @onclick="NavigateToWorkspaces">Go to Workspaces</button>
+            </div>
+            <div class="action-card">
+                <div class="card-icon">📊</div>
+                <h3>View Logs</h3>
+                <p>Analyze and monitor log files.</p>
+                <button @onclick="NavigateToLogs">Go to Log Viewer</button>
+            </div>
+            <div class="action-card">
+                <div class="card-icon">⚙️</div>
+                <h3>Configure Settings</h3>
+                <p>Customize application settings and preferences.</p>
+                <button @onclick="NavigateToSettings">Go to Settings</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Inject]
+    public required NavigationManager NavigationManager { get; set; }
+
+    private void NavigateToWorkspaces()
+    {
+        NavigationManager.NavigateTo("/workspaces");
+    }
+
+    private void NavigateToLogs()
+    {
+        NavigationManager.NavigateTo("/logs");
+    }
+
+    private void NavigateToSettings()
+    {
+        NavigationManager.NavigateTo("/settings");
+    }
+} 

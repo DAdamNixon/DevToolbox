@@ -1,0 +1,18 @@
+@using Microsoft.AspNetCore.Components
+@inherits LayoutComponentBase
+
+<div class="app-container">
+    <header class="app-header">
+        <NavMenu />
+    </header>
+
+    <div class="app-content">
+        <main class="app-main">
+            @Body
+        </main>
+    </div>
+
+    <footer class="app-footer">
+        <StatusBar />
+    </footer>
+</div> 
