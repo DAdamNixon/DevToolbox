@@ -1,0 +1,145 @@
+@using DevToolbox.Services.Models
+@using System.IO
+
+<div class="card h-100 shadow-sm">
+    <div class="card-body d-flex flex-column">
+        <div class="d-flex justify-content-between align-items-start mb-3">
+            <div>
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-folder2-open me-2"></i>@Workspace.Name
+                </h5>
+            </div>
+            <div>
+                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="OnDelete">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+        </div>
+        <div class="flex-grow-1">
+            @foreach (var location in Workspace.Locations)
+            {
+                <div class="card mb-2">
+                    <div class="card-body p-2">
+                        <div class="d-flex align-items-center mb-2">
+                            <i class="bi @GetLocationIcon(location.Type) me-2"></i>
+                            <strong>@location.Name</strong>
+                        </div>
+                        <small class="text-muted d-block mb-2">@location.Path</small>
+                        <div class="d-flex gap-2">
+                            <div class="btn-group">
+                                <button class="btn btn-sm btn-primary" @onclick="() => OnOpenLocation(location)">
+                                    <i class="bi bi-folder2-open me-1"></i>Open
+                                </button>
+                                <button type="button" class="btn btn-sm btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown">
+                                    <span class="visually-hidden">Toggle Dropdown</span>
+                                </button>
+                                <ul class="dropdown-menu">
+                                    <li><button type="button" class="dropdown-item" @onclick="() => OnOpenLocationInExplorer(location)">
+                                        <i class="bi bi-folder2 me-2"></i>Open in Explorer
+                                    </button></li>
+                                    <li><button type="button" class="dropdown-item" @onclick="() => OnOpenLocationInTerminal(location)">
+                                        <i class="bi bi-terminal me-2"></i>Open in Terminal
+                                    </button></li>
+                                    @if (GlobalOptions?.Options.Any() == true)
+                                    {
+                                        <li><hr class="dropdown-divider"></li>
+                                        @foreach (var option in GlobalOptions.Options.Values)
+                                        {
+                                            <li><button type="button" class="dropdown-item" @onclick="() => OnOpenLocationWithCustomApp(location, option)">
+                                                <i class="bi bi-window me-2"></i>@option.Name
+                                            </button></li>
+                                        }
+                                    }
+                                </ul>
+                            </div>
+                            @if (AvailableScripts?.Any() == true)
+                            {
+                                <div class="btn-group">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                                        <i class="bi bi-code-slash me-1"></i>Scripts
+                                    </button>
+                                    <ul class="dropdown-menu">
+                                        @foreach (var script in AvailableScripts)
+                                        {
+                                            <li><button type="button" class="dropdown-item" @onclick="() => OnRunScript(script, location)">
+                                                @script.Name
+                                            </button></li>
+                                        }
+                                    </ul>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public required Workspace Workspace { get; set; }
+
+    [Parameter]
+    public GlobalCustomOpenOptions? GlobalOptions { get; set; }
+
+    [Parameter]
+    public IEnumerable<ScriptInfo>? AvailableScripts { get; set; }
+
+    [Parameter]
+    public EventCallback<Workspace> OnDeleteWorkspace { get; set; }
+
+    [Parameter]
+    public EventCallback<(Workspace, WorkspaceLocation)> OnOpenWorkspaceLocation { get; set; }
+
+    [Parameter]
+    public EventCallback<WorkspaceLocation> OnOpenInExplorer { get; set; }
+
+    [Parameter]
+    public EventCallback<WorkspaceLocation> OnOpenInTerminal { get; set; }
+
+    [Parameter]
+    public EventCallback<(Workspace, WorkspaceLocation, CustomOpenOption)> OnOpenWithCustomApp { get; set; }
+
+    [Parameter]
+    public EventCallback<(ScriptInfo, Workspace, WorkspaceLocation)> OnRunScriptOnLocation { get; set; }
+
+    private string GetLocationIcon(LocationType type) => type switch
+    {
+        LocationType.File => "bi-file-earmark",
+        LocationType.Folder => "bi-folder2",
+        LocationType.Solution => "bi-diagram-3",
+        LocationType.Project => "bi-box",
+        _ => "bi-folder2"
+    };
+
+    private async Task OnDelete()
+    {
+        await OnDeleteWorkspace.InvokeAsync(Workspace);
+    }
+
+    private async Task OnOpenLocation(WorkspaceLocation location)
+    {
+        await OnOpenWorkspaceLocation.InvokeAsync((Workspace, location));
+    }
+
+    private async Task OnOpenLocationInExplorer(WorkspaceLocation location)
+    {
+        await OnOpenInExplorer.InvokeAsync(location);
+    }
+
+    private async Task OnOpenLocationInTerminal(WorkspaceLocation location)
+    {
+        await OnOpenInTerminal.InvokeAsync(location);
+    }
+
+    private async Task OnOpenLocationWithCustomApp(WorkspaceLocation location, CustomOpenOption option)
+    {
+        await OnOpenWithCustomApp.InvokeAsync((Workspace, location, option));
+    }
+
+    private async Task OnRunScript(ScriptInfo script, WorkspaceLocation location)
+    {
+        await OnRunScriptOnLocation.InvokeAsync((script, Workspace, location));
+    }
+} 

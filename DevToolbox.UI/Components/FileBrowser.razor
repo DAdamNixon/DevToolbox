@@ -1,13 +1,13 @@
-@using System.Windows.Forms
+ @using System.Windows.Forms
 
 <div class="file-browser">
     <div class="input-group">
-        <input type="text" class="form-control" 
+        <input type="text" class="form-control bg-dark text-light border-secondary" 
                value="@SelectedPath" 
                readonly 
                placeholder="Select a file or folder..."
                @onclick="OpenFileBrowser" />
-        <button class="btn btn-outline-primary" @onclick="OpenFileBrowser">
+        <button class="btn btn-outline-light" @onclick="OpenFileBrowser">
             <i class="bi bi-folder2-open"></i> Browse
         </button>
     </div>
@@ -17,6 +17,16 @@
             @ErrorMessage
             <button type="button" class="btn-close" @onclick="() => ErrorMessage = string.Empty"></button>
         </div>
+    }
+    @if (ShowDialog)
+    {
+        <CustomFileBrowserDialog 
+            InitialPath="@SelectedPath"
+            Filter="@Filter"
+            AllowFileSelection="@AllowFileSelection"
+            AllowFolderSelection="@AllowFolderSelection"
+            OnPathSelected="OnPathSelected"
+            OnCanceled="OnDialogCanceled" />
     }
 </div>
 
@@ -37,90 +47,17 @@
     public string Filter { get; set; } = "All Files (*.*)|*.*";
 
     private string ErrorMessage { get; set; } = string.Empty;
+    private bool ShowDialog { get; set; }
 
-    private async Task OpenFileBrowser()
+    private void OpenFileBrowser()
     {
-        try
-        {
-            if (AllowFileSelection && AllowFolderSelection)
-            {
-                // Show both file and folder selection options
-                using var dialog = new OpenFileDialog
-                {
-                    Title = "Select a file or folder",
-                    Filter = Filter,
-                    CheckFileExists = false,
-                    CheckPathExists = true,
-                    FileName = "Select Folder",
-                    InitialDirectory = Path.GetDirectoryName(SelectedPath) ?? Environment.GetFolderPath(Environment.SpecialFolder.MyComputer)
-                };
-
-                if (dialog.ShowDialog() == DialogResult.OK)
-                {
-                    var path = dialog.FileName;
-                    if (path.EndsWith("Select Folder"))
-                    {
-                        // User wants to select a folder
-                        using var folderDialog = new FolderBrowserDialog
-                        {
-                            Description = "Select a folder",
-                            UseDescriptionForTitle = true,
-                            ShowNewFolderButton = true,
-                            RootFolder = Environment.SpecialFolder.MyComputer
-                        };
-
-                        if (folderDialog.ShowDialog() == DialogResult.OK)
-                        {
-                            SelectedPath = folderDialog.SelectedPath;
-                            await OnPathSelected.InvokeAsync(SelectedPath);
-                        }
-                    }
-                    else
-                    {
-                        SelectedPath = path;
-                        await OnPathSelected.InvokeAsync(SelectedPath);
-                    }
-                }
-            }
-            else if (AllowFileSelection)
-            {
-                // Show only file selection
-                using var dialog = new OpenFileDialog
-                {
-                    Title = "Select a file",
-                    Filter = Filter,
-                    CheckFileExists = true,
-                    CheckPathExists = true,
-                    InitialDirectory = Path.GetDirectoryName(SelectedPath) ?? Environment.GetFolderPath(Environment.SpecialFolder.MyComputer)
-                };
-
-                if (dialog.ShowDialog() == DialogResult.OK)
-                {
-                    SelectedPath = dialog.FileName;
-                    await OnPathSelected.InvokeAsync(SelectedPath);
-                }
-            }
-            else if (AllowFolderSelection)
-            {
-                // Show only folder selection
-                using var dialog = new FolderBrowserDialog
-                {
-                    Description = "Select a folder",
-                    UseDescriptionForTitle = true,
-                    ShowNewFolderButton = true,
-                    RootFolder = Environment.SpecialFolder.MyComputer
-                };
-
-                if (dialog.ShowDialog() == DialogResult.OK)
-                {
-                    SelectedPath = dialog.SelectedPath;
-                    await OnPathSelected.InvokeAsync(SelectedPath);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            ErrorMessage = $"Error selecting path: {ex.Message}";
-        }
+        ShowDialog = true;
+        StateHasChanged();
     }
-} 
+
+    private async Task OnDialogCanceled()
+    {
+        ShowDialog = false;
+        StateHasChanged();
+    }
+}

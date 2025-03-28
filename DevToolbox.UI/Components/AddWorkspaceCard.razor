@@ -1,0 +1,136 @@
+@using DevToolbox.UI.Components
+@using DevToolbox.Services.Models
+@using System.IO
+
+<div id="AddWorkspaceCard" class="card shadow-sm mb-4" style="min-width: 300px;">
+    <div class="card-header">
+        <button class="btn w-100 text-start p-0 border-0 d-flex align-items-center justify-content-between" type="button" data-bs-toggle="collapse" data-bs-target="#newWorkspaceForm" aria-expanded="false" aria-controls="newWorkspaceForm">
+            <div class="d-flex align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-plus-circle me-2"></i>Add New Workspace
+                </h5>
+            </div>
+            <i class="bi bi-chevron-down collapse-icon ms-3"></i>
+        </button>
+    </div>
+    <div class="collapse" id="newWorkspaceForm">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-12">
+                    <label class="form-label">Workspace Name</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-folder"></i></span>
+                        <input type="text" class="form-control" @bind="NewWorkspaceName" 
+                               placeholder="Enter unique workspace name" />
+                    </div>
+                    @if (!string.IsNullOrEmpty(ErrorMessage))
+                    {
+                        <div class="invalid-feedback d-block">
+                            @ErrorMessage
+                        </div>
+                    }
+                </div>
+                
+                <div class="col-12">
+                    <label class="form-label">Location Name</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-tag"></i></span>
+                        <input type="text" class="form-control" @bind="NewLocationName" 
+                               placeholder="Enter location name" />
+                    </div>
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label">Location Path</label>
+                    <PathBrowser SelectedPath="@NewLocationPath"
+                                OnPathSelected="OnPathSelected"
+                               Filter="All Files (*.*)|*.*|Project Files (*.csproj,*.sln)|*.csproj;*.sln|Solution Files (*.sln)|*.sln|Project Files (*.csproj)|*.csproj" />
+                </div>
+                <div class="col-12">
+                    <button class="btn btn-primary" @onclick="CreateNewWorkspace" disabled="@(!CanCreateWorkspace)">
+                        <i class="bi bi-plus-circle me-2"></i>Create Workspace
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public EventCallback<Workspace> OnWorkspaceCreated { get; set; }
+
+    [Parameter]
+    public IEnumerable<Workspace> ExistingWorkspaces { get; set; } = Array.Empty<Workspace>();
+
+    private string NewWorkspaceName = string.Empty;
+    private string NewLocationName = string.Empty;
+    private string NewLocationPath = string.Empty;
+    private bool AddAnotherLocation;
+    private string? ErrorMessage;
+
+    private bool CanCreateWorkspace => 
+        !string.IsNullOrWhiteSpace(NewWorkspaceName);
+
+
+    private LocationType DetermineLocationType(string path)
+    {
+        if (File.Exists(path))
+        {
+            var extension = Path.GetExtension(path).ToLower();
+            if (extension == ".sln")
+                return LocationType.Solution;
+            if (extension == ".csproj" || extension == ".fsproj" || extension == ".vbproj")
+                return LocationType.Project;
+            return LocationType.File;
+        }
+        return LocationType.Folder;
+    }
+
+    private string GetLocationIcon(LocationType type) => type switch
+    {
+        LocationType.File => "bi-file-earmark",
+        LocationType.Folder => "bi-folder2",
+        LocationType.Solution => "bi-diagram-3",
+        LocationType.Project => "bi-box",
+        _ => "bi-folder2"
+    };
+
+    private async Task CreateNewWorkspace()
+    {
+        if (!CanCreateWorkspace) return;
+
+        // Check for duplicate workspace name
+        if (ExistingWorkspaces.Any(w => w.Name.Equals(NewWorkspaceName, StringComparison.OrdinalIgnoreCase)))
+        {
+            ErrorMessage = "A workspace with this name already exists.";
+            return;
+        }
+
+        var workspace = new Workspace
+        {
+            Name = NewWorkspaceName,
+            Locations = new List<WorkspaceLocation>(){
+                new WorkspaceLocation{
+                    Name = NewLocationName,
+                    Path = NewLocationPath,
+                    Type = DetermineLocationType(NewLocationPath)
+                }
+            }
+        };
+
+        await OnWorkspaceCreated.InvokeAsync(workspace);
+
+        // Reset form
+        NewWorkspaceName = string.Empty;
+        NewLocationName = string.Empty;
+        NewLocationPath = string.Empty;
+        AddAnotherLocation = false;
+        ErrorMessage = null;
+    }
+    private void OnPathSelected(string args)
+    {
+        NewLocationPath = args;
+        StateHasChanged();
+    }
+} 

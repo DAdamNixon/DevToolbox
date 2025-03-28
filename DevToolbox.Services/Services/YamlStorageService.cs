@@ -13,7 +13,15 @@ public class YamlStorageService : IYamlStorageService
 
     public YamlStorageService()
     {
-        _storageDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Storage");
+        // Use AppData/Local directory for configuration storage
+        var appDataPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "DevToolbox"
+        );
+        _storageDirectory = Path.Combine(appDataPath, "Config");
+        
+        // Create directories if they don't exist
+        Directory.CreateDirectory(appDataPath);
         Directory.CreateDirectory(_storageDirectory);
 
         _yamlSerializer = new SerializerBuilder()
@@ -23,6 +31,46 @@ public class YamlStorageService : IYamlStorageService
         _yamlDeserializer = new DeserializerBuilder()
             .WithNamingConvention(CamelCaseNamingConvention.Instance)
             .Build();
+
+        // Migrate any existing files from the old location
+        MigrateFromOldLocation();
+    }
+
+    private void MigrateFromOldLocation()
+    {
+        try
+        {
+            var oldStoragePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Storage");
+            
+            if (Directory.Exists(oldStoragePath))
+            {
+                foreach (var file in Directory.GetFiles(oldStoragePath, "*.yaml"))
+                {
+                    var fileName = Path.GetFileName(file);
+                    var newPath = Path.Combine(_storageDirectory, fileName);
+                    
+                    // Only copy if file doesn't exist in new location
+                    if (!File.Exists(newPath))
+                    {
+                        File.Copy(file, newPath);
+                    }
+                }
+                
+                // Optionally, delete the old directory after migration
+                try
+                {
+                    Directory.Delete(oldStoragePath, true);
+                }
+                catch
+                {
+                    // Ignore deletion errors
+                }
+            }
+        }
+        catch
+        {
+            // Ignore migration errors
+        }
     }
 
     public async Task SaveAsync<T>(string fileName, T data)
