@@ -1,0 +1,86 @@
+@using DevToolbox.Services.Models
+
+<div class="col-12">
+    <label class="form-label">Location Name</label>
+    <div class="input-group">
+        <span class="input-group-text"><i class="bi bi-tag"></i></span>
+        <input type="text" class="form-control" @bind="NewLocationName" 
+            placeholder="Enter location name" />
+    </div>
+</div>
+
+<div class="col-12">
+    <label class="form-label">Location Root</label>
+    <FolderBrowser SelectedPath="@NewLocationRoot"
+                OnPathSelected="OnRootSelected" />
+</div>
+
+<div class="col-12">
+    <label class="form-label">Location Path</label>
+    <PathBrowser SelectedPath="@NewLocationPath"
+                OnPathSelected="OnPathSelected"
+                Filter="All Files (*.*)|*.*|Project Files (*.csproj,*.sln)|*.csproj;*.sln|Solution Files (*.sln)|*.sln|Project Files (*.csproj)|*.csproj" />
+</div>
+
+<div class="col-12">
+    <button class="btn btn-primary" @onclick="SubmitLocation">
+        <i class="bi bi-plus-circle me-2"></i>@ButtonText
+    </button>
+</div>
+
+@code {
+
+    public string NewLocationName { get; set; } = string.Empty;
+    public string NewLocationRoot { get; set; } = string.Empty;
+    public string NewLocationPath { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<WorkspaceLocation> OnLocationSubmitted{ get; set; }
+
+    [Parameter]
+    public string ButtonText { get; set; } = "Create Location";
+
+    private void OnRootSelected(string path)
+    {
+        NewLocationRoot = path;
+    }
+
+    private void OnPathSelected(string path)
+    {
+        NewLocationPath = path;
+    }
+
+    private LocationType DetermineLocationType(string path)
+    {
+        if (File.Exists(path))
+        {
+            var extension = Path.GetExtension(path).ToLower();
+            if (extension == ".sln")
+                return LocationType.Solution;
+            if (extension == ".csproj" || extension == ".fsproj" || extension == ".vbproj")
+                return LocationType.Project;
+            return LocationType.File;
+        }
+        return LocationType.Folder;
+    }
+
+    public void ResetForm()
+    {
+        NewLocationName = string.Empty;
+        NewLocationRoot = string.Empty;
+        NewLocationPath = string.Empty;
+    }
+    
+    private async void SubmitLocation()
+    {
+        var location = new WorkspaceLocation
+        {
+            Name = NewLocationName,
+            Root = NewLocationRoot,
+            Path = NewLocationPath,
+            Type = DetermineLocationType(NewLocationPath)
+        };
+
+        await OnLocationSubmitted.InvokeAsync(location);
+    }
+}

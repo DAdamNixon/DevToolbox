@@ -9,12 +9,6 @@ public class Workspace
 
     [JsonPropertyName("locations")]
     public List<WorkspaceLocation> Locations { get; set; } = new();
-
-    [JsonPropertyName("createdAt")]
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-
-    [JsonPropertyName("lastAccessed")]
-    public DateTime LastAccessed { get; set; } = DateTime.UtcNow;
 }
 
 public class WorkspaceLocation
@@ -24,6 +18,9 @@ public class WorkspaceLocation
 
     [JsonPropertyName("path")]
     public string Path { get; set; } = string.Empty;
+
+    [JsonPropertyName("root")]
+    public string Root { get; set; } = string.Empty;
 
     [JsonPropertyName("type")]
     public LocationType Type { get; set; }
@@ -45,8 +42,8 @@ public enum OpenOptionType
 {
     [JsonPropertyName("executable")]
     Executable,
-    [JsonPropertyName("bash")]
-    Bash
+    [JsonPropertyName("command")]
+    Command
 }
 
 public class CustomOpenOption

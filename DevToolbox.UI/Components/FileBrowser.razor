@@ -1,12 +1,12 @@
- @using System.Windows.Forms
+@using System.Windows.Forms
 
 <div class="file-browser">
     <div class="input-group">
         <input type="text" class="form-control bg-dark text-light border-secondary" 
-               value="@SelectedPath" 
-               readonly 
-               placeholder="Select a file or folder..."
-               @onclick="OpenFileBrowser" />
+                value="@SelectedPath" 
+                readonly 
+                placeholder="Select a file or folder..."
+                @onclick="OpenFileBrowser" />
         <button class="btn btn-outline-light" @onclick="OpenFileBrowser">
             <i class="bi bi-folder2-open"></i> Browse
         </button>

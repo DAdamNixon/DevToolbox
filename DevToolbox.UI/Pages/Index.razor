@@ -45,7 +45,8 @@
                             OnOpenInExplorer="OpenLocationInExplorer"
                             OnOpenInTerminal="OpenLocationInTerminal"
                             OnOpenWithCustomApp="OpenLocationWithCustomApp"
-                            OnRunScriptOnLocation="RunScriptOnLocation" />
+                            OnRunScriptOnLocation="RunScriptOnLocation" 
+                            OnAddLocation="SaveWorkspaces"/>
                     </div>
                 }
             </div>
@@ -81,14 +82,14 @@
                         <label class="form-label">Type</label>
                         <div class="btn-group w-100" role="group">
                             <input type="radio" class="btn-check" name="optionType" id="typeExecutable" 
-                                   checked="@(NewCustomOption.Type == OpenOptionType.Executable)"
-                                   @onchange="() => OnOptionTypeChanged(OpenOptionType.Executable)" />
+                                    checked="@(NewCustomOption.Type == OpenOptionType.Executable)"
+                                    @onchange="() => OnOptionTypeChanged(OpenOptionType.Executable)" />
                             <label class="btn btn-outline-light" for="typeExecutable">
                                 <i class="bi bi-window me-2"></i>Executable
                             </label>
                             <input type="radio" class="btn-check" name="optionType" id="typeBash" 
-                                   checked="@(NewCustomOption.Type == OpenOptionType.Bash)"
-                                   @onchange="() => OnOptionTypeChanged(OpenOptionType.Bash)" />
+                                    checked="@(NewCustomOption.Type == OpenOptionType.Command)"
+                                    @onchange="() => OnOptionTypeChanged(OpenOptionType.Command)" />
                             <label class="btn btn-outline-light" for="typeBash">
                                 <i class="bi bi-terminal me-2"></i>Command
                             </label>
@@ -99,15 +100,15 @@
                         <div class="mb-3">
                             <label class="form-label">Executable Path</label>
                             <FileBrowser SelectedPath="@NewCustomOption.ExecutablePath" 
-                                       OnPathSelected="OnCustomExecutableSelected"
-                                       AllowFileSelection="true"
-                                       AllowFolderSelection="true"
-                                       Filter="Executable Files (*.exe)|*.exe|All Files (*.*)|*.*" />
+                                        OnPathSelected="OnCustomExecutableSelected"
+                                        AllowFileSelection="true"
+                                        AllowFolderSelection="true"
+                                        Filter="Executable Files (*.exe)|*.exe|All Files (*.*)|*.*" />
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Arguments</label>
                             <input type="text" class="form-control bg-dark text-light border-secondary" @bind="NewCustomOption.Arguments" 
-                                   placeholder="Use {0} for workspace path" />
+                                    placeholder="Use {0} for workspace path" />
                             <div class="form-text text-muted">Example: "{0}" or "--path {0}"</div>
                         </div>
                     }
@@ -118,8 +119,8 @@
                             <div class="input-group">
                                 <span class="input-group-text bg-dark text-light border-secondary"><i class="bi bi-terminal"></i></span>
                                 <input type="text" class="form-control bg-dark text-light border-secondary" @bind="NewCustomOption.Command" 
-                                       @ref="commandInput"
-                                       placeholder="Enter command (e.g., 'code', 'subl')" />
+                                        @ref="commandInput"
+                                        placeholder="Enter command (e.g., 'code', 'subl')" />
                             </div>
                             <div class="form-text text-muted">Use {0} for workspace path. Example: "code {0}" or "subl {0}"</div>
                         </div>
@@ -155,7 +156,7 @@
         NewCustomOption != null &&
         !string.IsNullOrWhiteSpace(NewCustomOption.Name) &&
         ((NewCustomOption.Type == OpenOptionType.Executable && !string.IsNullOrWhiteSpace(NewCustomOption.ExecutablePath)) ||
-         (NewCustomOption.Type == OpenOptionType.Bash && !string.IsNullOrWhiteSpace(NewCustomOption.Command)));
+        (NewCustomOption.Type == OpenOptionType.Command && !string.IsNullOrWhiteSpace(NewCustomOption.Command)));
 
     protected override async Task OnInitializedAsync()
     {
@@ -195,7 +196,7 @@
     private async Task OpenWorkspaceLocation((Workspace workspace, WorkspaceLocation location) args)
     {
         var (workspace, location) = args;
-        
+
         if (File.Exists(location.Path))
         {
             // Open file with default application
@@ -212,71 +213,69 @@
             System.Diagnostics.Process.Start("explorer.exe", location.Path);
         }
 
-        workspace.LastAccessed = DateTime.UtcNow;
         await YamlStorage.SaveAsync("workspaces", Workspaces);
     }
 
     private void OpenLocationInExplorer(WorkspaceLocation location)
     {
-        if (Directory.Exists(location.Path))
+        if (Directory.Exists(location.Root))
         {
-            System.Diagnostics.Process.Start("explorer.exe", location.Path);
+            System.Diagnostics.Process.Start("explorer.exe", location.Root);
         }
     }
 
     private void OpenLocationInTerminal(WorkspaceLocation location)
     {
-        if (Directory.Exists(location.Path))
+        if (Directory.Exists(location.Root))
         {
-            System.Diagnostics.Process.Start("wt.exe", $"-d \"{location.Path}\"");
+            System.Diagnostics.Process.Start("wt.exe", $"-d \"{location.Root}\"");
         }
     }
 
     private async Task OpenLocationWithCustomApp((Workspace workspace, WorkspaceLocation location, CustomOpenOption option) args)
     {
-        var (workspace, location, option) = args;
-        
-        if (option.Type == OpenOptionType.Executable)
-        {
-            var startInfo = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = option.ExecutablePath,
-                Arguments = string.Format(option.Arguments, location.Path),
-                UseShellExecute = false
-            };
-            System.Diagnostics.Process.Start(startInfo);
-        }
-        else
-        {
-            // For commands, we'll use PowerShell to execute the command
-            var command = string.Format(option.Command ?? "", location.Path);
-            var startInfo = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "powershell.exe",
-                Arguments = $"-NoProfile -Command \"{command}\"",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            };
-            System.Diagnostics.Process.Start(startInfo);
-        }
+        await Task.Run(() =>{
+            var (workspace, location, option) = args;
 
-        workspace.LastAccessed = DateTime.UtcNow;
-        await YamlStorage.SaveAsync("workspaces", Workspaces);
+            if (option.Type == OpenOptionType.Executable)
+            {
+                var startInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = option.ExecutablePath,
+                    Arguments = string.Format(option.Arguments, location.Root),
+                    UseShellExecute = false
+                };
+                System.Diagnostics.Process.Start(startInfo);
+            }
+            else
+            {
+                // For commands, we'll use PowerShell to execute the command
+                var command = string.Format(option.Command ?? "", location.Root);
+                var startInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -Command \"{command}\"",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                };
+                System.Diagnostics.Process.Start(startInfo);
+            }
+        });
     }
 
     private async Task RunScriptOnLocation((ScriptInfo script, Workspace workspace, WorkspaceLocation location) args)
     {
         var (script, workspace, location) = args;
-        
+
         if (Directory.Exists(location.Path))
         {
             var parameters = new Dictionary<string, object>
             {
-                { "ProjectPath", location.Path }
+                { "ProjectPath", location.Root }
             };
-            
+
             await PowerShellService.ExecuteScriptFileAsync(script.Name, parameters);
         }
     }
@@ -293,7 +292,7 @@
     private void OnOptionTypeChanged(OpenOptionType newType)
     {
         if (NewCustomOption == null || NewCustomOption.Type == newType) return;
-        
+
         NewCustomOption.Type = newType;
         // Reset the relevant fields when switching types
         if (newType == OpenOptionType.Executable)
@@ -345,5 +344,9 @@
         GlobalOptions.Options[NewCustomOption.Name] = NewCustomOption;
         await YamlStorage.SaveAsync("customOpenOptions", GlobalOptions);
         CloseCustomOptionModal();
+    }
+    private async Task SaveWorkspaces()
+    {
+        await YamlStorage.SaveAsync("workspaces", Workspaces);
     }
 }

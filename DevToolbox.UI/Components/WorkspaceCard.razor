@@ -1,108 +1,148 @@
+@using DevToolbox.UI.Components
 @using DevToolbox.Services.Models
-@using System.IO
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 
-<div class="card h-100 shadow-sm">
-    <div class="card-body d-flex flex-column">
-        <div class="d-flex justify-content-between align-items-start mb-3">
-            <div>
-                <h5 class="card-title mb-0">
-                    <i class="bi bi-folder2-open me-2"></i>@Workspace.Name
-                </h5>
-            </div>
-            <div>
-                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="OnDelete">
-                    <i class="bi bi-trash"></i>
-                </button>
-            </div>
+<div class="card bg-dark text-light border-secondary mb-3 @(IsExpanded ? "expanded" : "")">
+    <div class="card-header border-secondary d-flex justify-content-between align-items-center" @onclick="ToggleExpand" style="cursor: pointer;">
+
+        <div class="d-flex align-items-center">
+            <h5 class="card-title mb-0">@Workspace.Name</h5>
         </div>
-        <div class="flex-grow-1">
-            @foreach (var location in Workspace.Locations)
-            {
-                <div class="card mb-2">
-                    <div class="card-body p-2">
-                        <div class="d-flex align-items-center mb-2">
-                            <i class="bi @GetLocationIcon(location.Type) me-2"></i>
-                            <strong>@location.Name</strong>
-                        </div>
-                        <small class="text-muted d-block mb-2">@location.Path</small>
-                        <div class="d-flex gap-2">
+        
+        <button class="btn btn-link text-light">
+            <i class="bi @(IsExpanded ? "bi-chevron-up" : "bi-chevron-down")"></i>
+        </button>
+
+
+
+    </div>
+
+    @if (IsExpanded)
+    {
+        <div class="card-body">
+            <div class="list-group list-group-flush bg-dark">
+                @foreach (var location in Workspace.Locations)
+                {
+                    <div class="list-group-item bg-dark text-light border-secondary">
+                        <div class="d-flex justify-content-between align-items-center">
                             <div class="btn-group">
-                                <button class="btn btn-sm btn-primary" @onclick="() => OnOpenLocation(location)">
-                                    <i class="bi bi-folder2-open me-1"></i>Open
+                                <button class="btn btn-outline-light btn-sm" @onclick="() => OnOpenWorkspaceLocation.InvokeAsync((Workspace, location))">
+                                    <span class="fw-bold">@location.Name</span>
                                 </button>
-                                <button type="button" class="btn btn-sm btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown">
-                                    <span class="visually-hidden">Toggle Dropdown</span>
+                                <button class="btn btn-outline-light btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+                                    <i class="bi bi-three-dots-vertical"></i>
                                 </button>
-                                <ul class="dropdown-menu">
-                                    <li><button type="button" class="dropdown-item" @onclick="() => OnOpenLocationInExplorer(location)">
-                                        <i class="bi bi-folder2 me-2"></i>Open in Explorer
-                                    </button></li>
-                                    <li><button type="button" class="dropdown-item" @onclick="() => OnOpenLocationInTerminal(location)">
-                                        <i class="bi bi-terminal me-2"></i>Open in Terminal
-                                    </button></li>
-                                    @if (GlobalOptions?.Options.Any() == true)
+                                <ul class="dropdown-menu dropdown-menu-dark">
+                                    <li>
+                                        <button class="dropdown-item" @onclick="() => OnOpenInExplorer.InvokeAsync(location)">
+                                            <i class="bi bi-folder2 me-2"></i>Open in Explorer
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button class="dropdown-item" @onclick="() => OnOpenInTerminal.InvokeAsync(location)">
+                                            <i class="bi bi-terminal me-2"></i>Open in Terminal
+                                        </button>
+                                    </li>
+                                    @if (GlobalOptions.Options.Any())
                                     {
                                         <li><hr class="dropdown-divider"></li>
-                                        @foreach (var option in GlobalOptions.Options.Values)
+                                        @foreach (var option in GlobalOptions.Options)
                                         {
-                                            <li><button type="button" class="dropdown-item" @onclick="() => OnOpenLocationWithCustomApp(location, option)">
-                                                <i class="bi bi-window me-2"></i>@option.Name
-                                            </button></li>
+                                            <li>
+                                                <button class="dropdown-item" @onclick="() => OnOpenWithCustomApp.InvokeAsync((Workspace, location, option.Value))">
+                                                    <i class="bi bi-box-arrow-up-right me-2"></i>Open with @option.Key
+                                                </button>
+                                            </li>
+                                        }
+                                    }
+                                    @if (AvailableScripts.Any())
+                                    {
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li><h6 class="dropdown-header">Run Script</h6></li>
+                                        @foreach (var script in AvailableScripts)
+                                        {
+                                            <li>
+                                                <button class="dropdown-item" @onclick="() => OnRunScriptOnLocation.InvokeAsync((script, Workspace, location))">
+                                                    <i class="bi bi-play me-2"></i>@script.Name
+                                                </button>
+                                            </li>
                                         }
                                     }
                                 </ul>
                             </div>
-                            @if (AvailableScripts?.Any() == true)
-                            {
-                                <div class="btn-group">
-                                    <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
-                                        <i class="bi bi-code-slash me-1"></i>Scripts
-                                    </button>
-                                    <ul class="dropdown-menu">
-                                        @foreach (var script in AvailableScripts)
-                                        {
-                                            <li><button type="button" class="dropdown-item" @onclick="() => OnRunScript(script, location)">
-                                                @script.Name
-                                            </button></li>
-                                        }
-                                    </ul>
-                                </div>
-                            }
+                            <div class="ms-2 flex-grow-1 overflow-hidden">
+                                <small class="text-muted text-truncate d-block" title="@location.Path">@location.Path</small>
+                            </div>
                         </div>
                     </div>
-                </div>
-            }
+                }
+            </div>
+        </div>
+        <div class="card-footer border-secondary">
+            <button class="btn btn-link text-light dropdown-toggle" data-bs-toggle="dropdown">
+                <i class="bi bi-three-dots-vertical"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-dark">
+                <li>
+                    <button class="dropdown-item" @onclick="ShowAddLocationModal">
+                        <i class="bi bi-plus-circle me-2"></i>Add Location
+                    </button>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <button class="dropdown-item text-danger" @onclick="OnDelete">
+                        <i class="bi bi-trash me-2"></i>Delete Workspace
+                    </button>
+                </li>
+            </ul>
+        </div>
+    }
+</div>
+
+<div class="modal fade" id="@ModalId" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark text-light">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Location to @Workspace.Name</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <AddWorkspaceLocation @ref="locationForm" OnLocationSubmitted="HandleLocationSubmitted" />
+            </div>
         </div>
     </div>
 </div>
 
+<style>
+    .card {
+        transition: all 0.3s ease-in-out;
+    }
+    .card.expanded {
+        box-shadow: 0 0 10px rgba(0,0,0,0.3);
+    }
+</style>
+
 @code {
-    [Parameter]
-    public required Workspace Workspace { get; set; }
+    [Parameter] public Workspace Workspace { get; set; } = null!;
+    [Parameter] public GlobalCustomOpenOptions GlobalOptions { get; set; } = null!;
+    [Parameter] public List<ScriptInfo> AvailableScripts { get; set; } = null!;
+    [Parameter] public EventCallback<Workspace> OnDeleteWorkspace { get; set; }
+    [Parameter] public EventCallback<(Workspace, WorkspaceLocation)> OnOpenWorkspaceLocation { get; set; }
+    [Parameter] public EventCallback<WorkspaceLocation> OnOpenInExplorer { get; set; }
+    [Parameter] public EventCallback<WorkspaceLocation> OnOpenInTerminal { get; set; }
+    [Parameter] public EventCallback<(Workspace, WorkspaceLocation, CustomOpenOption)> OnOpenWithCustomApp { get; set; }
+    [Parameter] public EventCallback<(ScriptInfo, Workspace, WorkspaceLocation)> OnRunScriptOnLocation { get; set; }
+    [Parameter] public EventCallback OnAddLocation { get; set; }
+    private AddWorkspaceLocation? locationForm;
+    private IJSObjectReference? modal;
 
-    [Parameter]
-    public GlobalCustomOpenOptions? GlobalOptions { get; set; }
+    private bool IsExpanded { get; set; }
 
-    [Parameter]
-    public IEnumerable<ScriptInfo>? AvailableScripts { get; set; }
-
-    [Parameter]
-    public EventCallback<Workspace> OnDeleteWorkspace { get; set; }
-
-    [Parameter]
-    public EventCallback<(Workspace, WorkspaceLocation)> OnOpenWorkspaceLocation { get; set; }
-
-    [Parameter]
-    public EventCallback<WorkspaceLocation> OnOpenInExplorer { get; set; }
-
-    [Parameter]
-    public EventCallback<WorkspaceLocation> OnOpenInTerminal { get; set; }
-
-    [Parameter]
-    public EventCallback<(Workspace, WorkspaceLocation, CustomOpenOption)> OnOpenWithCustomApp { get; set; }
-
-    [Parameter]
-    public EventCallback<(ScriptInfo, Workspace, WorkspaceLocation)> OnRunScriptOnLocation { get; set; }
+    private void ToggleExpand()
+    {
+        IsExpanded = !IsExpanded;
+    }
 
     private string GetLocationIcon(LocationType type) => type switch
     {
@@ -142,4 +182,34 @@
     {
         await OnRunScriptOnLocation.InvokeAsync((script, Workspace, location));
     }
-} 
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            modal = await JS.InvokeAsync<IJSObjectReference>("bootstrap.Modal.getOrCreateInstance", $"#{ModalId}");
+        }
+    }
+
+    private async Task ShowAddLocationModal()
+    {
+        if (modal is not null)
+        {
+            await modal.InvokeVoidAsync("show");
+        }
+    }
+
+    private async Task HandleLocationSubmitted(WorkspaceLocation location)
+    {
+        if (modal is not null)
+        {
+            await modal.InvokeVoidAsync("hide");
+        }
+        Workspace.Locations.Add(location);
+        locationForm?.ResetForm();
+        await OnAddLocation.InvokeAsync();
+        StateHasChanged();
+    }
+
+    private string ModalId => $"addLocationModal_{Workspace.Name.Replace(" ", "_").ToLower()}";
+}

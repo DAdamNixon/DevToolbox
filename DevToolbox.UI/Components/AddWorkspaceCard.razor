@@ -21,7 +21,7 @@
                     <div class="input-group">
                         <span class="input-group-text"><i class="bi bi-folder"></i></span>
                         <input type="text" class="form-control" @bind="NewWorkspaceName" 
-                               placeholder="Enter unique workspace name" />
+                            placeholder="Enter unique workspace name" />
                     </div>
                     @if (!string.IsNullOrEmpty(ErrorMessage))
                     {
@@ -30,27 +30,8 @@
                         </div>
                     }
                 </div>
+                <AddWorkspaceLocation @ref="locationForm" OnLocationSubmitted="CreateNewWorkspace" ButtonText="Create Workspace"/>
                 
-                <div class="col-12">
-                    <label class="form-label">Location Name</label>
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="bi bi-tag"></i></span>
-                        <input type="text" class="form-control" @bind="NewLocationName" 
-                               placeholder="Enter location name" />
-                    </div>
-                </div>
-
-                <div class="col-12">
-                    <label class="form-label">Location Path</label>
-                    <PathBrowser SelectedPath="@NewLocationPath"
-                                OnPathSelected="OnPathSelected"
-                               Filter="All Files (*.*)|*.*|Project Files (*.csproj,*.sln)|*.csproj;*.sln|Solution Files (*.sln)|*.sln|Project Files (*.csproj)|*.csproj" />
-                </div>
-                <div class="col-12">
-                    <button class="btn btn-primary" @onclick="CreateNewWorkspace" disabled="@(!CanCreateWorkspace)">
-                        <i class="bi bi-plus-circle me-2"></i>Create Workspace
-                    </button>
-                </div>
             </div>
         </div>
     </div>
@@ -63,10 +44,8 @@
     [Parameter]
     public IEnumerable<Workspace> ExistingWorkspaces { get; set; } = Array.Empty<Workspace>();
 
+    private AddWorkspaceLocation? locationForm;
     private string NewWorkspaceName = string.Empty;
-    private string NewLocationName = string.Empty;
-    private string NewLocationPath = string.Empty;
-    private bool AddAnotherLocation;
     private string? ErrorMessage;
 
     private bool CanCreateWorkspace => 
@@ -96,9 +75,12 @@
         _ => "bi-folder2"
     };
 
-    private async Task CreateNewWorkspace()
+    private async Task CreateNewWorkspace(WorkspaceLocation location)
     {
-        if (!CanCreateWorkspace) return;
+        if (!CanCreateWorkspace) {
+            ErrorMessage = "Please enter a unique workspace name.";
+            return;
+        }
 
         // Check for duplicate workspace name
         if (ExistingWorkspaces.Any(w => w.Name.Equals(NewWorkspaceName, StringComparison.OrdinalIgnoreCase)))
@@ -111,26 +93,14 @@
         {
             Name = NewWorkspaceName,
             Locations = new List<WorkspaceLocation>(){
-                new WorkspaceLocation{
-                    Name = NewLocationName,
-                    Path = NewLocationPath,
-                    Type = DetermineLocationType(NewLocationPath)
+                location
                 }
-            }
         };
 
         await OnWorkspaceCreated.InvokeAsync(workspace);
 
-        // Reset form
         NewWorkspaceName = string.Empty;
-        NewLocationName = string.Empty;
-        NewLocationPath = string.Empty;
-        AddAnotherLocation = false;
+        locationForm?.ResetForm();
         ErrorMessage = null;
     }
-    private void OnPathSelected(string args)
-    {
-        NewLocationPath = args;
-        StateHasChanged();
-    }
-} 
+}
