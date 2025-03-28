@@ -7,7 +7,7 @@ namespace DevToolbox.UI
 {
     public partial class MainWindow : Form
     {
-        public MainWindow()
+        public MainWindow(IServiceProvider serviceProvider)
         {
             // Set DPI awareness for better scaling
             SetProcessDPIAware();
@@ -20,15 +20,8 @@ namespace DevToolbox.UI
             // Enable automatic DPI scaling
             this.AutoScaleMode = AutoScaleMode.Dpi;
             
-            var services = new ServiceCollection();
-            services.AddWindowsFormsBlazorWebView();
-            services.AddBlazorWebViewDeveloperTools();
-            
-            // Register our services
-            services.AddSingleton<PowerShellService>();
-            
             blazorWebView1.HostPage = "wwwroot\\index.html";
-            blazorWebView1.Services = services.BuildServiceProvider();
+            blazorWebView1.Services = serviceProvider;
             blazorWebView1.RootComponents.Add<App>("#app");
         }
 

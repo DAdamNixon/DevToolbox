@@ -1,76 +1,251 @@
 @page "/"
+@using DevToolbox.UI.Components
+@using DevToolbox.Services.Interfaces
+@using DevToolbox.Services.Models
+@using DevToolbox.Services.Services
+@inject IYamlStorageService YamlStorage
+@inject DirectoryStructureService DirectoryService
+@inject PowerShellService PowerShellService
 
-<div class="container my-4">
-    <div class="p-5 rounded-3 mb-4">
-        <h1 class="display-4">Welcome to DevToolbox</h1>
-        <p class="lead">A comprehensive platform for development tools and utilities</p>
+<div class="container py-4">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="display-4">Workspaces</h1>
+            <p class="lead text-muted">Manage your development workspaces here.</p>
+        </div>
     </div>
+    
+    <div class="d-flex justify-content-start">
+        <div id="AddWorkspaceCard" class="card shadow-sm mb-4" style="min-width: 300px;">
+            <div class="card-header">
+                <button class="btn w-100 text-start p-0 border-0 d-flex align-items-center justify-content-between" type="button" data-bs-toggle="collapse" data-bs-target="#newWorkspaceForm" aria-expanded="false" aria-controls="newWorkspaceForm">
+                    <div class="d-flex align-items-center">
+                        <h5 class="card-title mb-0">
+                            <i class="bi bi-plus-circle me-2"></i>Add New Workspace
+                        </h5>
+                    </div>
+                    <i class="bi bi-chevron-down collapse-icon ms-3"></i>
+                </button>
+            </div>
+            <div class="collapse" id="newWorkspaceForm">
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Workspace Name</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-folder"></i></span>
+                                <input type="text" class="form-control" @bind="NewWorkspaceName" placeholder="Enter workspace name" />
+                            </div>
+                            @if (!string.IsNullOrEmpty(ErrorMessage))
+                            {
+                                <div class="invalid-feedback d-block">
+                                    @ErrorMessage
+                                </div>
+                            }
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">Workspace Location</label>
+                            <FileBrowser SelectedPath="@NewWorkspacePath" 
+                                       OnPathSelected="OnPathSelected"
+                                       AllowFileSelection="true"
+                                       AllowFolderSelection="true"
+                                       Filter="All Files (*.*)|*.*|Project Files (*.csproj,*.sln)|*.csproj;*.sln|Solution Files (*.sln)|*.sln|Project Files (*.csproj)|*.csproj" />
+                        </div>
 
-    <div class="mb-4">
-        <h2 class="mb-4">Quick Actions</h2>
-        <div class="row g-4">
-            <div class="col-md-4">
-                <div class="card h-100">
-                    <div class="card-body text-center">
-                        <div class="display-4 mb-3">📁</div>
-                        <h3 class="card-title">Open Workspace</h3>
-                        <p class="card-text">Open an existing workspace or create a new one.</p>
-                        <button class="btn btn-primary" @onclick="NavigateToWorkspaces">Go to Workspaces</button>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card h-100">
-                    <div class="card-body text-center">
-                        <div class="display-4 mb-3">📊</div>
-                        <h3 class="card-title">View Logs</h3>
-                        <p class="card-text">Analyze and monitor log files.</p>
-                        <button class="btn btn-primary" @onclick="NavigateToLogs">Go to Log Viewer</button>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card h-100">
-                    <div class="card-body text-center">
-                        <div class="display-4 mb-3">⚙️</div>
-                        <h3 class="card-title">Configure Settings</h3>
-                        <p class="card-text">Customize application settings and preferences.</p>
-                        <button class="btn btn-primary" @onclick="NavigateToSettings">Go to Settings</button>
+                        <div class="col-12">
+                            <button class="btn btn-primary" @onclick="CreateNewWorkspace" disabled="@(!CanCreateWorkspace)">
+                                <i class="bi bi-plus-circle me-2"></i>Create Workspace
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+
+    <div class="mt-4">
+        @if (Workspaces.Any())
+        {
+            <div class="row g-4">
+                @foreach (var workspace in Workspaces)
+                {
+                    <div class="col-md-4">
+                        <div class="card h-100 shadow-sm">
+                            <div class="card-body d-flex flex-column">
+                                <div class="d-flex justify-content-between align-items-start mb-3">
+                                    <h5 class="card-title mb-0">
+                                        <i class="bi bi-folder2-open me-2"></i>@workspace.Name
+                                    </h5>
+                                </div>
+                                <p class="card-text flex-grow-1">
+                                    <small class="text-muted">
+                                        <i class="bi bi-geo-alt me-1"></i>@workspace.Path
+                                    </small>
+                                </p>
+                            </div>
+                            <div class="card-footer bg-transparent">
+                                <div class="d-flex gap-2">
+                                    <div class="btn-group" style="gap: 2px">
+                                        <button class="btn btn-primary" @onclick="() => OpenWorkspace(workspace)">
+                                            <i class="bi bi-folder2-open me-1"></i>Open
+                                        </button>
+                                        <button type="button" class="btn btn-primary px-4" data-bs-toggle="dropdown" data-bs-reference="parent">
+                                            <i class="bi bi-chevron-down"></i>
+                                        </button>
+                                        <ul class="dropdown-menu">
+                                            <li><button type="button" class="dropdown-item" @onclick="() => OpenInExplorer(workspace)"><i class="bi bi-folder2 me-2"></i>Open in Explorer</button></li>
+                                            <li><button type="button" class="dropdown-item" @onclick="() => OpenInTerminal(workspace)"><i class="bi bi-terminal me-2"></i>Open in Terminal</button></li>
+                                            <li><hr class="dropdown-divider"></li>
+                                            <li><button type="button" class="dropdown-item text-danger" @onclick="() => DeleteWorkspace(workspace)"><i class="bi bi-trash me-2"></i>Delete</button></li>
+                                        </ul>
+                                    </div>
+                                    @if (AvailableScripts.Any())
+                                    {
+                                        <div class="btn-group">
+                                            <button type="button" class="btn btn-outline-secondary" data-bs-toggle="dropdown" data-bs-reference="parent">
+                                                <i class="bi bi-code-slash me-1"></i>Scripts
+                                            </button>
+                                            <ul class="dropdown-menu">
+                                                @foreach (var script in AvailableScripts)
+                                                {
+                                                    <li><button type="button" class="dropdown-item" @onclick="() => RunScriptOnWorkspace(script, workspace)">@script.Name</button></li>
+                                                }
+                                            </ul>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="text-center p-4 bg-light rounded">
+                <div class="display-1 text-muted mb-3">
+                    <i class="bi bi-folder-x"></i>
+                </div>
+                <p class="lead text-muted">No workspaces found. Create a new workspace to get started.</p>
+            </div>
+        }
+    </div>
 </div>
 
 @code {
-    /// <summary>
-    /// Navigation manager service for handling page navigation.
-    /// </summary>
-    [Inject]
-    private NavigationManager NavigationManager { get; set; } = default!;
+    private string NewWorkspaceName = string.Empty;
+    private string NewWorkspacePath = string.Empty;
+    private List<Workspace> Workspaces = new();
+    private List<ScriptInfo> AvailableScripts = new();
+    private string? ErrorMessage;
 
-    /// <summary>
-    /// Navigates to the workspaces page.
-    /// </summary>
-    private void NavigateToWorkspaces()
+    private bool CanCreateWorkspace => 
+        !string.IsNullOrWhiteSpace(NewWorkspaceName) && 
+        !string.IsNullOrWhiteSpace(NewWorkspacePath);
+
+    protected override async Task OnInitializedAsync()
     {
-        NavigationManager.NavigateTo("/workspaces", forceLoad: false);
+        await LoadWorkspacesAsync();
+        LoadAvailableScripts();
     }
 
-    /// <summary>
-    /// Navigates to the logs page.
-    /// </summary>
-    private void NavigateToLogs()
+    private void LoadAvailableScripts()
     {
-        NavigationManager.NavigateTo("/logs", forceLoad: false);
+        AvailableScripts = PowerShellService.GetAvailableScripts().ToList();
     }
 
-    /// <summary>
-    /// Navigates to the settings page.
-    /// </summary>
-    private void NavigateToSettings()
+    private async Task LoadWorkspacesAsync()
     {
-        NavigationManager.NavigateTo("/settings", forceLoad: false);
+        var workspaces = await YamlStorage.LoadAsync<List<Workspace>>("workspaces") ?? new List<Workspace>();
+        Workspaces = workspaces;
+    }
+
+    private void OnPathSelected(string path)
+    {
+        NewWorkspacePath = path;
+        ErrorMessage = null;
+        StateHasChanged();
+    }
+
+    private async Task CreateNewWorkspace()
+    {
+        if (!CanCreateWorkspace) return;
+
+        // Check for duplicate workspace names
+        if (Workspaces.Any(w => w.Name.Equals(NewWorkspaceName, StringComparison.OrdinalIgnoreCase)))
+        {
+            ErrorMessage = "A workspace with this name already exists.";
+            return;
+        }
+
+        var workspace = new Workspace
+        {
+            Name = NewWorkspaceName,
+            Path = NewWorkspacePath
+        };
+
+        // Add to list and save
+        Workspaces.Add(workspace);
+        await YamlStorage.SaveAsync("workspaces", Workspaces);
+        
+        // Reset form
+        NewWorkspaceName = string.Empty;
+        NewWorkspacePath = string.Empty;
+        ErrorMessage = null;
+    }
+
+    private async Task OpenWorkspace(Workspace workspace)
+    {
+        if (File.Exists(workspace.Path))
+        {
+            // Open file with default application
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = workspace.Path,
+                UseShellExecute = true
+            };
+            System.Diagnostics.Process.Start(startInfo);
+        }
+        else if (Directory.Exists(workspace.Path))
+        {
+            // Open folder in explorer
+            System.Diagnostics.Process.Start("explorer.exe", workspace.Path);
+        }
+    }
+
+    private async Task OpenInExplorer(Workspace workspace)
+    {
+        if (Directory.Exists(workspace.Path))
+        {
+            System.Diagnostics.Process.Start("explorer.exe", workspace.Path);
+        }
+    }
+
+    private async Task OpenInTerminal(Workspace workspace)
+    {
+        if (Directory.Exists(workspace.Path))
+        {
+            System.Diagnostics.Process.Start("wt.exe", $"-d \"{workspace.Path}\"");
+        }
+    }
+
+    private async Task DeleteWorkspace(Workspace workspace)
+    {
+        Workspaces.Remove(workspace);
+        await YamlStorage.SaveAsync("workspaces", Workspaces);
+    }
+
+    private async Task RunScriptOnWorkspace(ScriptInfo script, Workspace workspace)
+    {
+        if (Directory.Exists(workspace.Path))
+        {
+            var parameters = new Dictionary<string, object>
+            {
+                { "ProjectPath", workspace.Path }
+            };
+            
+            await PowerShellService.ExecuteScriptFileAsync(script.Name, parameters);
+        }
     }
 }

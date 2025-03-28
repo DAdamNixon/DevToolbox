@@ -1,4 +1,0 @@
-Verify your build configuration
-Check static file serving setup
-Confirm resource paths
-Ensure proper middleware configuration

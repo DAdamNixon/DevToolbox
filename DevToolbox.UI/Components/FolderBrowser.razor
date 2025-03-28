@@ -1,0 +1,53 @@
+<div class="folder-browser">
+    <div class="input-group">
+        <input type="text" class="form-control" 
+               value="@SelectedPath" 
+               readonly 
+               placeholder="Select a folder..."
+               @onclick="OpenFolderBrowser" />
+        <button class="btn btn-outline-primary" @onclick="OpenFolderBrowser">
+            <i class="bi bi-folder2-open"></i> Browse
+        </button>
+    </div>
+    @if (!string.IsNullOrEmpty(ErrorMessage))
+    {
+        <div class="alert alert-danger alert-dismissible fade show mt-2" role="alert">
+            @ErrorMessage
+            <button type="button" class="btn-close" @onclick="() => ErrorMessage = string.Empty"></button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string SelectedPath { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> OnPathSelected { get; set; }
+
+    private string ErrorMessage { get; set; } = string.Empty;
+
+    private async Task OpenFolderBrowser()
+    {
+        try
+        {
+            using var dialog = new FolderBrowserDialog
+            {
+                Description = "Select a folder",
+                UseDescriptionForTitle = true,
+                ShowNewFolderButton = true,
+                RootFolder = Environment.SpecialFolder.MyComputer
+            };
+
+            if (dialog.ShowDialog() == DialogResult.OK)
+            {
+                SelectedPath = dialog.SelectedPath;
+                await OnPathSelected.InvokeAsync(SelectedPath);
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error selecting folder: {ex.Message}";
+        }
+    }
+} 

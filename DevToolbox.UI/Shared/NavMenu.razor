@@ -1,14 +1,11 @@
 @inject NavigationManager NavigationManager
 @implements IDisposable
 
-<nav class="navbar navbar-expand-lg">
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
     <div class="container-fluid">
         <div class="navbar-nav d-flex flex-row gap-3">
             <div class="nav-item">
-                <a class="nav-link @GetActiveClass("/")" href="/">Home</a>
-            </div>
-            <div class="nav-item">
-                <a class="nav-link @GetActiveClass("/workspaces")" href="/workspaces">Workspaces</a>
+                <a class="nav-link @GetActiveClass("/")" href="/">Dashboard</a>
             </div>
             <div class="nav-item">
                 <a class="nav-link @GetActiveClass("/logs")" href="/logs">Log Viewer</a>

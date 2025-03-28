@@ -1,0 +1,80 @@
+.folder-browser, .file-browser {
+    margin-bottom: 1rem;
+}
+
+.folder-browser .input-group, .file-browser .input-group {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.folder-browser input, .file-browser input {
+    cursor: pointer;
+}
+
+.workspace-list {
+    margin-top: 2rem;
+}
+
+.workspace-empty {
+    text-align: center;
+    padding: 2rem;
+    background-color: #f8f9fa;
+    border-radius: 0.5rem;
+}
+
+/* Custom transitions for cards */
+.card {
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+}
+
+/* Ensure consistent spacing in workspace cards */
+.workspace-list .card-body {
+    display: flex;
+    flex-direction: column;
+}
+
+.workspace-list .card-text {
+    flex-grow: 1;
+}
+
+.card-footer {
+    background-color: transparent;
+    border-top: 1px solid rgba(0,0,0,0.125);
+}
+
+.btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+}
+
+.text-muted {
+    font-size: 0.875rem;
+}
+
+/* Collapsible workspace form */
+.card-header .btn-link {
+    color: inherit;
+    min-width: 200px;
+}
+
+.card-header .btn-link:hover {
+    color: inherit;
+}
+
+.collapse-icon {
+    transition: transform 0.2s ease-in-out;
+}
+
+.btn-link[aria-expanded="true"] .collapse-icon {
+    transform: rotate(180deg);
+}
+
+/* Add New Workspace card specific styles */
+#AddWorkspaceCard {
+    width: fit-content;
+    min-width: 300px;
+} 
