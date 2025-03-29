@@ -1,84 +1,8 @@
-@page "/powershell"
-@inject PowerShellService PowerShellService
-
-<div class="grid-container">
-    <!-- Left Sidebar -->
-    <div class="sidebar">
-        <div class="search-box">
-            <input type="text" 
-                @bind-value="searchText" 
-                @bind-value:event="oninput" 
-                placeholder="Search scripts..." 
-                class="form-control" />
-        </div>
-        <div class="script-list">
-            @foreach (var script in FilteredScripts)
-            {
-                <div class="script-item @(script.Name == selectedScript ? "selected" : "")"
-                    @onclick="() => LoadScript(script.Name)">
-                    @script.Name
-                </div>
-            }
-        </div>
-    </div>
-
-    <!-- Main Content -->
-    <div class="main-content">
-        @if (!string.IsNullOrEmpty(selectedScript))
-        {
-            <div class="script-details">
-                <h2>@selectedScript</h2>
-                
-                <div class="script-editor">
-                    <textarea @bind="scriptText" 
-                        rows="10" 
-                        class="form-control code-editor">
-                    </textarea>
-                </div>
-
-                <div class="parameters-section">
-                    <div class="form-group">
-                        <label>Project Path:</label>
-                        <input type="text" @bind="projectPath" class="form-control" />
-                    </div>
-                </div>
-
-                <div class="output-section">
-                    @if (!string.IsNullOrEmpty(error))
-                    {
-                        <div class="error-message">
-                            @error
-                        </div>
-                    }
-                    @if (!string.IsNullOrEmpty(output))
-                    {
-                        <pre class="output-text">@output</pre>
-                    }
-                </div>
-
-                <div class="action-buttons">
-                    <button class="btn btn-primary" @onclick="SaveScript" disabled="@isExecuting">
-                        Save
-                    </button>
-                    <button class="btn btn-success" @onclick="ExecuteScript" disabled="@isExecuting">
-                        @(isExecuting ? "Running..." : "Run Script")
-                    </button>
-                    <button class="btn btn-warning" @onclick="ExecuteScriptWithParams" disabled="@isExecuting">
-                        Run With Parameters
-                    </button>
-                    <button class="btn btn-danger" @onclick="DeleteScript" disabled="@isExecuting">
-                        Delete
-                    </button>
-                    <button class="btn btn-secondary" @onclick="ClearOutput" disabled="@isExecuting">
-                        Clear Output
-                    </button>
-                </div>
-            </div>
-        }
-    </div>
-</div>
-
-@code {
+using Microsoft.AspNetCore.Components;
+using DevToolbox.Services;
+namespace DevToolbox.Pages.PowerShellScripts;
+public partial class PowerShellScripts: ComponentBase
+{
     private List<ScriptInfo> availableScripts = new();
     private string selectedScript = "";
     private string scriptText = "";
@@ -88,8 +12,8 @@
     private string projectPath = "";
     private string newScriptName = "";
 
+    [Inject] PowerShellService powerShellService {get; set;}
     private string searchText = "";
-    
     protected override async Task OnInitializedAsync()
     {
         await LoadScripts();
@@ -97,7 +21,7 @@
     
     private async Task LoadScripts()
     {
-        availableScripts = PowerShellService.GetAvailableScripts().ToList();
+        availableScripts = powerShellService.GetAvailableScripts().ToList();
         
         // If there are scripts, load the first one
         if (availableScripts.Any() && string.IsNullOrEmpty(selectedScript))
@@ -109,7 +33,7 @@
     private async Task LoadScript(string name)
     {
         selectedScript = name;
-        var content = await PowerShellService.GetScriptContentAsync(name);
+        var content = await powerShellService.GetScriptContentAsync(name);
         
         if (content != null)
         {
@@ -134,7 +58,7 @@
             return;
         }
         
-        if (await PowerShellService.SaveScriptAsync(selectedScript, scriptText))
+        if (await powerShellService.SaveScriptAsync(selectedScript, scriptText))
         {
             await LoadScripts();
             output = $"Script '{selectedScript}' saved successfully.";
@@ -153,7 +77,7 @@
             return;
         }
         
-        if (PowerShellService.DeleteScript(selectedScript))
+        if (powerShellService.DeleteScript(selectedScript))
         {
             var deleted = selectedScript;
             selectedScript = "";
@@ -186,7 +110,7 @@
         isExecuting = true;
         try
         {
-            (output, error) = await PowerShellService.ExecuteScriptAsync(scriptText);
+            (output, error) = await powerShellService.ExecuteScriptAsync(scriptText);
         }
         catch (Exception ex)
         {
@@ -211,7 +135,7 @@
                 { "ProjectPath", projectPath }
             };
             
-            (output, error) = await PowerShellService.ExecuteScriptWithParametersAsync(scriptText, parameters);
+            (output, error) = await powerShellService.ExecuteScriptWithParametersAsync(scriptText, parameters);
         }
         catch (Exception ex)
         {
@@ -236,7 +160,7 @@
                 { "ProjectPath", projectPath }
             };
             
-            (output, error) = await PowerShellService.ExecuteScriptFileAsync("CleanBuildArtifacts", parameters);
+            (output, error) = await powerShellService.ExecuteScriptFileAsync("CleanBuildArtifacts", parameters);
         }
         catch (Exception ex)
         {
