@@ -1,10 +1,8 @@
-using Microsoft.AspNetCore.Components.WebView.WindowsForms;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using DevToolbox.Services.Interfaces;
 using DevToolbox.Services.Services;
 using DevToolbox.Services;
-using DevToolbox.UI.Services;
 
 namespace DevToolbox.UI
 {
@@ -34,14 +32,13 @@ namespace DevToolbox.UI
             services.AddSingleton<IConfiguration>(configuration);
 
             // Register services
-            services.AddSingleton<PowerShellService>();
+            services.AddScoped<IWorkspaceService, WorkspaceService>();
+            services.AddScoped<DirectoryStructureService>();
+            services.AddScoped<PowerShellService>();
+            services.AddScoped<CardStateService>();
             services.AddScoped<IConfigurationService, ConfigurationService>();
             services.AddScoped<IScriptExecutionService, ScriptExecutionService>();
             services.AddScoped<IYamlStorageService, YamlStorageService>();
-            services.AddScoped<DirectoryStructureService>();
-            services.AddScoped<IWorkspaceService, WorkspaceService>();
-            services.AddScoped<CardStateService>();
-            services.AddScoped<ModalService>();
 
             var serviceProvider = services.BuildServiceProvider();
             Application.Run(new MainWindow(serviceProvider));

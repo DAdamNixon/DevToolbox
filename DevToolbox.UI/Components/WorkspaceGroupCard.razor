@@ -60,12 +60,13 @@
                         GlobalOptions="GlobalOptions"
                         AvailableScripts="AvailableScripts"
                         AvailableGroups="AllGroups.Where(g => g.Name != Group.Name).ToList()"
+                        AllGroups="AllGroups"
                         OnDeleteWorkspace="() => OnDeleteWorkspace.InvokeAsync(workspace)"
                         OnOpenInExplorer="OnOpenInExplorer"
                         OnOpenInTerminal="OnOpenInTerminal"
                         OnOpenWithCustomApp="OnOpenWithCustomApp"
                         OnRunScriptOnLocation="OnRunScriptOnLocation"
-                        OnAddLocation="OnAddWorkspace"
+                        OnAddLocation="SaveWorkspaces"
                         OnMoveToGroup="HandleMoveToGroup"
                         OnRename="OnAddWorkspace" />
                 </div>
@@ -311,9 +312,9 @@
             return;
         }
 
-        if (AllWorkspaces.Any(w => w.Name.Equals(NewWorkspaceName, StringComparison.OrdinalIgnoreCase)))
+        if (Group.Workspaces.Any(w => w.Name.Equals(NewWorkspaceName, StringComparison.OrdinalIgnoreCase)))
         {
-            ErrorMessage = "A workspace with this name already exists.";
+            ErrorMessage = "A workspace with this name already exists in this group.";
             return;
         }
 

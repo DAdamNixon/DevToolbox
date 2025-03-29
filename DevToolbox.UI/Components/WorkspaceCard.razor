@@ -2,12 +2,10 @@
 @using DevToolbox.Services.Models
 @using DevToolbox.Services.Interfaces
 @using DevToolbox.Services.Services
-@using DevToolbox.UI.Services
 @using Microsoft.JSInterop
 @using System.Diagnostics
 @inject IJSRuntime JS
 @inject CardStateService CardStateService
-@inject ModalService ModalService
 
 <div class="card bg-dark text-light border-secondary mb-3 @(IsExpanded ? "expanded" : "")">
     <div class="card-header border-secondary d-flex align-items-center p-0">
@@ -158,6 +156,12 @@
                             }
                         }
                     </select>
+                    @if (!string.IsNullOrEmpty(ErrorMessage))
+                    {
+                        <div class="invalid-feedback d-block mt-2">
+                            @ErrorMessage
+                        </div>
+                    }
                 </div>
                 <button class="btn btn-primary" @onclick="HandleMoveToGroup" disabled="@string.IsNullOrEmpty(SelectedGroupName)">
                     <i class="bi bi-folder2 me-2"></i>Move to Group
@@ -292,6 +296,7 @@
     [Parameter] public GlobalCustomOpenOptions GlobalOptions { get; set; } = null!;
     [Parameter] public List<ScriptInfo> AvailableScripts { get; set; } = null!;
     [Parameter] public List<WorkspaceGroup> AvailableGroups { get; set; } = null!;
+    [Parameter] public List<WorkspaceGroup> AllGroups { get; set; } = null!;
     [Parameter] public EventCallback OnDeleteWorkspace { get; set; }
     [Parameter] public EventCallback<(Workspace, WorkspaceLocation)> OnOpenWorkspaceLocation { get; set; }
     [Parameter] public EventCallback<WorkspaceLocation> OnOpenInExplorer { get; set; }
@@ -306,6 +311,7 @@
     private AddWorkspaceLocation? locationForm;
     private string SelectedGroupName = string.Empty;
     private IJSObjectReference? moveToGroupModal;
+    private IJSObjectReference? addLocationModal;
     private string RenameModalId => $"renameModal_{Workspace.Name.Replace(" ", "_").ToLower()}";
     private IJSObjectReference? renameModal;
     private string NewWorkspaceName = string.Empty;
@@ -320,6 +326,7 @@
         {
             moveToGroupModal = await JS.InvokeAsync<IJSObjectReference>("bootstrap.Modal.getOrCreateInstance", $"#{MoveToGroupModalId}");
             renameModal = await JS.InvokeAsync<IJSObjectReference>("bootstrap.Modal.getOrCreateInstance", $"#{RenameModalId}");
+            addLocationModal = await JS.InvokeAsync<IJSObjectReference>("bootstrap.Modal.getOrCreateInstance", $"#{ModalId}");
         }
     }
 
@@ -330,7 +337,11 @@
 
     private void ShowAddLocationModal()
     {
-        ModalService.ShowAddLocationModal(Workspace);
+        if (addLocationModal is not null)
+        {
+            addLocationModal.InvokeVoidAsync("show");
+        }
+        ErrorMessage = null;
     }
 
     private void ShowMoveToGroupModal()
@@ -339,6 +350,7 @@
         {
             moveToGroupModal.InvokeVoidAsync("show");
         }
+        ErrorMessage = null;
     }
 
     private void ShowRenameModal()
@@ -348,25 +360,39 @@
         {
             renameModal.InvokeVoidAsync("show");
         }
+        ErrorMessage = null;
     }
 
     private async Task HandleLocationAdded(WorkspaceLocation location)
     {
-        ModalService.HideAddLocationModal();
+        if (addLocationModal is not null)
+        {
+            await addLocationModal.InvokeVoidAsync("hide");
+        }
         Workspace.Locations.Add(location);
         locationForm?.ResetForm();
         await OnAddLocation.InvokeAsync();
+        ErrorMessage = null;
         StateHasChanged();
-        await InvokeAsync(StateHasChanged);
     }
 
-    private void HandleMoveToGroup()
+    private async Task HandleMoveToGroup()
     {
+        // Check if the name exists in the target group
+        var targetGroup = AvailableGroups.FirstOrDefault(g => g.Name == SelectedGroupName);
+        if (targetGroup != null && targetGroup.Workspaces.Any(w => w.Name.Equals(Workspace.Name, StringComparison.OrdinalIgnoreCase)))
+        {
+            ErrorMessage = $"A workspace with the name '{Workspace.Name}' already exists in the group '{SelectedGroupName}'.";
+            StateHasChanged();
+            return;
+        }
+
         if (moveToGroupModal is not null)
         {
-            moveToGroupModal.InvokeVoidAsync("hide");
+            await moveToGroupModal.InvokeVoidAsync("hide");
         }
-        OnMoveToGroup.InvokeAsync((Workspace, SelectedGroupName));
+        ErrorMessage = null; // Clear any previous error message
+        await OnMoveToGroup.InvokeAsync((Workspace, SelectedGroupName));
         SelectedGroupName = string.Empty;
         StateHasChanged();
     }
@@ -375,6 +401,7 @@
     {
         Workspace.Locations.Remove(location);
         OnAddLocation.InvokeAsync();
+        ErrorMessage = null;
         StateHasChanged();
     }
 
@@ -402,16 +429,31 @@
         if (string.IsNullOrWhiteSpace(NewWorkspaceName))
         {
             ErrorMessage = "Please enter a name.";
+            StateHasChanged();
             return;
         }
 
+        // Check if the name exists in the same group
+        var currentGroup = AllGroups.FirstOrDefault(g => g.Name == Workspace.GroupName);
+        if (currentGroup != null && currentGroup.Workspaces.Any(w => w.Name.Equals(NewWorkspaceName, StringComparison.OrdinalIgnoreCase) && w.Id != Workspace.Id))
+        {
+            ErrorMessage = $"A workspace with the name '{NewWorkspaceName}' already exists in this group.";
+            StateHasChanged();
+            return;
+        }
+
+        // Update the workspace name
         Workspace.Name = NewWorkspaceName;
+
+        // Close the modal and clear state
         if (renameModal is not null)
         {
             await renameModal.InvokeVoidAsync("hide");
         }
         NewWorkspaceName = string.Empty;
         ErrorMessage = null;
+
+        // Notify parent and update UI
         await OnRename.InvokeAsync();
         StateHasChanged();
     }

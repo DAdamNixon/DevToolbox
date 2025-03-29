@@ -102,6 +102,7 @@
     {
         await WorkspaceService.SaveWorkspaceGroupsAsync(WorkspaceService.WorkspaceGroups);
         await LoadWorkspacesAsync();
+        StateHasChanged();
     }
 
     private async Task OpenWorkspaceLocation((Workspace workspace, WorkspaceLocation location) args)
