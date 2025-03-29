@@ -12,10 +12,10 @@
             <h5 class="card-title mb-0">@Group.Name</h5>
         </div>
         <div class="dropdown h-100 border-start border-secondary">
-            <button class="btn btn-link text-light dropdown-toggle h-100 px-3" data-bs-toggle="dropdown">
+            <button class="btn btn-link text-light dropdown-toggle h-100 px-3" data-bs-toggle="dropdown" aria-expanded="false">
                 <i class="bi bi-three-dots-vertical"></i>
             </button>
-            <ul class="dropdown-menu dropdown-menu-dark">
+            <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
                 <li>
                     <button class="dropdown-item text-danger" @onclick="OnDelete">
                         <i class="bi bi-trash me-2"></i>Delete Group
@@ -26,7 +26,7 @@
     </div>
     @if (IsExpanded)
     {
-        <div class="mt-3" @onclick:stopPropagation>
+        <div class="px-3 mt-2" @onclick:stopPropagation>
             <div class="input-group input-group-sm">
                 <span class="input-group-text bg-dark text-light border-secondary">
                     <i class="bi bi-search"></i>
@@ -39,7 +39,7 @@
             </div>
         </div>
     }
-    <div class="card-body">
+    <div class="card-body @(IsExpanded ? "expanded" : "collapsed")">
         <div class="row g-3">
             @foreach (var workspace in FilteredWorkspaces)
             {
@@ -74,18 +74,18 @@
 <div class="modal fade" id="@AddWorkspaceModalId" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content bg-dark text-light">
-            <div class="modal-header">
+            <div class="modal-header border-secondary">
                 <h5 class="modal-title">Add Workspace to @Group.Name</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label">Workspace Name</label>
+            <div class="modal-body py-4">
+                <div class="mb-4">
+                    <label class="form-label mb-2">Workspace Name</label>
                     <input type="text" class="form-control bg-dark text-light border-secondary" @bind="NewWorkspaceName" 
                            placeholder="Enter workspace name" />
                     @if (!string.IsNullOrEmpty(ErrorMessage))
                     {
-                        <div class="invalid-feedback d-block">
+                        <div class="invalid-feedback d-block mt-2">
                             @ErrorMessage
                         </div>
                     }
@@ -97,11 +97,94 @@
 </div>
 
 <style>
+    /* Base card styles */
     .card {
         transition: all 0.3s ease-in-out;
+        border-width: 2px !important;
     }
+    
     .card.expanded {
-        box-shadow: 0 0 10px rgba(0,0,0,0.3);
+        box-shadow: 0 0 15px rgba(13, 110, 253, 0.15) !important;
+        border-color: var(--bs-primary) !important;
+    }
+    
+    .card-header {
+        background-color: rgba(13, 110, 253, 0.1) !important;
+    }
+    
+    /* Card body styles */
+    .card-body {
+        transition: all 0.3s ease-out;
+    }
+
+    .card-body.expanded {
+        max-height: 2000px;
+        opacity: 1;
+    }
+
+    .card-body.collapsed {
+        max-height: 0;
+        opacity: 0;
+        padding: 0;
+        margin: 0;
+    }
+
+    /* Button styles */
+    .card .btn-outline-light:hover {
+        background-color: var(--bs-primary);
+        border-color: var(--bs-primary);
+        box-shadow: 0 0 10px rgba(13, 110, 253, 0.3);
+    }
+    
+    .dropdown-item:active {
+        background-color: var(--bs-primary);
+    }
+    
+    .card .btn-link {
+        color: var(--bs-primary);
+        transition: all 0.2s ease-in-out;
+    }
+    
+    .card .btn-link:hover {
+        color: var(--bs-primary);
+        opacity: 0.8;
+        box-shadow: 0 0 10px rgba(13, 110, 253, 0.2);
+    }
+
+    /* Form control styles */
+    .form-control:focus {
+        border-color: var(--bs-primary);
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+    }
+    
+    .input-group-text {
+        border-width: 2px;
+    }
+
+    /* Search bar styles */
+    .input-group {
+        transition: all 0.3s ease-out;
+    }
+
+    /* Add workspace button card */
+    .card .card {
+        transition: all 0.2s ease-in-out;
+    }
+    
+    .card .card:hover {
+        box-shadow: 0 4px 12px rgba(13, 110, 253, 0.15);
+        border-color: var(--bs-primary) !important;
+    }
+
+    /* Main card hover effect */
+    .card:hover {
+        box-shadow: 0 4px 12px rgba(13, 110, 253, 0.15);
+        border-color: var(--bs-primary) !important;
+    }
+
+    /* Fix dropdown toggle button */
+    .dropdown-toggle::after {
+        display: none;
     }
 </style>
 
@@ -186,13 +269,14 @@
 
         if (addWorkspaceModal is not null)
         {
-            addWorkspaceModal.InvokeVoidAsync("hide");
+            await addWorkspaceModal.InvokeVoidAsync("hide");
         }
 
         NewWorkspaceName = string.Empty;
         locationForm?.ResetForm();
         ErrorMessage = null;
         StateHasChanged();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task DeleteWorkspace(Workspace workspace)

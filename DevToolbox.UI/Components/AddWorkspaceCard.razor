@@ -37,6 +37,72 @@
     </div>
 </div>
 
+<style>
+    .card {
+        transition: all 0.3s ease-in-out;
+        border-width: 2px !important;
+        background-color: var(--bs-dark) !important;
+        border-color: var(--bs-secondary) !important;
+    }
+
+    .card:hover {
+        border-color: var(--bs-primary) !important;
+        box-shadow: 0 0 15px rgba(13, 110, 253, 0.15);
+    }
+
+    .card-header {
+        background-color: rgba(13, 110, 253, 0.1) !important;
+        border-bottom: 2px solid var(--bs-secondary);
+    }
+
+    .card-header button {
+        color: var(--bs-light);
+        background: transparent;
+    }
+
+    .card-header button:hover {
+        color: var(--bs-primary);
+    }
+
+    .collapse-icon {
+        transition: transform 0.3s ease-in-out;
+    }
+
+    [aria-expanded="true"] .collapse-icon {
+        transform: rotate(180deg);
+    }
+
+    .input-group-text {
+        background-color: rgba(13, 110, 253, 0.1);
+        border-width: 2px;
+        border-color: var(--bs-secondary);
+        color: var(--bs-light);
+    }
+
+    .form-control {
+        background-color: var(--bs-dark);
+        border-width: 2px;
+        border-color: var(--bs-secondary);
+        color: var(--bs-light);
+    }
+
+    .form-control:focus {
+        background-color: var(--bs-dark);
+        border-color: var(--bs-primary);
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+        color: var(--bs-light);
+    }
+
+    .form-label {
+        color: var(--bs-light);
+    }
+
+    .invalid-feedback {
+        font-size: 0.875rem;
+        margin-top: 0.5rem;
+    }
+</style>
+
 @code {
     [Parameter] public string GroupName { get; set; } = string.Empty;
     [Parameter] public EventCallback<Workspace> OnWorkspaceCreated { get; set; }

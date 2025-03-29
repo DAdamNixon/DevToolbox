@@ -1,20 +1,144 @@
+@using DevToolbox.UI.Components
+@using DevToolbox.UI.Services
+@using DevToolbox.Services.Models
+@using Microsoft.JSInterop
+@inject ModalService ModalService
+@inject IJSRuntime JS
 
-    <Router AppAssembly="@typeof(App).Assembly">
-        <Found Context="routeData">
-            <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
-        </Found>
-        <NotFound>
-            <div class="not-found">
-                <h1>Page not found</h1>
-                <p>The requested page could not be found.</p>
-                <a href="/">Go to Home</a>
+<Router AppAssembly="@typeof(App).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="@routeData" DefaultLayout="typeof(MainLayout)" />
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <PageTitle>Not found</PageTitle>
+        <LayoutView Layout="typeof(MainLayout)">
+            <p role="alert">Sorry, there's nothing at this address.</p>
+        </LayoutView>
+    </NotFound>
+</Router>
+
+@* Global Modals *@
+<div class="modal fade" id="addLocationModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark text-light">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title">Add Location to @(CurrentWorkspace?.Name ?? "")</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-        </NotFound>
-    </Router>
+            <div class="modal-body py-4">
+                <AddWorkspaceLocation @ref="locationForm" OnLocationSubmitted="HandleLocationAdded" ButtonText="Add Location"/>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="moveToGroupModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark text-light">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title">Move @(CurrentWorkspace?.Name ?? "") to Group</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body py-4">
+                <div class="mb-4">
+                    <label class="form-label mb-2">Select Group</label>
+                    <select class="form-select bg-dark text-light border-secondary" @bind="SelectedGroupName">
+                        <option value="">Select a group...</option>
+                        @foreach (var group in AvailableGroups)
+                        {
+                            @if (group.Name != CurrentWorkspace?.GroupName)
+                            {
+                                <option value="@group.Name">@group.Name</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <button class="btn btn-primary" @onclick="HandleMoveToGroup" disabled="@string.IsNullOrEmpty(SelectedGroupName)">
+                    <i class="bi bi-folder2 me-2"></i>Move to Group
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 @code {
+    private AddWorkspaceLocation? locationForm;
+    private IJSObjectReference? addLocationModal;
+    private IJSObjectReference? moveToGroupModal;
+    private string SelectedGroupName = string.Empty;
+    private List<WorkspaceGroup> AvailableGroups = new();
+    private Workspace? CurrentWorkspace;
+
     protected override async Task OnInitializedAsync()
     {
-        await base.OnInitializedAsync();
+        ModalService.OnShowAddLocationModal += ShowAddLocationModal;
+        ModalService.OnShowMoveToGroupModal += ShowMoveToGroupModal;
+        ModalService.OnHideAddLocationModal += HideAddLocationModal;
+        ModalService.OnHideMoveToGroupModal += HideMoveToGroupModal;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            addLocationModal = await JS.InvokeAsync<IJSObjectReference>("bootstrap.Modal.getOrCreateInstance", "#addLocationModal");
+            moveToGroupModal = await JS.InvokeAsync<IJSObjectReference>("bootstrap.Modal.getOrCreateInstance", "#moveToGroupModal");
+        }
+    }
+
+    private void ShowAddLocationModal(Workspace workspace)
+    {
+        CurrentWorkspace = workspace;
+        StateHasChanged();
+        if (addLocationModal is not null)
+        {
+            addLocationModal.InvokeVoidAsync("show");
+        }
+    }
+
+    private void ShowMoveToGroupModal(Workspace workspace)
+    {
+        CurrentWorkspace = workspace;
+        StateHasChanged();
+        if (moveToGroupModal is not null)
+        {
+            moveToGroupModal.InvokeVoidAsync("show");
+        }
+    }
+
+    private void HideAddLocationModal()
+    {
+        if (addLocationModal is not null)
+        {
+            addLocationModal.InvokeVoidAsync("hide");
+        }
+    }
+
+    private void HideMoveToGroupModal()
+    {
+        if (moveToGroupModal is not null)
+        {
+            moveToGroupModal.InvokeVoidAsync("hide");
+        }
+    }
+
+    private void HandleLocationAdded(WorkspaceLocation location)
+    {
+        ModalService.HandleLocationAdded(location);
+        HideAddLocationModal();
+        locationForm?.ResetForm();
+        StateHasChanged();
+    }
+
+    private void HandleMoveToGroup()
+    {
+        if (CurrentWorkspace != null)
+        {
+            CurrentWorkspace.GroupName = SelectedGroupName;
+        }
+        HideMoveToGroupModal();
+        SelectedGroupName = string.Empty;
+        StateHasChanged();
     }
 }
