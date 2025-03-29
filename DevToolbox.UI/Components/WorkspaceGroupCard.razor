@@ -17,6 +17,17 @@
             </button>
             <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
                 <li>
+                    <button class="dropdown-item" @onclick="ShowAddWorkspaceModal">
+                        <i class="bi bi-plus-circle me-2"></i>Add Workspace
+                    </button>
+                </li>
+                <li>
+                    <button class="dropdown-item" @onclick="ShowRenameModal">
+                        <i class="bi bi-pencil me-2"></i>Rename
+                    </button>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
                     <button class="dropdown-item text-danger" @onclick="OnDelete">
                         <i class="bi bi-trash me-2"></i>Delete Group
                     </button>
@@ -48,25 +59,17 @@
                         Workspace="workspace"
                         GlobalOptions="GlobalOptions"
                         AvailableScripts="AvailableScripts"
-                        AvailableGroups="AllGroups"
+                        AvailableGroups="AllGroups.Where(g => g.Name != Group.Name).ToList()"
                         OnDeleteWorkspace="() => OnDeleteWorkspace.InvokeAsync(workspace)"
                         OnOpenInExplorer="OnOpenInExplorer"
                         OnOpenInTerminal="OnOpenInTerminal"
                         OnOpenWithCustomApp="OnOpenWithCustomApp"
                         OnRunScriptOnLocation="OnRunScriptOnLocation"
                         OnAddLocation="OnAddWorkspace"
-                        OnMoveToGroup="OnMoveToGroup" />
+                        OnMoveToGroup="HandleMoveToGroup"
+                        OnRename="OnAddWorkspace" />
                 </div>
             }
-            <div class="col-md-6 col-lg-4">
-                <div class="card bg-dark text-light border-secondary h-100">
-                    <div class="card-body d-flex align-items-center justify-content-center">
-                        <button class="btn btn-outline-light" @onclick="ShowAddWorkspaceModal">
-                            <i class="bi bi-plus-circle me-2"></i>Add Workspace
-                        </button>
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
 </div>
@@ -91,6 +94,33 @@
                     }
                 </div>
                 <AddWorkspaceLocation @ref="locationForm" OnLocationSubmitted="HandleWorkspaceCreated" ButtonText="Create Workspace"/>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="@RenameModalId" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark text-light">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title">Rename Group</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body py-4">
+                <div class="mb-4">
+                    <label class="form-label mb-2">New Name</label>
+                    <input type="text" class="form-control bg-dark text-light border-secondary" @bind="NewGroupName" 
+                           placeholder="Enter new name" />
+                    @if (!string.IsNullOrEmpty(ErrorMessage))
+                    {
+                        <div class="invalid-feedback d-block mt-2">
+                            @ErrorMessage
+                        </div>
+                    }
+                </div>
+                <button class="btn btn-primary" @onclick="HandleRename" disabled="@string.IsNullOrEmpty(NewGroupName)">
+                    <i class="bi bi-check-lg me-2"></i>Rename
+                </button>
             </div>
         </div>
     </div>
@@ -186,6 +216,24 @@
     .dropdown-toggle::after {
         display: none;
     }
+
+    /* Prevent interaction with collapsed or hidden elements */
+    .collapse:not(.show),
+    .card-body.collapsed,
+    [style*="display: none"],
+    [hidden] {
+        pointer-events: none;
+    }
+
+    /* Ensure dropdowns are still interactive when shown */
+    .dropdown-menu.show {
+        pointer-events: auto;
+    }
+
+    /* Ensure modals are still interactive when shown */
+    .modal.show {
+        pointer-events: auto;
+    }
 </style>
 
 @code {
@@ -220,12 +268,16 @@
     private string? ErrorMessage;
 
     private string AddWorkspaceModalId => $"addWorkspaceModal_{Group.Name.Replace(" ", "_").ToLower()}";
+    private string RenameModalId => $"renameGroupModal_{Group.Name.Replace(" ", "_").ToLower()}";
+    private IJSObjectReference? renameModal;
+    private string NewGroupName = string.Empty;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
             addWorkspaceModal = await JS.InvokeAsync<IJSObjectReference>("bootstrap.Modal.getOrCreateInstance", $"#{AddWorkspaceModalId}");
+            renameModal = await JS.InvokeAsync<IJSObjectReference>("bootstrap.Modal.getOrCreateInstance", $"#{RenameModalId}");
         }
     }
 
@@ -239,6 +291,15 @@
         if (addWorkspaceModal is not null)
         {
             addWorkspaceModal.InvokeVoidAsync("show");
+        }
+    }
+
+    private void ShowRenameModal()
+    {
+        NewGroupName = Group.Name;
+        if (renameModal is not null)
+        {
+            renameModal.InvokeVoidAsync("show");
         }
     }
 
@@ -286,22 +347,22 @@
         StateHasChanged();
     }
 
-    private async Task HandleMoveToGroup((Workspace workspace, string newGroupName) args)
+    private async Task HandleMoveToGroup((Workspace workspace, string groupName) args)
     {
-        // Remove from current group
+        // Remove workspace from current group
         Group.Workspaces.Remove(args.workspace);
         
-        // Update the workspace's group name
-        args.workspace.GroupName = args.newGroupName;
+        // Update workspace's group name
+        args.workspace.GroupName = args.groupName;
         
-        // Add to the target group
-        var targetGroup = AllGroups.FirstOrDefault(g => g.Name == args.newGroupName);
+        // Add workspace to new group
+        var targetGroup = AllGroups.FirstOrDefault(g => g.Name == args.groupName);
         if (targetGroup != null)
         {
             targetGroup.Workspaces.Add(args.workspace);
         }
         
-        await OnAddWorkspace.InvokeAsync();
+        await OnMoveToGroup.InvokeAsync(args);
         StateHasChanged();
     }
 
@@ -359,5 +420,36 @@
         Group.Workspaces.Add(newWorkspace);
         NewWorkspaceName = string.Empty;
         ErrorMessage = string.Empty;
+    }
+
+    private async Task HandleRename()
+    {
+        if (string.IsNullOrWhiteSpace(NewGroupName))
+        {
+            ErrorMessage = "Please enter a name.";
+            return;
+        }
+
+        if (AllGroups.Any(g => g.Name.Equals(NewGroupName, StringComparison.OrdinalIgnoreCase) && g.Name != Group.Name))
+        {
+            ErrorMessage = "A group with this name already exists.";
+            return;
+        }
+
+        // Update all workspaces in this group to use the new group name
+        foreach (var workspace in Group.Workspaces)
+        {
+            workspace.GroupName = NewGroupName;
+        }
+
+        Group.Name = NewGroupName;
+        if (renameModal is not null)
+        {
+            await renameModal.InvokeVoidAsync("hide");
+        }
+        NewGroupName = string.Empty;
+        ErrorMessage = null;
+        await OnAddWorkspace.InvokeAsync();
+        StateHasChanged();
     }
 } 

@@ -30,6 +30,11 @@
                         <i class="bi bi-folder2 me-2"></i>Move to Group
                     </button>
                 </li>
+                <li>
+                    <button class="dropdown-item" @onclick="ShowRenameModal">
+                        <i class="bi bi-pencil me-2"></i>Rename
+                    </button>
+                </li>
                 <li><hr class="dropdown-divider"></li>
                 <li>
                     <button class="dropdown-item text-danger" @onclick="() => OnDeleteWorkspace.InvokeAsync()">
@@ -162,6 +167,34 @@
     </div>
 </div>
 
+@* Add rename modal *@
+<div class="modal fade" id="@RenameModalId" tabindex="-1" style="z-index: 1055;">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark text-light">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title">Rename Workspace</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body py-4">
+                <div class="mb-4">
+                    <label class="form-label mb-2">New Name</label>
+                    <input type="text" class="form-control bg-dark text-light border-secondary" @bind="NewWorkspaceName" 
+                           placeholder="Enter new name" />
+                    @if (!string.IsNullOrEmpty(ErrorMessage))
+                    {
+                        <div class="invalid-feedback d-block mt-2">
+                            @ErrorMessage
+                        </div>
+                    }
+                </div>
+                <button class="btn btn-primary" @onclick="HandleRename" disabled="@string.IsNullOrEmpty(NewWorkspaceName)">
+                    <i class="bi bi-check-lg me-2"></i>Rename
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <style>
     /* Base card styles */
     .card {
@@ -234,6 +267,24 @@
     .dropdown-toggle::after {
         display: none;
     }
+
+    /* Prevent interaction with collapsed or hidden elements */
+    .collapse:not(.show),
+    .card-body.collapsed,
+    [style*="display: none"],
+    [hidden] {
+        pointer-events: none;
+    }
+
+    /* Ensure dropdowns are still interactive when shown */
+    .dropdown-menu.show {
+        pointer-events: auto;
+    }
+
+    /* Ensure modals are still interactive when shown */
+    .modal.show {
+        pointer-events: auto;
+    }
 </style>
 
 @code {
@@ -249,13 +300,28 @@
     [Parameter] public EventCallback<(ScriptInfo, Workspace, WorkspaceLocation)> OnRunScriptOnLocation { get; set; }
     [Parameter] public EventCallback OnAddLocation { get; set; }
     [Parameter] public EventCallback<(Workspace, string)> OnMoveToGroup { get; set; }
+    [Parameter] public EventCallback OnRename { get; set; }
 
     private bool IsExpanded => CardStateService.IsExpanded("workspace", Workspace.Id.ToString());
     private AddWorkspaceLocation? locationForm;
     private string SelectedGroupName = string.Empty;
+    private IJSObjectReference? moveToGroupModal;
+    private string RenameModalId => $"renameModal_{Workspace.Name.Replace(" ", "_").ToLower()}";
+    private IJSObjectReference? renameModal;
+    private string NewWorkspaceName = string.Empty;
+    private string? ErrorMessage;
 
     private string ModalId => $"addLocationModal_{Workspace.Name.Replace(" ", "_").ToLower()}";
     private string MoveToGroupModalId => $"moveToGroupModal_{Workspace.Name.Replace(" ", "_").ToLower()}";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            moveToGroupModal = await JS.InvokeAsync<IJSObjectReference>("bootstrap.Modal.getOrCreateInstance", $"#{MoveToGroupModalId}");
+            renameModal = await JS.InvokeAsync<IJSObjectReference>("bootstrap.Modal.getOrCreateInstance", $"#{RenameModalId}");
+        }
+    }
 
     private void ToggleExpand()
     {
@@ -269,7 +335,19 @@
 
     private void ShowMoveToGroupModal()
     {
-        ModalService.ShowMoveToGroupModal(Workspace);
+        if (moveToGroupModal is not null)
+        {
+            moveToGroupModal.InvokeVoidAsync("show");
+        }
+    }
+
+    private void ShowRenameModal()
+    {
+        NewWorkspaceName = Workspace.Name;
+        if (renameModal is not null)
+        {
+            renameModal.InvokeVoidAsync("show");
+        }
     }
 
     private async Task HandleLocationAdded(WorkspaceLocation location)
@@ -284,7 +362,10 @@
 
     private void HandleMoveToGroup()
     {
-        ModalService.HideMoveToGroupModal();
+        if (moveToGroupModal is not null)
+        {
+            moveToGroupModal.InvokeVoidAsync("hide");
+        }
         OnMoveToGroup.InvokeAsync((Workspace, SelectedGroupName));
         SelectedGroupName = string.Empty;
         StateHasChanged();
@@ -314,5 +395,24 @@
             // Log the error or show a notification
             Console.WriteLine($"Error opening location: {ex.Message}");
         }
+    }
+
+    private async Task HandleRename()
+    {
+        if (string.IsNullOrWhiteSpace(NewWorkspaceName))
+        {
+            ErrorMessage = "Please enter a name.";
+            return;
+        }
+
+        Workspace.Name = NewWorkspaceName;
+        if (renameModal is not null)
+        {
+            await renameModal.InvokeVoidAsync("hide");
+        }
+        NewWorkspaceName = string.Empty;
+        ErrorMessage = null;
+        await OnRename.InvokeAsync();
+        StateHasChanged();
     }
 }

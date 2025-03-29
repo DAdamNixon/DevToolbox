@@ -8,7 +8,6 @@
 <Router AppAssembly="@typeof(App).Assembly">
     <Found Context="routeData">
         <RouteView RouteData="@routeData" DefaultLayout="typeof(MainLayout)" />
-        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
     </Found>
     <NotFound>
         <PageTitle>Not found</PageTitle>
@@ -61,6 +60,32 @@
         </div>
     </div>
 </div>
+
+<style>
+    /* Global styles */
+    * {
+        user-select: none;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+    }
+
+    /* Allow text selection in input fields and textareas */
+    input, textarea, .form-control {
+        user-select: text !important;
+        -webkit-user-select: text !important;
+        -moz-user-select: text !important;
+        -ms-user-select: text !important;
+    }
+
+    /* Allow text selection in dropdown items */
+    .dropdown-item {
+        user-select: text !important;
+        -webkit-user-select: text !important;
+        -moz-user-select: text !important;
+        -ms-user-select: text !important;
+    }
+</style>
 
 @code {
     private AddWorkspaceLocation? locationForm;

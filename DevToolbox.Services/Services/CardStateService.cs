@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 
 namespace DevToolbox.Services.Services
 {
@@ -17,38 +18,31 @@ namespace DevToolbox.Services.Services
 
     public class CardStateService
     {
-        private readonly Dictionary<string, string> _expandedCards = new();
+        private readonly ConcurrentDictionary<string, bool> _expandedStates = new();
 
         public event EventHandler<CardStateChangedEventArgs> OnStateChanged = delegate { };
 
-        public void ToggleExpand(string cardType, string cardId)
+        public void ToggleExpand(string type, string id)
         {
-            if (_expandedCards.ContainsKey(cardType))
+            var key = $"{type}_{id}";
+            var isExpanded = _expandedStates.GetValueOrDefault(key, false);
+            
+            // If expanded and not focused, collapse on click
+            if (isExpanded)
             {
-                if (_expandedCards[cardType] == cardId)
-                {
-                    // If the same card is clicked, collapse it
-                    _expandedCards.Remove(cardType);
-                    OnStateChanged.Invoke(this, new CardStateChangedEventArgs(cardType, string.Empty));
-                }
-                else
-                {
-                    // If a different card is clicked, expand it
-                    _expandedCards[cardType] = cardId;
-                    OnStateChanged.Invoke(this, new CardStateChangedEventArgs(cardType, cardId));
-                }
+                _expandedStates[key] = false;
+                OnStateChanged.Invoke(this, new CardStateChangedEventArgs(type, string.Empty));
+                return;
             }
-            else
-            {
-                // If no card is expanded, expand this one
-                _expandedCards[cardType] = cardId;
-                OnStateChanged.Invoke(this, new CardStateChangedEventArgs(cardType, cardId));
-            }
+
+            // Otherwise toggle normally
+            _expandedStates[key] = !isExpanded;
+            OnStateChanged.Invoke(this, new CardStateChangedEventArgs(type, isExpanded ? string.Empty : id));
         }
 
-        public bool IsExpanded(string cardType, string cardId)
+        public bool IsExpanded(string type, string id)
         {
-            return _expandedCards.ContainsKey(cardType) && _expandedCards[cardType] == cardId;
+            return _expandedStates.GetValueOrDefault($"{type}_{id}", false);
         }
     }
 } 
