@@ -61,6 +61,12 @@
             return;
         }
 
+        if (ExistingGroups.Any(g => g.Name.Equals(NewGroupName, StringComparison.OrdinalIgnoreCase)))
+        {
+            ErrorMessage = "A group with this name already exists.";
+            return;
+        }
+
         var newGroup = new WorkspaceGroup
         {
             Id = ExistingGroups.Any() ? ExistingGroups.Max(g => g.Id) + 1 : 1,
