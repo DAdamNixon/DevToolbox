@@ -1,0 +1,80 @@
+@page "/powershell"
+@namespace DevToolbox.Pages.PowerShellScripts
+<div class="grid-container">
+    <!-- Left Sidebar -->
+    <div class="sidebar row">
+        <div class="search-box col-12">
+            <input type="text" 
+                @bind-value="searchText" 
+                @bind-value:event="oninput" 
+                placeholder="Search scripts..." 
+                class="form-control" />
+        </div>
+        <div class="script-list d-flex gap-3 mb-4">
+            @foreach (var script in FilteredScripts)
+            {
+
+
+                <div class="btn btn-secondary mt-2 btn-block script-item @(script.Name == selectedScript ? "selected" : "")"
+                    @onclick="() => LoadScript(script.Name)">
+                    @script.Name
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        @if (!string.IsNullOrEmpty(selectedScript))
+        {
+            <div class="script-details">
+                <h2>@selectedScript</h2>
+                
+                <div class="script-editor">
+                    <textarea @bind="scriptText" 
+                        rows="10" 
+                        class="form-control code-editor">
+                    </textarea>
+                </div>
+
+                <div class="parameters-section">
+                    <div class="form-group">
+                        <label>Project Path:</label>
+                        <input type="text" @bind="projectPath" class="form-control" />
+                    </div>
+                </div>
+
+                <div class="output-section">
+                    @if (!string.IsNullOrEmpty(error))
+                    {
+                        <div class="error-message">
+                            @error
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(output))
+                    {
+                        <pre class="output-text">@output</pre>
+                    }
+                </div>
+
+                <div class="action-buttons">
+                    <button class="btn btn-primary" @onclick="SaveScript" disabled="@isExecuting">
+                        Save
+                    </button>
+                    <button class="btn btn-success" @onclick="ExecuteScript" disabled="@isExecuting">
+                        @(isExecuting ? "Running..." : "Run Script")
+                    </button>
+                    <button class="btn btn-warning" @onclick="ExecuteScriptWithParams" disabled="@isExecuting">
+                        Run With Parameters
+                    </button>
+                    <button class="btn btn-danger" @onclick="DeleteScript" disabled="@isExecuting">
+                        Delete
+                    </button>
+                    <button class="btn btn-secondary" @onclick="ClearOutput" disabled="@isExecuting">
+                        Clear Output
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+</div>
