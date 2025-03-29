@@ -1,352 +1,130 @@
 @page "/"
-@using DevToolbox.UI.Components
+@using DevToolbox.Services
 @using DevToolbox.Services.Interfaces
 @using DevToolbox.Services.Models
 @using DevToolbox.Services.Services
+@using DevToolbox.UI.Components
 @using Microsoft.JSInterop
 @using System.IO
+@using Microsoft.Extensions.Configuration
 @inject IYamlStorageService YamlStorage
 @inject DirectoryStructureService DirectoryService
 @inject PowerShellService PowerShellService
+@inject IWorkspaceService WorkspaceService
+@inject IConfiguration Configuration
 @inject IJSRuntime JS
 
-<div class="container py-4">
-    <div class="row mb-4">
-        <div class="col">
-            <h1 class="display-4 text-light">Workspaces</h1>
-            <p class="lead text-muted">Manage your development workspaces here.</p>
+<PageTitle>DevToolbox</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="display-4 mb-4">DevToolbox</h1>
         </div>
-        <div class="col-auto">
-            <button class="btn btn-outline-light" @onclick="AddCustomOpenOption">
-                <i class="bi bi-plus-circle me-2"></i>Add Custom Open Option
-            </button>
-        </div>
-    </div>
-    
-    <div class="d-flex justify-content-start">
-        <AddWorkspaceCard 
-            ExistingWorkspaces="Workspaces"
-            OnWorkspaceCreated="OnWorkspaceCreated" />
     </div>
 
-    <div class="mt-4">
-        @if (Workspaces.Any())
-        {
-            <div class="row g-4">
-                @foreach (var workspace in Workspaces)
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex flex-column gap-4">
+                @foreach (var group in WorkspaceService.WorkspaceGroups)
                 {
-                    <div class="col-md-4">
-                        <WorkspaceCard 
-                            Workspace="workspace"
-                            GlobalOptions="GlobalOptions"
-                            AvailableScripts="AvailableScripts"
-                            OnDeleteWorkspace="DeleteWorkspace"
-                            OnOpenWorkspaceLocation="OpenWorkspaceLocation"
-                            OnOpenInExplorer="OpenLocationInExplorer"
-                            OnOpenInTerminal="OpenLocationInTerminal"
-                            OnOpenWithCustomApp="OpenLocationWithCustomApp"
-                            OnRunScriptOnLocation="RunScriptOnLocation" 
-                            OnAddLocation="SaveWorkspaces"/>
-                    </div>
+                    <WorkspaceGroupCard 
+                        Group="group"
+                        GlobalOptions="GlobalOptions"
+                        AvailableScripts="AvailableScripts"
+                        AllWorkspaces="AllWorkspaces"
+                        AllGroups="WorkspaceService.WorkspaceGroups"
+                        OnDeleteGroup="DeleteGroup"
+                        OnOpenWorkspaceLocation="OpenWorkspaceLocation"
+                        OnOpenInExplorer="OpenLocationInExplorer"
+                        OnOpenInTerminal="OpenLocationInTerminal"
+                        OnOpenWithCustomApp="OpenLocationWithCustomApp"
+                        OnRunScriptOnLocation="RunScriptOnLocation"
+                        OnAddWorkspace="SaveWorkspaces"/>
                 }
+                <AddWorkspaceGroupCard 
+                    ExistingGroups="WorkspaceService.WorkspaceGroups"
+                    OnGroupCreated="HandleGroupCreated" />
             </div>
-        }
-        else
-        {
-            <div class="text-center p-4 bg-dark rounded">
-                <div class="display-1 text-muted mb-3">
-                    <i class="bi bi-folder-x"></i>
-                </div>
-                <p class="lead text-muted">No workspaces found. Create a new workspace to get started.</p>
-            </div>
-        }
+        </div>
     </div>
 </div>
 
-<!-- Custom Open Option Modal -->
-@if (NewCustomOption != null)
-{
-    <div class="modal fade show" style="display: block;" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content bg-dark text-light">
-                <div class="modal-header border-secondary">
-                    <h5 class="modal-title">Add Custom Open Option</h5>
-                    <button type="button" class="btn-close btn-close-white" @onclick="CloseCustomOptionModal"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label">Option Name</label>
-                        <input type="text" class="form-control bg-dark text-light border-secondary" @bind="NewCustomOption.Name" placeholder="Enter a name for this option" />
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Type</label>
-                        <div class="btn-group w-100" role="group">
-                            <input type="radio" class="btn-check" name="optionType" id="typeExecutable" 
-                                    checked="@(NewCustomOption.Type == OpenOptionType.Executable)"
-                                    @onchange="() => OnOptionTypeChanged(OpenOptionType.Executable)" />
-                            <label class="btn btn-outline-light" for="typeExecutable">
-                                <i class="bi bi-window me-2"></i>Executable
-                            </label>
-                            <input type="radio" class="btn-check" name="optionType" id="typeBash" 
-                                    checked="@(NewCustomOption.Type == OpenOptionType.Command)"
-                                    @onchange="() => OnOptionTypeChanged(OpenOptionType.Command)" />
-                            <label class="btn btn-outline-light" for="typeBash">
-                                <i class="bi bi-terminal me-2"></i>Command
-                            </label>
-                        </div>
-                    </div>
-                    @if (NewCustomOption.Type == OpenOptionType.Executable)
-                    {
-                        <div class="mb-3">
-                            <label class="form-label">Executable Path</label>
-                            <FileBrowser SelectedPath="@NewCustomOption.ExecutablePath" 
-                                        OnPathSelected="OnCustomExecutableSelected"
-                                        AllowFileSelection="true"
-                                        AllowFolderSelection="true"
-                                        Filter="Executable Files (*.exe)|*.exe|All Files (*.*)|*.*" />
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Arguments</label>
-                            <input type="text" class="form-control bg-dark text-light border-secondary" @bind="NewCustomOption.Arguments" 
-                                    placeholder="Use {0} for workspace path" />
-                            <div class="form-text text-muted">Example: "{0}" or "--path {0}"</div>
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="mb-3">
-                            <label class="form-label">Command</label>
-                            <div class="input-group">
-                                <span class="input-group-text bg-dark text-light border-secondary"><i class="bi bi-terminal"></i></span>
-                                <input type="text" class="form-control bg-dark text-light border-secondary" @bind="NewCustomOption.Command" 
-                                        @ref="commandInput"
-                                        placeholder="Enter command (e.g., 'code', 'subl')" />
-                            </div>
-                            <div class="form-text text-muted">Use {0} for workspace path. Example: "code {0}" or "subl {0}"</div>
-                        </div>
-                    }
-                    @if (!string.IsNullOrEmpty(ErrorMessage))
-                    {
-                        <div class="alert alert-danger">
-                            @ErrorMessage
-                        </div>
-                    }
-                </div>
-                <div class="modal-footer border-secondary">
-                    <button type="button" class="btn btn-secondary" @onclick="CloseCustomOptionModal">Cancel</button>
-                    <button type="button" class="btn btn-primary" @onclick="SaveCustomOpenOption" disabled="@(!CanAddCustomOption)">
-                        Add Option
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="modal-backdrop fade show"></div>
-}
-
 @code {
-    private List<Workspace> Workspaces = new();
-    private List<ScriptInfo> AvailableScripts = new();
-    private string? ErrorMessage;
-    private GlobalCustomOpenOptions GlobalOptions = new();
-    private CustomOpenOption? NewCustomOption;
-    private ElementReference commandInput;
-
-    private bool CanAddCustomOption =>
-        NewCustomOption != null &&
-        !string.IsNullOrWhiteSpace(NewCustomOption.Name) &&
-        ((NewCustomOption.Type == OpenOptionType.Executable && !string.IsNullOrWhiteSpace(NewCustomOption.ExecutablePath)) ||
-        (NewCustomOption.Type == OpenOptionType.Command && !string.IsNullOrWhiteSpace(NewCustomOption.Command)));
+    private GlobalCustomOpenOptions GlobalOptions { get; set; } = new();
+    private List<ScriptInfo> AvailableScripts { get; set; } = new();
+    private List<Workspace> AllWorkspaces { get; set; } = new();
 
     protected override async Task OnInitializedAsync()
     {
+        LoadGlobalOptions();
+        LoadScripts();
         await LoadWorkspacesAsync();
-        await LoadGlobalOptionsAsync();
-        LoadAvailableScripts();
     }
 
-    private async Task LoadGlobalOptionsAsync()
+    private void LoadGlobalOptions()
     {
-        GlobalOptions = await YamlStorage.LoadAsync<GlobalCustomOpenOptions>("customOpenOptions") ?? new GlobalCustomOpenOptions();
+        var options = Configuration.GetSection("CustomOpenOptions").Get<Dictionary<string, CustomOpenOption>>();
+        if (options != null)
+        {
+            GlobalOptions.Options = options;
+        }
     }
 
-    private void LoadAvailableScripts()
+    private void LoadScripts()
     {
         AvailableScripts = PowerShellService.GetAvailableScripts().ToList();
     }
 
     private async Task LoadWorkspacesAsync()
     {
-        var workspaces = await YamlStorage.LoadAsync<List<Workspace>>("workspaces") ?? new List<Workspace>();
-        Workspaces = workspaces;
+        var groups = await WorkspaceService.GetWorkspaceGroupsAsync();
+        AllWorkspaces = groups.SelectMany(g => g.Workspaces).ToList();
+        StateHasChanged();
     }
 
-    private async Task OnWorkspaceCreated(Workspace workspace)
+    private async Task HandleGroupCreated(WorkspaceGroup group)
     {
-        Workspaces.Add(workspace);
-        await YamlStorage.SaveAsync("workspaces", Workspaces);
+        WorkspaceService.WorkspaceGroups.Add(group);
+        await SaveWorkspaces();
+        StateHasChanged();
     }
 
-    private async Task DeleteWorkspace(Workspace workspace)
+    private async Task DeleteGroup(WorkspaceGroup group)
     {
-        Workspaces.Remove(workspace);
-        await YamlStorage.SaveAsync("workspaces", Workspaces);
+        WorkspaceService.WorkspaceGroups.Remove(group);
+        await SaveWorkspaces();
+        StateHasChanged();
+    }
+
+    private async Task SaveWorkspaces()
+    {
+        await WorkspaceService.SaveWorkspaceGroupsAsync(WorkspaceService.WorkspaceGroups);
+        await LoadWorkspacesAsync();
     }
 
     private async Task OpenWorkspaceLocation((Workspace workspace, WorkspaceLocation location) args)
     {
-        var (workspace, location) = args;
-
-        if (File.Exists(location.Path))
-        {
-            // Open file with default application
-            var startInfo = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = location.Path,
-                UseShellExecute = true
-            };
-            System.Diagnostics.Process.Start(startInfo);
-        }
-        else if (Directory.Exists(location.Path))
-        {
-            // Open folder in explorer
-            System.Diagnostics.Process.Start("explorer.exe", location.Path);
-        }
-
-        await YamlStorage.SaveAsync("workspaces", Workspaces);
+        await WorkspaceService.OpenWorkspaceLocationAsync(args.workspace, args.location);
     }
 
-    private void OpenLocationInExplorer(WorkspaceLocation location)
+    private async Task OpenLocationInExplorer(WorkspaceLocation location)
     {
-        if (Directory.Exists(location.Root))
-        {
-            System.Diagnostics.Process.Start("explorer.exe", location.Root);
-        }
+        await WorkspaceService.OpenLocationInExplorerAsync(location);
     }
 
-    private void OpenLocationInTerminal(WorkspaceLocation location)
+    private async Task OpenLocationInTerminal(WorkspaceLocation location)
     {
-        if (Directory.Exists(location.Root))
-        {
-            System.Diagnostics.Process.Start("wt.exe", $"-d \"{location.Root}\"");
-        }
+        await WorkspaceService.OpenLocationInTerminalAsync(location);
     }
 
     private async Task OpenLocationWithCustomApp((Workspace workspace, WorkspaceLocation location, CustomOpenOption option) args)
     {
-        await Task.Run(() =>{
-            var (workspace, location, option) = args;
-
-            if (option.Type == OpenOptionType.Executable)
-            {
-                var startInfo = new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = option.ExecutablePath,
-                    Arguments = string.Format(option.Arguments, location.Root),
-                    UseShellExecute = false
-                };
-                System.Diagnostics.Process.Start(startInfo);
-            }
-            else
-            {
-                // For commands, we'll use PowerShell to execute the command
-                var command = string.Format(option.Command ?? "", location.Root);
-                var startInfo = new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = "powershell.exe",
-                    Arguments = $"-NoProfile -Command \"{command}\"",
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true
-                };
-                System.Diagnostics.Process.Start(startInfo);
-            }
-        });
+        await WorkspaceService.OpenLocationWithCustomAppAsync(args.workspace, args.location, args.option);
     }
 
     private async Task RunScriptOnLocation((ScriptInfo script, Workspace workspace, WorkspaceLocation location) args)
     {
-        var (script, workspace, location) = args;
-
-        if (Directory.Exists(location.Path))
-        {
-            var parameters = new Dictionary<string, object>
-            {
-                { "ProjectPath", location.Root }
-            };
-
-            await PowerShellService.ExecuteScriptFileAsync(script.Name, parameters);
-        }
-    }
-
-    private void OnCustomExecutableSelected(string path)
-    {
-        if (NewCustomOption != null)
-        {
-            NewCustomOption.ExecutablePath = path;
-            StateHasChanged();
-        }
-    }
-
-    private void OnOptionTypeChanged(OpenOptionType newType)
-    {
-        if (NewCustomOption == null || NewCustomOption.Type == newType) return;
-
-        NewCustomOption.Type = newType;
-        // Reset the relevant fields when switching types
-        if (newType == OpenOptionType.Executable)
-        {
-            NewCustomOption.Command = null;
-        }
-        else
-        {
-            NewCustomOption.ExecutablePath = null;
-            NewCustomOption.Command = "{0}";
-            // Focus the command input after the UI updates
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(100); // Wait for UI to update
-                await JS.InvokeVoidAsync("focusElement", commandInput);
-            });
-        }
-        StateHasChanged();
-    }
-
-    private void AddCustomOpenOption()
-    {
-        NewCustomOption = new CustomOpenOption
-        {
-            Type = OpenOptionType.Executable,
-            Arguments = "\"{0}\"" // Default argument pattern for the workspace path
-        };
-        StateHasChanged();
-    }
-
-    private void CloseCustomOptionModal()
-    {
-        NewCustomOption = null;
-        ErrorMessage = null;
-        StateHasChanged();
-    }
-
-    private async Task SaveCustomOpenOption()
-    {
-        if (NewCustomOption == null || !CanAddCustomOption) return;
-
-        // Check for duplicate names
-        if (GlobalOptions.Options.ContainsKey(NewCustomOption.Name))
-        {
-            ErrorMessage = "A custom open option with this name already exists.";
-            return;
-        }
-
-        GlobalOptions.Options[NewCustomOption.Name] = NewCustomOption;
-        await YamlStorage.SaveAsync("customOpenOptions", GlobalOptions);
-        CloseCustomOptionModal();
-    }
-    private async Task SaveWorkspaces()
-    {
-        await YamlStorage.SaveAsync("workspaces", Workspaces);
+        await WorkspaceService.RunScriptOnLocationAsync(args.script, args.workspace, args.location);
     }
 }

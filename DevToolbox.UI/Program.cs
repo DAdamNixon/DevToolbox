@@ -38,6 +38,7 @@ namespace DevToolbox.UI
             services.AddScoped<IScriptExecutionService, ScriptExecutionService>();
             services.AddScoped<IYamlStorageService, YamlStorageService>();
             services.AddScoped<DirectoryStructureService>();
+            services.AddScoped<IWorkspaceService, WorkspaceService>();
 
             var serviceProvider = services.BuildServiceProvider();
             Application.Run(new MainWindow(serviceProvider));

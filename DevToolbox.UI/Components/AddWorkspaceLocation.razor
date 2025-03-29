@@ -16,10 +16,11 @@
 </div>
 
 <div class="col-12">
-    <label class="form-label">Location Path</label>
+    <label class="form-label">Location Path (Optional)</label>
     <PathBrowser SelectedPath="@NewLocationPath"
                 OnPathSelected="OnPathSelected"
                 Filter="All Files (*.*)|*.*|Project Files (*.csproj,*.sln)|*.csproj;*.sln|Solution Files (*.sln)|*.sln|Project Files (*.csproj)|*.csproj" />
+    <div class="form-text text-muted">Leave empty to use the root directory</div>
 </div>
 
 <div class="col-12">
@@ -43,6 +44,11 @@
     private void OnRootSelected(string path)
     {
         NewLocationRoot = path;
+        // If no specific path is selected, use the root
+        if (string.IsNullOrEmpty(NewLocationPath))
+        {
+            NewLocationPath = path;
+        }
     }
 
     private void OnPathSelected(string path)
@@ -73,6 +79,12 @@
     
     private async void SubmitLocation()
     {
+        // If no specific path is selected, use the root
+        if (string.IsNullOrEmpty(NewLocationPath))
+        {
+            NewLocationPath = NewLocationRoot;
+        }
+
         var location = new WorkspaceLocation
         {
             Name = NewLocationName,

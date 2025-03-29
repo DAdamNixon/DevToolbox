@@ -2,10 +2,22 @@ using System.Text.Json.Serialization;
 
 namespace DevToolbox.Services.Models;
 
+public class WorkspaceGroup
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("workspaces")]
+    public List<Workspace> Workspaces { get; set; } = new();
+}
+
 public class Workspace
 {
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("groupName")]
+    public string? GroupName { get; set; }
 
     [JsonPropertyName("locations")]
     public List<WorkspaceLocation> Locations { get; set; } = new();

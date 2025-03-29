@@ -1,0 +1,183 @@
+@using DevToolbox.UI.Components
+@using DevToolbox.Services.Models
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+
+<div class="card bg-dark text-light border-secondary mb-3 @(IsExpanded ? "expanded" : "")">
+    <div class="card-header border-secondary d-flex align-items-center p-0">
+        <div class="flex-grow-1 h-100 px-3 py-2" @onclick="ToggleExpand" style="cursor: pointer;">
+            <h5 class="card-title mb-0">@Group.Name</h5>
+        </div>
+        <div class="dropdown h-100 border-start border-secondary">
+            <button class="btn btn-link text-light dropdown-toggle h-100 px-3" data-bs-toggle="dropdown">
+                <i class="bi bi-three-dots-vertical"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-dark">
+                <li>
+                    <button class="dropdown-item text-danger" @onclick="OnDelete">
+                        <i class="bi bi-trash me-2"></i>Delete Group
+                    </button>
+                </li>
+            </ul>
+        </div>
+    </div>
+    @if (IsExpanded)
+    {
+        <div class="px-3 mt-1" @onclick:stopPropagation>
+            <div class="input-group input-group-sm">
+                <span class="input-group-text bg-dark text-light border-secondary">
+                    <i class="bi bi-search"></i>
+                </span>
+                <input type="text" 
+                       class="form-control form-control-sm bg-dark text-light border-secondary" 
+                       placeholder="Search workspaces..."
+                       @bind="SearchTerm"
+                       @bind:event="oninput" />
+            </div>
+        </div>
+    }
+
+    @if (IsExpanded)
+    {
+        <div class="card-body">
+            <div class="row g-4">
+                @foreach (var workspace in FilteredWorkspaces)
+                {
+                    <div class="col-md-4">
+                        <WorkspaceCard 
+                            Workspace="workspace"
+                            GlobalOptions="GlobalOptions"
+                            AvailableScripts="AvailableScripts"
+                            AvailableGroups="AllGroups"
+                            OnDeleteWorkspace="() => DeleteWorkspace(workspace)"
+                            OnOpenWorkspaceLocation="OpenWorkspaceLocation"
+                            OnOpenInExplorer="OpenLocationInExplorer"
+                            OnOpenInTerminal="OpenLocationInTerminal"
+                            OnOpenWithCustomApp="OpenLocationWithCustomApp"
+                            OnRunScriptOnLocation="RunScriptOnLocation" 
+                            OnAddLocation="SaveWorkspaces"
+                            OnMoveToGroup="HandleMoveToGroup"/>
+                    </div>
+                }
+                <div class="col-md-4">
+                    <AddWorkspaceCard 
+                        ExistingWorkspaces="AllWorkspaces"
+                        OnWorkspaceCreated="HandleWorkspaceCreated" />
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .card {
+        transition: all 0.3s ease-in-out;
+    }
+    .card.expanded {
+        box-shadow: 0 0 10px rgba(0,0,0,0.3);
+    }
+</style>
+
+@code {
+    [Parameter] public WorkspaceGroup Group { get; set; } = null!;
+    [Parameter] public GlobalCustomOpenOptions GlobalOptions { get; set; } = null!;
+    [Parameter] public List<ScriptInfo> AvailableScripts { get; set; } = null!;
+    [Parameter] public List<Workspace> AllWorkspaces { get; set; } = null!;
+    [Parameter] public List<WorkspaceGroup> AllGroups { get; set; } = null!;
+    [Parameter] public EventCallback<WorkspaceGroup> OnDeleteGroup { get; set; }
+    [Parameter] public EventCallback<(Workspace, WorkspaceLocation)> OnOpenWorkspaceLocation { get; set; }
+    [Parameter] public EventCallback<WorkspaceLocation> OnOpenInExplorer { get; set; }
+    [Parameter] public EventCallback<WorkspaceLocation> OnOpenInTerminal { get; set; }
+    [Parameter] public EventCallback<(Workspace, WorkspaceLocation, CustomOpenOption)> OnOpenWithCustomApp { get; set; }
+    [Parameter] public EventCallback<(ScriptInfo, Workspace, WorkspaceLocation)> OnRunScriptOnLocation { get; set; }
+    [Parameter] public EventCallback OnAddWorkspace { get; set; }
+
+    private bool IsExpanded { get; set; }
+    private string SearchTerm { get; set; } = string.Empty;
+
+    private IEnumerable<Workspace> FilteredWorkspaces => string.IsNullOrWhiteSpace(SearchTerm)
+        ? Group.Workspaces
+        : Group.Workspaces.Where(w => w.Name.Contains(SearchTerm, StringComparison.OrdinalIgnoreCase));
+
+    private async Task ToggleExpand()
+    {
+        try
+        {
+            IsExpanded = !IsExpanded;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error toggling group expand: {ex.Message}");
+        }
+    }
+
+    private async Task HandleWorkspaceCreated(Workspace workspace)
+    {
+        workspace.GroupName = Group.Name;
+        Group.Workspaces.Add(workspace);
+        await OnAddWorkspace.InvokeAsync();
+        StateHasChanged();
+    }
+
+    private async Task DeleteWorkspace(Workspace workspace)
+    {
+        Group.Workspaces.Remove(workspace);
+        await OnAddWorkspace.InvokeAsync();
+        StateHasChanged();
+    }
+
+    private async Task HandleMoveToGroup((Workspace workspace, string newGroupName) args)
+    {
+        // Remove from current group
+        Group.Workspaces.Remove(args.workspace);
+        
+        // Update the workspace's group name
+        args.workspace.GroupName = args.newGroupName;
+        
+        // Add to the target group
+        var targetGroup = AllGroups.FirstOrDefault(g => g.Name == args.newGroupName);
+        if (targetGroup != null)
+        {
+            targetGroup.Workspaces.Add(args.workspace);
+        }
+        
+        await OnAddWorkspace.InvokeAsync();
+        StateHasChanged();
+    }
+
+    private async Task OnDelete()
+    {
+        await OnDeleteGroup.InvokeAsync(Group);
+    }
+
+    private async Task OpenWorkspaceLocation((Workspace workspace, WorkspaceLocation location) args)
+    {
+        await OnOpenWorkspaceLocation.InvokeAsync(args);
+    }
+
+    private async Task OpenLocationInExplorer(WorkspaceLocation location)
+    {
+        await OnOpenInExplorer.InvokeAsync(location);
+    }
+
+    private async Task OpenLocationInTerminal(WorkspaceLocation location)
+    {
+        await OnOpenInTerminal.InvokeAsync(location);
+    }
+
+    private async Task OpenLocationWithCustomApp((Workspace workspace, WorkspaceLocation location, CustomOpenOption option) args)
+    {
+        await OnOpenWithCustomApp.InvokeAsync(args);
+    }
+
+    private async Task RunScriptOnLocation((ScriptInfo script, Workspace workspace, WorkspaceLocation location) args)
+    {
+        await OnRunScriptOnLocation.InvokeAsync(args);
+    }
+
+    private async Task SaveWorkspaces()
+    {
+        await OnAddWorkspace.InvokeAsync();
+    }
+} 

@@ -10,7 +10,9 @@ $solutionGroups = Get-ChildItem -Path $RootDirectory -Filter "*.sln" -Recurse |
 
 # Initialize YAML structure
 $yaml = @"
-workspaces:
+workspaceGroups:
+  - name: Solutions
+    workspaces:
 
 "@
 
@@ -19,8 +21,8 @@ foreach ($group in $solutionGroups) {
     
     # Add workspace entry
     $yaml += @"
-  - name: $workspaceName
-    locations:
+      - name: $workspaceName
+        locations:
 "@
     
     foreach ($sln in $group.Group) {
@@ -36,15 +38,13 @@ foreach ($group in $solutionGroups) {
         
         $yaml += @"
 
-      - name: $environment
-        path: $($sln.FullName)
-        root: $solutionDir
-        type: Solution
+          - name: $environment
+            path: $($sln.FullName)
+            root: $solutionDir
+            type: Solution
 "@
     }
     $yaml += "`n"
-    
-    
 }
 
 # Write to file

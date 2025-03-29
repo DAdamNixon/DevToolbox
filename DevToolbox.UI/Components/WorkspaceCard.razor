@@ -4,39 +4,58 @@
 @inject IJSRuntime JS
 
 <div class="card bg-dark text-light border-secondary mb-3 @(IsExpanded ? "expanded" : "")">
-    <div class="card-header border-secondary d-flex justify-content-between align-items-center" @onclick="ToggleExpand" style="cursor: pointer;">
-
-        <div class="d-flex align-items-center">
+    <div class="card-header border-secondary d-flex align-items-center p-0">
+        <div class="flex-grow-1 h-100 px-3 py-2" @onclick="ToggleExpand" style="cursor: pointer;">
             <h5 class="card-title mb-0">@Workspace.Name</h5>
         </div>
-        
-        <button class="btn btn-link text-light">
-            <i class="bi @(IsExpanded ? "bi-chevron-up" : "bi-chevron-down")"></i>
-        </button>
-
-
-
+        <div class="dropdown h-100 border-start border-secondary">
+            <button class="btn btn-link text-light dropdown-toggle h-100 px-3" data-bs-toggle="dropdown">
+                <i class="bi bi-three-dots-vertical"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-dark">
+                <li>
+                    <button class="dropdown-item" @onclick="ShowAddLocationModal">
+                        <i class="bi bi-plus-circle me-2"></i>Add Location
+                    </button>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <button class="dropdown-item" @onclick="ShowMoveToGroupModal">
+                        <i class="bi bi-folder2 me-2"></i>Move to Group
+                    </button>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <button class="dropdown-item text-danger" @onclick="() => OnDeleteWorkspace.InvokeAsync()">
+                        <i class="bi bi-trash me-2"></i>Delete Workspace
+                    </button>
+                </li>
+            </ul>
+        </div>
     </div>
 
     @if (IsExpanded)
     {
         <div class="card-body">
-            <div class="list-group list-group-flush bg-dark">
+            <div class="d-flex flex-column gap-3">
                 @foreach (var location in Workspace.Locations)
                 {
-                    <div class="list-group-item bg-dark text-light border-secondary">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div class="btn-group">
-                                <button class="btn btn-outline-light btn-sm" @onclick="() => OnOpenWorkspaceLocation.InvokeAsync((Workspace, location))">
-                                    <span class="fw-bold">@location.Name</span>
+                    <div class="card bg-dark text-light border-secondary">
+                        <div class="card-header border-secondary d-flex justify-content-between align-items-center">
+                            <div class="d-flex align-items-center">
+                                <h6 class="card-title mb-0">@location.Name</h6>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-outline-light btn-sm" title="Open Location" @onclick="() => OnOpenWorkspaceLocation.InvokeAsync((Workspace, location))">
+                                    <i class="bi bi-folder"></i>
                                 </button>
-                                <button class="btn btn-outline-light btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+                                <button class="btn btn-outline-light btn-sm" title="More Options" data-bs-toggle="dropdown">
                                     <i class="bi bi-three-dots-vertical"></i>
                                 </button>
                                 <ul class="dropdown-menu dropdown-menu-dark">
                                     <li>
                                         <button class="dropdown-item" @onclick="() => OnOpenInExplorer.InvokeAsync(location)">
-                                            <i class="bi bi-folder2 me-2"></i>Open in Explorer
+                                            <i class="bi bi-folder2-open me-2"></i>Open in Explorer
                                         </button>
                                     </li>
                                     <li>
@@ -47,11 +66,12 @@
                                     @if (GlobalOptions.Options.Any())
                                     {
                                         <li><hr class="dropdown-divider"></li>
+                                        <li><h6 class="dropdown-header">Open With</h6></li>
                                         @foreach (var option in GlobalOptions.Options)
                                         {
                                             <li>
                                                 <button class="dropdown-item" @onclick="() => OnOpenWithCustomApp.InvokeAsync((Workspace, location, option.Value))">
-                                                    <i class="bi bi-box-arrow-up-right me-2"></i>Open with @option.Key
+                                                    <i class="bi bi-box-arrow-up-right me-2"></i>@option.Key
                                                 </button>
                                             </li>
                                         }
@@ -64,38 +84,28 @@
                                         {
                                             <li>
                                                 <button class="dropdown-item" @onclick="() => OnRunScriptOnLocation.InvokeAsync((script, Workspace, location))">
-                                                    <i class="bi bi-play me-2"></i>@script.Name
+                                                    <i class="bi bi-play-circle me-2"></i>@script.Name
                                                 </button>
                                             </li>
                                         }
                                     }
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li>
+                                        <button class="dropdown-item text-danger" @onclick="() => DeleteLocation(location)">
+                                            <i class="bi bi-trash me-2"></i>Delete Location
+                                        </button>
+                                    </li>
                                 </ul>
                             </div>
-                            <div class="ms-2 flex-grow-1 overflow-hidden">
-                                <small class="text-muted text-truncate d-block" title="@location.Path">@location.Path</small>
-                            </div>
+                        </div>
+                        <div class="card-body">
+                            <p class="card-text">
+                                <small class="text-muted overflow-hidden text-truncate">@location.Path</small>
+                            </p>
                         </div>
                     </div>
                 }
             </div>
-        </div>
-        <div class="card-footer border-secondary">
-            <button class="btn btn-link text-light dropdown-toggle" data-bs-toggle="dropdown">
-                <i class="bi bi-three-dots-vertical"></i>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-dark">
-                <li>
-                    <button class="dropdown-item" @onclick="ShowAddLocationModal">
-                        <i class="bi bi-plus-circle me-2"></i>Add Location
-                    </button>
-                </li>
-                <li><hr class="dropdown-divider"></li>
-                <li>
-                    <button class="dropdown-item text-danger" @onclick="OnDelete">
-                        <i class="bi bi-trash me-2"></i>Delete Workspace
-                    </button>
-                </li>
-            </ul>
         </div>
     }
 </div>
@@ -108,7 +118,36 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <AddWorkspaceLocation @ref="locationForm" OnLocationSubmitted="HandleLocationSubmitted" />
+                <AddWorkspaceLocation @ref="locationForm" OnLocationSubmitted="HandleLocationAdded" ButtonText="Add Location"/>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="@MoveToGroupModalId" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark text-light">
+            <div class="modal-header">
+                <h5 class="modal-title">Move @Workspace.Name to Group</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Select Group</label>
+                    <select class="form-select bg-dark text-light border-secondary" @bind="SelectedGroupName">
+                        <option value="">Select a group...</option>
+                        @foreach (var group in AvailableGroups)
+                        {
+                            @if (group.Name != Workspace.GroupName)
+                            {
+                                <option value="@group.Name">@group.Name</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <button class="btn btn-primary" @onclick="HandleMoveToGroup" disabled="@string.IsNullOrEmpty(SelectedGroupName)">
+                    <i class="bi bi-folder2 me-2"></i>Move to Group
+                </button>
             </div>
         </div>
     </div>
@@ -127,67 +166,44 @@
     [Parameter] public Workspace Workspace { get; set; } = null!;
     [Parameter] public GlobalCustomOpenOptions GlobalOptions { get; set; } = null!;
     [Parameter] public List<ScriptInfo> AvailableScripts { get; set; } = null!;
-    [Parameter] public EventCallback<Workspace> OnDeleteWorkspace { get; set; }
+    [Parameter] public List<WorkspaceGroup> AvailableGroups { get; set; } = null!;
+    [Parameter] public EventCallback OnDeleteWorkspace { get; set; }
     [Parameter] public EventCallback<(Workspace, WorkspaceLocation)> OnOpenWorkspaceLocation { get; set; }
     [Parameter] public EventCallback<WorkspaceLocation> OnOpenInExplorer { get; set; }
     [Parameter] public EventCallback<WorkspaceLocation> OnOpenInTerminal { get; set; }
     [Parameter] public EventCallback<(Workspace, WorkspaceLocation, CustomOpenOption)> OnOpenWithCustomApp { get; set; }
     [Parameter] public EventCallback<(ScriptInfo, Workspace, WorkspaceLocation)> OnRunScriptOnLocation { get; set; }
     [Parameter] public EventCallback OnAddLocation { get; set; }
-    private AddWorkspaceLocation? locationForm;
-    private IJSObjectReference? modal;
+    [Parameter] public EventCallback<(Workspace, string)> OnMoveToGroup { get; set; }
 
     private bool IsExpanded { get; set; }
+    private AddWorkspaceLocation? locationForm;
+    private IJSObjectReference? modal;
+    private IJSObjectReference? moveToGroupModal;
+    private string SelectedGroupName = string.Empty;
 
-    private void ToggleExpand()
-    {
-        IsExpanded = !IsExpanded;
-    }
-
-    private string GetLocationIcon(LocationType type) => type switch
-    {
-        LocationType.File => "bi-file-earmark",
-        LocationType.Folder => "bi-folder2",
-        LocationType.Solution => "bi-diagram-3",
-        LocationType.Project => "bi-box",
-        _ => "bi-folder2"
-    };
-
-    private async Task OnDelete()
-    {
-        await OnDeleteWorkspace.InvokeAsync(Workspace);
-    }
-
-    private async Task OnOpenLocation(WorkspaceLocation location)
-    {
-        await OnOpenWorkspaceLocation.InvokeAsync((Workspace, location));
-    }
-
-    private async Task OnOpenLocationInExplorer(WorkspaceLocation location)
-    {
-        await OnOpenInExplorer.InvokeAsync(location);
-    }
-
-    private async Task OnOpenLocationInTerminal(WorkspaceLocation location)
-    {
-        await OnOpenInTerminal.InvokeAsync(location);
-    }
-
-    private async Task OnOpenLocationWithCustomApp(WorkspaceLocation location, CustomOpenOption option)
-    {
-        await OnOpenWithCustomApp.InvokeAsync((Workspace, location, option));
-    }
-
-    private async Task OnRunScript(ScriptInfo script, WorkspaceLocation location)
-    {
-        await OnRunScriptOnLocation.InvokeAsync((script, Workspace, location));
-    }
+    private string ModalId => $"addLocationModal_{Workspace.Name.Replace(" ", "_").ToLower()}";
+    private string MoveToGroupModalId => $"moveToGroupModal_{Workspace.Name.Replace(" ", "_").ToLower()}";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
             modal = await JS.InvokeAsync<IJSObjectReference>("bootstrap.Modal.getOrCreateInstance", $"#{ModalId}");
+            moveToGroupModal = await JS.InvokeAsync<IJSObjectReference>("bootstrap.Modal.getOrCreateInstance", $"#{MoveToGroupModalId}");
+        }
+    }
+
+    private async Task ToggleExpand()
+    {
+        try
+        {
+            IsExpanded = !IsExpanded;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error toggling workspace expand: {ex.Message}");
         }
     }
 
@@ -199,7 +215,15 @@
         }
     }
 
-    private async Task HandleLocationSubmitted(WorkspaceLocation location)
+    private async Task ShowMoveToGroupModal()
+    {
+        if (moveToGroupModal is not null)
+        {
+            await moveToGroupModal.InvokeVoidAsync("show");
+        }
+    }
+
+    private async Task HandleLocationAdded(WorkspaceLocation location)
     {
         if (modal is not null)
         {
@@ -211,5 +235,21 @@
         StateHasChanged();
     }
 
-    private string ModalId => $"addLocationModal_{Workspace.Name.Replace(" ", "_").ToLower()}";
+    private async Task HandleMoveToGroup()
+    {
+        if (moveToGroupModal is not null)
+        {
+            await moveToGroupModal.InvokeVoidAsync("hide");
+        }
+        await OnMoveToGroup.InvokeAsync((Workspace, SelectedGroupName));
+        SelectedGroupName = string.Empty;
+        StateHasChanged();
+    }
+
+    private async Task DeleteLocation(WorkspaceLocation location)
+    {
+        Workspace.Locations.Remove(location);
+        await OnAddLocation.InvokeAsync();
+        StateHasChanged();
+    }
 }
