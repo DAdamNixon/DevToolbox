@@ -40,7 +40,8 @@
                         OnOpenInTerminal="OpenLocationInTerminal"
                         OnOpenWithCustomApp="OpenLocationWithCustomApp"
                         OnRunScriptOnLocation="RunScriptOnLocation"
-                        OnAddWorkspace="SaveWorkspaces"/>
+                        OnAddWorkspace="SaveWorkspaces"
+                        OnMoveToGroup="HandleMoveToGroup"/>
                 }
                 <AddWorkspaceGroupCard 
                     ExistingGroups="WorkspaceService.WorkspaceGroups"
@@ -126,5 +127,17 @@
     private async Task RunScriptOnLocation((ScriptInfo script, Workspace workspace, WorkspaceLocation location) args)
     {
         await WorkspaceService.RunScriptOnLocationAsync(args.script, args.workspace, args.location);
+    }
+
+    private async Task HandleMoveToGroup((Workspace workspace, string groupName) args)
+    {
+        // Update the workspace's group in the service
+        await WorkspaceService.SaveWorkspaceGroupsAsync(WorkspaceService.WorkspaceGroups);
+        
+        // Refresh the workspaces list
+        await LoadWorkspacesAsync();
+        
+        // Force UI update
+        StateHasChanged();
     }
 }

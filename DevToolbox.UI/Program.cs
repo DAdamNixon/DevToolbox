@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using DevToolbox.Services.Interfaces;
 using DevToolbox.Services.Services;
 using DevToolbox.Services;
+using DevToolbox.UI.Services;
 
 namespace DevToolbox.UI
 {
@@ -40,6 +41,7 @@ namespace DevToolbox.UI
             services.AddScoped<DirectoryStructureService>();
             services.AddScoped<IWorkspaceService, WorkspaceService>();
             services.AddScoped<CardStateService>();
+            services.AddScoped<ModalService>();
 
             var serviceProvider = services.BuildServiceProvider();
             Application.Run(new MainWindow(serviceProvider));

@@ -1,6 +1,6 @@
 @using DevToolbox.Services.Models
 
-<div class="col-12">
+<div class="col-12 mb-4">
     <label class="form-label">Location Name</label>
     <div class="input-group">
         <span class="input-group-text"><i class="bi bi-tag"></i></span>
@@ -9,25 +9,68 @@
     </div>
 </div>
 
-<div class="col-12">
+<div class="col-12 mb-4">
     <label class="form-label">Location Root</label>
     <FolderBrowser SelectedPath="@NewLocationRoot"
                 OnPathSelected="OnRootSelected" />
 </div>
 
-<div class="col-12">
+<div class="col-12 mb-4">
     <label class="form-label">Location Path (Optional)</label>
     <PathBrowser SelectedPath="@NewLocationPath"
                 OnPathSelected="OnPathSelected"
                 Filter="All Files (*.*)|*.*|Project Files (*.csproj,*.sln)|*.csproj;*.sln|Solution Files (*.sln)|*.sln|Project Files (*.csproj)|*.csproj" />
-    <div class="form-text text-muted">Leave empty to use the root directory</div>
+    <div class="form-text">Leave empty to use the root directory</div>
 </div>
 
 <div class="col-12">
-    <button class="btn btn-primary" @onclick="SubmitLocation">
+    <button class="btn btn-primary w-100" @onclick="SubmitLocation">
         <i class="bi bi-plus-circle me-2"></i>@ButtonText
     </button>
 </div>
+
+<style>
+    .input-group-text {
+        background-color: rgba(13, 110, 253, 0.1);
+        border-width: 2px;
+        border-color: var(--bs-secondary);
+        color: var(--bs-light);
+    }
+
+    .form-control {
+        background-color: var(--bs-dark);
+        border-width: 2px;
+        border-color: var(--bs-secondary);
+        color: var(--bs-light);
+    }
+
+    .form-control:focus {
+        background-color: var(--bs-dark);
+        border-color: var(--bs-primary);
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+        color: var(--bs-light);
+    }
+
+    .form-label {
+        color: var(--bs-light);
+        font-weight: 500;
+    }
+
+    .form-text {
+        color: rgba(255, 255, 255, 0.5);
+        font-size: 0.875rem;
+    }
+
+    .btn-primary {
+        border-width: 2px;
+        transition: all 0.2s ease-in-out;
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+</style>
 
 @code {
 
