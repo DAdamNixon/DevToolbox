@@ -105,6 +105,7 @@ public class ScriptExecutionService : IScriptExecutionService
     {
         // TODO: Implement JavaScript execution using a JavaScript engine
         // For now, we'll throw NotImplementedException
+        await Task.CompletedTask;
         throw new NotImplementedException("JavaScript execution is not yet implemented");
     }
 
@@ -128,5 +129,66 @@ public class ScriptExecutionService : IScriptExecutionService
         // TODO: Implement JavaScript validation
         // For now, we'll just check if the content is not empty
         return !string.IsNullOrWhiteSpace(scriptContent);
+    }
+
+    public async Task ExecuteScriptAsync(string scriptName, Dictionary<string, object> parameters)
+    {
+        var scriptPath = Path.Combine(_scriptsDirectory, scriptName);
+        if (!File.Exists(scriptPath))
+        {
+            throw new FileNotFoundException($"Script file not found: {scriptPath}");
+        }
+
+        var scriptContent = await File.ReadAllTextAsync(scriptPath);
+        using var powershell = PowerShell.Create();
+        
+        // Add parameters to PowerShell
+        foreach (var param in parameters)
+        {
+            powershell.AddScript($"${param.Key} = '{param.Value}'");
+        }
+        
+        powershell.AddScript(scriptContent);
+        await powershell.InvokeAsync();
+    }
+
+    public async Task<List<ScriptInfo>> GetAvailableScriptsAsync()
+    {
+        var scripts = new List<ScriptInfo>();
+        var files = Directory.GetFiles(_scriptsDirectory, "*.ps1");
+        
+        foreach (var file in files)
+        {
+            var scriptContent = await File.ReadAllTextAsync(file);
+            var name = Path.GetFileNameWithoutExtension(file);
+            var description = ExtractScriptDescription(scriptContent);
+            
+            scripts.Add(new ScriptInfo { Name = name });
+        }
+        
+        return scripts;
+    }
+
+    private string ExtractScriptDescription(string scriptContent)
+    {
+        // Look for a comment block at the start of the script
+        var lines = scriptContent.Split('\n');
+        if (lines.Length > 0 && lines[0].TrimStart().StartsWith("#"))
+        {
+            var description = new StringBuilder();
+            foreach (var line in lines)
+            {
+                if (line.TrimStart().StartsWith("#"))
+                {
+                    description.AppendLine(line.TrimStart('#').Trim());
+                }
+                else
+                {
+                    break;
+                }
+            }
+            return description.ToString().Trim();
+        }
+        return string.Empty;
     }
 } 

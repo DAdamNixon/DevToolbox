@@ -38,15 +38,15 @@
 </div>
 
 @code {
-    [Parameter]
-    public EventCallback<Workspace> OnWorkspaceCreated { get; set; }
+    [Parameter] public string GroupName { get; set; } = string.Empty;
+    [Parameter] public EventCallback<Workspace> OnWorkspaceCreated { get; set; }
 
     [Parameter]
     public IEnumerable<Workspace> ExistingWorkspaces { get; set; } = Array.Empty<Workspace>();
 
     private AddWorkspaceLocation? locationForm;
-    private string NewWorkspaceName = string.Empty;
-    private string? ErrorMessage;
+    private string NewWorkspaceName { get; set; } = string.Empty;
+    private string ErrorMessage { get; set; } = string.Empty;
 
     private bool CanCreateWorkspace => 
         !string.IsNullOrWhiteSpace(NewWorkspaceName);
@@ -75,32 +75,24 @@
         _ => "bi-folder2"
     };
 
-    private async Task CreateNewWorkspace(WorkspaceLocation location)
+    private void CreateNewWorkspace()
     {
-        if (!CanCreateWorkspace) {
-            ErrorMessage = "Please enter a unique workspace name.";
+        if (string.IsNullOrWhiteSpace(NewWorkspaceName))
+        {
+            ErrorMessage = "Please enter a workspace name";
             return;
         }
 
-        // Check for duplicate workspace name
-        if (ExistingWorkspaces.Any(w => w.Name.Equals(NewWorkspaceName, StringComparison.OrdinalIgnoreCase)))
+        var newWorkspace = new Workspace
         {
-            ErrorMessage = "A workspace with this name already exists.";
-            return;
-        }
-
-        var workspace = new Workspace
-        {
+            Id = ExistingWorkspaces.Any() ? ExistingWorkspaces.Max(w => w.Id) + 1 : 1,
             Name = NewWorkspaceName,
-            Locations = new List<WorkspaceLocation>(){
-                location
-                }
+            GroupName = GroupName,
+            Locations = new List<WorkspaceLocation>()
         };
 
-        await OnWorkspaceCreated.InvokeAsync(workspace);
-
+        OnWorkspaceCreated.InvokeAsync(newWorkspace);
         NewWorkspaceName = string.Empty;
-        locationForm?.ResetForm();
-        ErrorMessage = null;
+        ErrorMessage = string.Empty;
     }
 }

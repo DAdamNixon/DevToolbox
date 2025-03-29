@@ -16,12 +16,14 @@ workspaceGroups:
 
 "@
 
+$workspaceId = 1
 foreach ($group in $solutionGroups) {
     $workspaceName = $group.Name
     
     # Add workspace entry
     $yaml += @"
-      - name: $workspaceName
+      - id: $workspaceId
+        name: $workspaceName
         locations:
 "@
     
@@ -45,6 +47,7 @@ foreach ($group in $solutionGroups) {
 "@
     }
     $yaml += "`n"
+    $workspaceId++
 }
 
 # Write to file

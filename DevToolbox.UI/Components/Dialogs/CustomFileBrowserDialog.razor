@@ -1,0 +1,101 @@
+@using System.Windows.Forms
+
+<div class="modal fade show" style="display: block;" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark">
+            <div class="modal-header">
+                <h5 class="modal-title">Select File or Folder</h5>
+                <button type="button" class="btn-close btn-close-white" @onclick="OnCanceled"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Path</label>
+                    <input type="text" class="form-control bg-dark text-light border-secondary" 
+                           value="@CurrentPath" 
+                           @onchange="OnPathChanged" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Files</label>
+                    <select class="form-select bg-dark text-light border-secondary" 
+                            @onchange="OnFileSelected">
+                        <option value="">Select a file...</option>
+                        @foreach (var file in Files)
+                        {
+                            <option value="@file">@file</option>
+                        }
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" @onclick="OnCanceled">Cancel</button>
+                <button type="button" class="btn btn-primary" @onclick="OnSelect">Select</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string InitialPath { get; set; } = string.Empty;
+    [Parameter] public string Filter { get; set; } = "All Files (*.*)|*.*";
+    [Parameter] public bool AllowFileSelection { get; set; } = true;
+    [Parameter] public bool AllowFolderSelection { get; set; } = true;
+    [Parameter] public EventCallback<string> OnPathSelected { get; set; }
+    [Parameter] public EventCallback OnCanceled { get; set; }
+
+    private string CurrentPath { get; set; } = string.Empty;
+    private List<string> Files { get; set; } = new();
+    private string SelectedFile { get; set; } = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        CurrentPath = InitialPath;
+        UpdateFiles();
+    }
+
+    private void OnPathChanged(ChangeEventArgs e)
+    {
+        CurrentPath = e.Value?.ToString() ?? string.Empty;
+        UpdateFiles();
+    }
+
+    private void OnFileSelected(ChangeEventArgs e)
+    {
+        SelectedFile = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private void UpdateFiles()
+    {
+        try
+        {
+            if (Directory.Exists(CurrentPath))
+            {
+                Files = Directory.GetFiles(CurrentPath)
+                    .Select(Path.GetFileName)
+                    .Where(name => name != null)
+                    .Select(name => name!)
+                    .ToList();
+            }
+            else
+            {
+                Files = new List<string>();
+            }
+        }
+        catch
+        {
+            Files = new List<string>();
+        }
+    }
+
+    private async Task OnSelect()
+    {
+        if (!string.IsNullOrEmpty(SelectedFile))
+        {
+            var fullPath = Path.Combine(CurrentPath, SelectedFile);
+            await OnPathSelected.InvokeAsync(fullPath);
+        }
+        else
+        {
+            await OnPathSelected.InvokeAsync(CurrentPath);
+        }
+    }
+} 

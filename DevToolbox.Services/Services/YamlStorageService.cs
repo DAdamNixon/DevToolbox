@@ -2,6 +2,8 @@ using System.Text.Json;
 using DevToolbox.Services.Interfaces;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
+using YamlDotNet.Core;
+using YamlDotNet.Core.Events;
 
 namespace DevToolbox.Services.Services;
 
@@ -95,19 +97,27 @@ public class YamlStorageService : IYamlStorageService
         try
         {
             var filePath = Path.Combine(_storageDirectory, $"{fileName}.yaml");
+            Console.WriteLine($"Attempting to load YAML from: {filePath}");
+            
             if (!File.Exists(filePath))
             {
+                Console.WriteLine("File does not exist");
                 return default;
             }
 
             // Read YAML file
             var yaml = await File.ReadAllTextAsync(filePath);
+            Console.WriteLine($"Read YAML content: {yaml}");
 
             // Deserialize directly to target type
-            return _yamlDeserializer.Deserialize<T>(yaml);
+            var result = _yamlDeserializer.Deserialize<T>(yaml);
+            Console.WriteLine($"Successfully deserialized to type {typeof(T).Name}");
+            return result;
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"Error loading YAML: {ex.Message}");
+            Console.WriteLine($"Stack trace: {ex.StackTrace}");
             throw new InvalidOperationException($"Failed to load YAML file: {ex.Message}", ex);
         }
     }
@@ -119,7 +129,7 @@ public class YamlStorageService : IYamlStorageService
             var filePath = Path.Combine(_storageDirectory, $"{fileName}.yaml");
             if (File.Exists(filePath))
             {
-                File.Delete(filePath);
+                await Task.Run(() => File.Delete(filePath));
                 return true;
             }
             return false;
@@ -134,13 +144,36 @@ public class YamlStorageService : IYamlStorageService
     {
         try
         {
-            return Directory.GetFiles(_storageDirectory, "*.yaml")
-                           .Select(Path.GetFileNameWithoutExtension)
-                           .ToList();
+            return await Task.Run(() => Directory.GetFiles(_storageDirectory, "*.yaml")
+                                                .Select(Path.GetFileNameWithoutExtension)
+                                                .Where(name => name != null)
+                                                .Select(name => name!)
+                                                .ToList());
         }
         catch (Exception)
         {
             return new List<string>();
         }
+    }
+}
+
+// Custom type converter for workspace IDs
+public class WorkspaceIdConverter : IYamlTypeConverter
+{
+    public bool Accepts(Type type)
+    {
+        return type == typeof(int) && type.Name == "Id";
+    }
+
+    public object? ReadYaml(IParser parser, Type type)
+    {
+        var scalar = parser.Consume<Scalar>();
+        return int.TryParse(scalar.Value, out var id) ? id : 1;
+    }
+
+    public void WriteYaml(IEmitter emitter, object? value, Type type)
+    {
+        var id = value?.ToString() ?? "1";
+        emitter.Emit(new Scalar(id));
     }
 } 

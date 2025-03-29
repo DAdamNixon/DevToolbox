@@ -39,6 +39,7 @@ namespace DevToolbox.UI
             services.AddScoped<IYamlStorageService, YamlStorageService>();
             services.AddScoped<DirectoryStructureService>();
             services.AddScoped<IWorkspaceService, WorkspaceService>();
+            services.AddScoped<CardStateService>();
 
             var serviceProvider = services.BuildServiceProvider();
             Application.Run(new MainWindow(serviceProvider));

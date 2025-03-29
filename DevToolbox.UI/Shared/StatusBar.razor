@@ -1,19 +1,27 @@
-<div class="fixed-bottom border-top py-2">
+<div class="status-bar bg-dark text-light border-top border-secondary position-fixed bottom-0 start-0 end-0">
     <div class="container-fluid d-flex justify-content-between">
         <div class="status-item d-flex align-items-center">
             <span class="text-muted me-2">Status:</span>
-            <span class="text-body">Ready</span>
+            <span class="text-light">Ready</span>
         </div>
         <div class="status-item d-flex align-items-center">
             <span class="text-muted me-2">Active Workspace:</span>
-            <span class="text-body">None</span>
+            <span class="text-light">None</span>
         </div>
         <div class="status-item d-flex align-items-center">
             <span class="text-muted me-2">Version:</span>
-            <span class="text-body">0.1.0</span>
+            <span class="text-light">0.1.0</span>
         </div>
     </div>
 </div>
+
+<style>
+    .status-bar {
+        z-index: 1000;
+        height: 32px;
+        font-size: 12px;
+    }
+</style>
 
 @code {
 

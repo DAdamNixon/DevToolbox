@@ -1,7 +1,10 @@
 @using DevToolbox.UI.Components
 @using DevToolbox.Services.Models
+@using DevToolbox.Services.Interfaces
+@using DevToolbox.Services.Services
 @using Microsoft.JSInterop
 @inject IJSRuntime JS
+@inject CardStateService CardStateService
 
 <div class="card bg-dark text-light border-secondary mb-3 @(IsExpanded ? "expanded" : "")">
     <div class="card-header border-secondary d-flex align-items-center p-0">
@@ -176,7 +179,7 @@
     [Parameter] public EventCallback OnAddLocation { get; set; }
     [Parameter] public EventCallback<(Workspace, string)> OnMoveToGroup { get; set; }
 
-    private bool IsExpanded { get; set; }
+    private bool IsExpanded => CardStateService.IsExpanded("workspace", Workspace.Id.ToString());
     private AddWorkspaceLocation? locationForm;
     private IJSObjectReference? modal;
     private IJSObjectReference? moveToGroupModal;
@@ -194,62 +197,54 @@
         }
     }
 
-    private async Task ToggleExpand()
+    private void ToggleExpand()
     {
-        try
-        {
-            IsExpanded = !IsExpanded;
-            StateHasChanged();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error toggling workspace expand: {ex.Message}");
-        }
+        CardStateService.ToggleExpand("workspace", Workspace.Id.ToString());
     }
 
-    private async Task ShowAddLocationModal()
+    private void ShowAddLocationModal()
     {
         if (modal is not null)
         {
-            await modal.InvokeVoidAsync("show");
+            modal.InvokeVoidAsync("show");
         }
     }
 
-    private async Task ShowMoveToGroupModal()
+    private void ShowMoveToGroupModal()
     {
         if (moveToGroupModal is not null)
         {
-            await moveToGroupModal.InvokeVoidAsync("show");
+            moveToGroupModal.InvokeVoidAsync("show");
         }
     }
 
-    private async Task HandleLocationAdded(WorkspaceLocation location)
+    private void HandleLocationAdded(WorkspaceLocation location)
     {
         if (modal is not null)
         {
-            await modal.InvokeVoidAsync("hide");
+            modal.InvokeVoidAsync("hide");
         }
         Workspace.Locations.Add(location);
         locationForm?.ResetForm();
-        await OnAddLocation.InvokeAsync();
+        OnAddLocation.InvokeAsync();
         StateHasChanged();
     }
 
-    private async Task HandleMoveToGroup()
+    private void HandleMoveToGroup()
     {
         if (moveToGroupModal is not null)
         {
-            await moveToGroupModal.InvokeVoidAsync("hide");
+            moveToGroupModal.InvokeVoidAsync("hide");
         }
-        await OnMoveToGroup.InvokeAsync((Workspace, SelectedGroupName));
+        OnMoveToGroup.InvokeAsync((Workspace, SelectedGroupName));
         SelectedGroupName = string.Empty;
         StateHasChanged();
     }
 
-    private async Task DeleteLocation(WorkspaceLocation location)
+    private void DeleteLocation(WorkspaceLocation location)
     {
         Workspace.Locations.Remove(location);
-        await OnAddLocation.InvokeAsync();
+        OnAddLocation.InvokeAsync();
         StateHasChanged();
     }
 }

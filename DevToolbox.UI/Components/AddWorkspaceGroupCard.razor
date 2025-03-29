@@ -23,10 +23,10 @@
                         <input type="text" class="form-control" @bind="NewGroupName" 
                             placeholder="Enter unique group name" />
                     </div>
-                    @if (!string.IsNullOrEmpty(NameErrorMessage))
+                    @if (!string.IsNullOrEmpty(ErrorMessage))
                     {
                         <div class="invalid-feedback d-block">
-                            @NameErrorMessage
+                            @ErrorMessage
                         </div>
                     }
                 </div>
@@ -48,34 +48,28 @@
     public IEnumerable<WorkspaceGroup> ExistingGroups { get; set; } = Array.Empty<WorkspaceGroup>();
 
     private string NewGroupName = string.Empty;
-    private string? NameErrorMessage;
+    private string? ErrorMessage;
 
     private bool CanCreateGroup => 
         !string.IsNullOrWhiteSpace(NewGroupName);
 
-    private async Task CreateNewGroup()
+    private void CreateNewGroup()
     {
-        if (!CanCreateGroup) {
-            NameErrorMessage = "Please enter a group name.";
+        if (string.IsNullOrWhiteSpace(NewGroupName))
+        {
+            ErrorMessage = "Please enter a group name";
             return;
         }
 
-        // Check for duplicate group name
-        if (ExistingGroups.Any(g => g.Name.Equals(NewGroupName, StringComparison.OrdinalIgnoreCase)))
+        var newGroup = new WorkspaceGroup
         {
-            NameErrorMessage = "A group with this name already exists.";
-            return;
-        }
-
-        var group = new WorkspaceGroup
-        {
+            Id = ExistingGroups.Any() ? ExistingGroups.Max(g => g.Id) + 1 : 1,
             Name = NewGroupName,
             Workspaces = new List<Workspace>()
         };
 
-        await OnGroupCreated.InvokeAsync(group);
-
+        OnGroupCreated.InvokeAsync(newGroup);
         NewGroupName = string.Empty;
-        NameErrorMessage = null;
+        ErrorMessage = string.Empty;
     }
 } 
