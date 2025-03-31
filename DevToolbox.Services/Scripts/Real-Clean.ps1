@@ -1,6 +1,6 @@
-# CleanBuildArtifacts.ps1
+# Real-Clean.ps1
 # Script to clean all build artifacts from a .NET project
-# Removes bin, obj, node_modules folders and package-lock.json files
+# Removes bin, obj, node_modules, .vs folders and package-lock.json files
 
 param(
     [Parameter(Mandatory=$true)]
@@ -19,7 +19,7 @@ $ProjectPath = Resolve-Path $ProjectPath
 Write-Host "Cleaning build artifacts from: $ProjectPath" -ForegroundColor Cyan
 
 # Define patterns to remove
-$foldersToRemove = @("bin", "obj", "node_modules")
+$foldersToRemove = @("bin", "obj", "node_modules", ".vs")
 $filesToRemove = @("package-lock.json")
 $totalFoldersRemoved = 0
 $totalFilesRemoved = 0

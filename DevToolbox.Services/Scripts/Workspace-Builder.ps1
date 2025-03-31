@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory=$true)]
     [string]$RootDirectory,
-    [string]$OutputFile = "workspaces.yaml"
+    [string]$OutputFile = "workspaceGroups.yaml"
 )
 
 # Find all solution files and group by name
@@ -10,9 +10,9 @@ $solutionGroups = Get-ChildItem -Path $RootDirectory -Filter "*.sln" -Recurse |
 
 # Initialize YAML structure
 $yaml = @"
-workspaceGroups:
-  - name: Solutions
-    workspaces:
+- id: 1
+  name: Solutions
+  workspaces:
 
 "@
 
@@ -24,6 +24,7 @@ foreach ($group in $solutionGroups) {
     $yaml += @"
       - id: $workspaceId
         name: $workspaceName
+        groupName: Solutions
         locations:
 "@
     
