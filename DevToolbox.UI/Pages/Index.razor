@@ -7,12 +7,14 @@
 @using Microsoft.JSInterop
 @using System.IO
 @using Microsoft.Extensions.Configuration
+@inject CardStateService CardStateService
 @inject IYamlStorageService YamlStorage
 @inject DirectoryStructureService DirectoryService
 @inject PowerShellService PowerShellService
 @inject IWorkspaceService WorkspaceService
 @inject IConfiguration Configuration
 @inject IJSRuntime JS
+@implements IDisposable
 
 <PageTitle>DevToolbox</PageTitle>
 
@@ -20,13 +22,21 @@
     <div class="row">
         <div class="col-12">
             <h1 class="display-4 mb-4">DevToolbox</h1>
+            <div class="search-container mb-4">
+                <input type="text" 
+                    class="form-control form-control-lg"
+                    placeholder="Search across all workspaces..."
+                    @ref="searchInput"
+    value="@searchText"
+    @oninput="HandleSearchInput" />
+            </div>
         </div>
     </div>
 
     <div class="row">
         <div class="col-12">
             <div class="d-flex flex-column gap-4">
-                @foreach (var group in WorkspaceService.WorkspaceGroups)
+                @foreach (var group in FilteredGroups)
                 {
                     <WorkspaceGroupCard 
                         Group="group"
@@ -52,24 +62,34 @@
 </div>
 
 @code {
+    private DotNetObjectReference<Index>? objRef;
     private GlobalCustomOpenOptions GlobalOptions { get; set; } = new();
     private List<ScriptInfo> AvailableScripts { get; set; } = new();
     private List<Workspace> AllWorkspaces { get; set; } = new();
+    private ElementReference searchInput;
+    private string searchText = "";
+    
+    private List<WorkspaceGroup> FilteredGroups => string.IsNullOrWhiteSpace(searchText) 
+        ? WorkspaceService.WorkspaceGroups 
+        : WorkspaceService.WorkspaceGroups
+            .Select(g => new WorkspaceGroup { Id = g.Id, Name = g.Name, Workspaces = FilterWorkspaces(g.Workspaces) })
+            .Where(g => g.Workspaces.Any())
+            .ToList();
+
+    private List<Workspace> FilterWorkspaces(List<Workspace> workspaces)
+    {
+        if (string.IsNullOrWhiteSpace(searchText))
+            return workspaces;
+
+        return workspaces
+            .Where(w => w.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
 
     protected override async Task OnInitializedAsync()
     {
-        LoadGlobalOptions();
         LoadScripts();
         await LoadWorkspacesAsync();
-    }
-
-    private void LoadGlobalOptions()
-    {
-        var options = Configuration.GetSection("CustomOpenOptions").Get<Dictionary<string, CustomOpenOption>>();
-        if (options != null)
-        {
-            GlobalOptions.Options = options;
-        }
     }
 
     private void LoadScripts()
@@ -132,13 +152,38 @@
 
     private async Task HandleMoveToGroup((Workspace workspace, string groupName) args)
     {
-        // Update the workspace's group in the service
         await WorkspaceService.SaveWorkspaceGroupsAsync(WorkspaceService.WorkspaceGroups);
-        
-        // Refresh the workspaces list
         await LoadWorkspacesAsync();
-        
-        // Force UI update
         StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            objRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("registerSearchShortcut", searchInput, objRef);
+        }
+    }
+
+    private void HandleSearchInput(ChangeEventArgs e)
+    {
+        searchText = e.Value?.ToString() ?? string.Empty;
+        var groupIds = FilteredGroups.Select(g => g.Name).ToList();
+        CardStateService.SetSearchExpanded(!string.IsNullOrWhiteSpace(searchText), groupIds);
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void HandleSearchCleared()
+    {
+        searchText = string.Empty;
+        CardStateService.SetSearchExpanded(false, Array.Empty<string>());
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        objRef?.Dispose();
     }
 }

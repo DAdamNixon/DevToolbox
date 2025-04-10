@@ -121,83 +121,57 @@
     }
 </div>
 
-@* Move modals outside of the card *@
-<div class="modal fade" id="@ModalId" tabindex="-1" style="z-index: 1055;">
-    <div class="modal-dialog">
-        <div class="modal-content bg-dark text-light">
-            <div class="modal-header border-secondary">
-                <h5 class="modal-title">Add Location to @Workspace.Name</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body py-4">
-                <AddWorkspaceLocation @ref="locationForm" OnLocationSubmitted="HandleLocationAdded" ButtonText="Add Location"/>
-            </div>
-        </div>
-    </div>
-</div>
+<Modal @bind-IsVisible="isAddLocationModalVisible" Title="@AddLocationModalTitle">
+    <AddWorkspaceLocation @ref="locationForm" 
+                         OnLocationSubmitted="HandleLocationAdded" 
+                         ButtonText="Add Location"/>
+</Modal>
 
-<div class="modal fade" id="@MoveToGroupModalId" tabindex="-1" style="z-index: 1055;">
-    <div class="modal-dialog">
-        <div class="modal-content bg-dark text-light">
-            <div class="modal-header border-secondary">
-                <h5 class="modal-title">Move @Workspace.Name to Group</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+<Modal @bind-IsVisible="isMoveToGroupModalVisible" Title="@MoveToGroupModalTitle">
+    <div class="mb-4">
+        <label class="form-label mb-2">Select Group</label>
+        <select class="form-select bg-dark text-light border-secondary" @bind="SelectedGroupName">
+            <option value="">Select a group...</option>
+            @foreach (var group in AvailableGroups)
+            {
+                @if (group.Name != Workspace.GroupName)
+                {
+                    <option value="@group.Name">@group.Name</option>
+                }
+            }
+        </select>
+        @if (!string.IsNullOrEmpty(ErrorMessage))
+        {
+            <div class="invalid-feedback d-block mt-2">
+                @ErrorMessage
             </div>
-            <div class="modal-body py-4">
-                <div class="mb-4">
-                    <label class="form-label mb-2">Select Group</label>
-                    <select class="form-select bg-dark text-light border-secondary" @bind="SelectedGroupName">
-                        <option value="">Select a group...</option>
-                        @foreach (var group in AvailableGroups)
-                        {
-                            @if (group.Name != Workspace.GroupName)
-                            {
-                                <option value="@group.Name">@group.Name</option>
-                            }
-                        }
-                    </select>
-                    @if (!string.IsNullOrEmpty(ErrorMessage))
-                    {
-                        <div class="invalid-feedback d-block mt-2">
-                            @ErrorMessage
-                        </div>
-                    }
-                </div>
-                <button class="btn btn-primary" @onclick="HandleMoveToGroup" disabled="@string.IsNullOrEmpty(SelectedGroupName)">
-                    <i class="bi bi-folder2 me-2"></i>Move to Group
-                </button>
-            </div>
-        </div>
+        }
     </div>
-</div>
+    <button class="btn btn-primary" @onclick="HandleMoveToGroup" disabled="@string.IsNullOrEmpty(SelectedGroupName)">
+        <i class="bi bi-folder2 me-2"></i>Move to Group
+    </button>
+</Modal>
 
-@* Add rename modal *@
-<div class="modal fade" id="@RenameModalId" tabindex="-1" style="z-index: 1055;">
-    <div class="modal-dialog">
-        <div class="modal-content bg-dark text-light">
-            <div class="modal-header border-secondary">
-                <h5 class="modal-title">Rename Workspace</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+<Modal @bind-IsVisible="isRenameModalVisible" Title="Rename Workspace">
+    <div class="mb-4">
+        <label class="form-label mb-2">New Name</label>
+        <input type="text" 
+               class="form-control bg-dark text-light border-secondary" 
+               @bind="NewWorkspaceName" 
+               placeholder="Enter new name" />
+        @if (!string.IsNullOrEmpty(ErrorMessage))
+        {
+            <div class="invalid-feedback d-block mt-2">
+                @ErrorMessage
             </div>
-            <div class="modal-body py-4">
-                <div class="mb-4">
-                    <label class="form-label mb-2">New Name</label>
-                    <input type="text" class="form-control bg-dark text-light border-secondary" @bind="NewWorkspaceName" 
-                           placeholder="Enter new name" />
-                    @if (!string.IsNullOrEmpty(ErrorMessage))
-                    {
-                        <div class="invalid-feedback d-block mt-2">
-                            @ErrorMessage
-                        </div>
-                    }
-                </div>
-                <button class="btn btn-primary" @onclick="HandleRename" disabled="@string.IsNullOrEmpty(NewWorkspaceName)">
-                    <i class="bi bi-check-lg me-2"></i>Rename
-                </button>
-            </div>
-        </div>
+        }
     </div>
-</div>
+    <button class="btn btn-primary" 
+            @onclick="HandleRename" 
+            disabled="@string.IsNullOrEmpty(NewWorkspaceName)">
+        <i class="bi bi-check-lg me-2"></i>Rename
+    </button>
+</Modal>
 
 <style>
     /* Base card styles */
@@ -307,68 +281,48 @@
     [Parameter] public EventCallback<(Workspace, string)> OnMoveToGroup { get; set; }
     [Parameter] public EventCallback OnRename { get; set; }
 
+    private bool isAddLocationModalVisible;
+    private bool isMoveToGroupModalVisible;
+    private bool isRenameModalVisible;
     private bool IsExpanded => CardStateService.IsExpanded("workspace", Workspace.Id.ToString());
     private AddWorkspaceLocation? locationForm;
     private string SelectedGroupName = string.Empty;
-    private IJSObjectReference? moveToGroupModal;
-    private IJSObjectReference? addLocationModal;
     private string RenameModalId => $"renameModal_{Workspace.Name.Replace(" ", "_").ToLower()}";
-    private IJSObjectReference? renameModal;
     private string NewWorkspaceName = string.Empty;
     private string? ErrorMessage;
 
     private string ModalId => $"addLocationModal_{Workspace.Name.Replace(" ", "_").ToLower()}";
     private string MoveToGroupModalId => $"moveToGroupModal_{Workspace.Name.Replace(" ", "_").ToLower()}";
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            moveToGroupModal = await JS.InvokeAsync<IJSObjectReference>("bootstrap.Modal.getOrCreateInstance", $"#{MoveToGroupModalId}");
-            renameModal = await JS.InvokeAsync<IJSObjectReference>("bootstrap.Modal.getOrCreateInstance", $"#{RenameModalId}");
-            addLocationModal = await JS.InvokeAsync<IJSObjectReference>("bootstrap.Modal.getOrCreateInstance", $"#{ModalId}");
-        }
-    }
+    private string MoveToGroupModalTitle => $"Move {Workspace.Name} to Group";
 
     private void ToggleExpand()
     {
         CardStateService.ToggleExpand("workspace", Workspace.Id.ToString());
     }
 
+    private string AddLocationModalTitle => $"Add Location to {Workspace.Name}";
+    
     private void ShowAddLocationModal()
     {
-        if (addLocationModal is not null)
-        {
-            addLocationModal.InvokeVoidAsync("show");
-        }
+        isAddLocationModalVisible = true;
         ErrorMessage = null;
     }
 
     private void ShowMoveToGroupModal()
     {
-        if (moveToGroupModal is not null)
-        {
-            moveToGroupModal.InvokeVoidAsync("show");
-        }
+        isMoveToGroupModalVisible = true;
         ErrorMessage = null;
     }
 
     private void ShowRenameModal()
     {
-        NewWorkspaceName = Workspace.Name;
-        if (renameModal is not null)
-        {
-            renameModal.InvokeVoidAsync("show");
-        }
+        isRenameModalVisible = true;
         ErrorMessage = null;
     }
 
     private async Task HandleLocationAdded(WorkspaceLocation location)
     {
-        if (addLocationModal is not null)
-        {
-            await addLocationModal.InvokeVoidAsync("hide");
-        }
+        isAddLocationModalVisible = false;
         Workspace.Locations.Add(location);
         locationForm?.ResetForm();
         await OnAddLocation.InvokeAsync();
@@ -387,10 +341,7 @@
             return;
         }
 
-        if (moveToGroupModal is not null)
-        {
-            await moveToGroupModal.InvokeVoidAsync("hide");
-        }
+        isMoveToGroupModalVisible = false;
         ErrorMessage = null; // Clear any previous error message
         await OnMoveToGroup.InvokeAsync((Workspace, SelectedGroupName));
         SelectedGroupName = string.Empty;
@@ -407,21 +358,24 @@
 
     private async Task OpenLocation(WorkspaceLocation location)
     {
-        try
+        await Task.Run(() =>
         {
-            var path = location.Path;
-            var startInfo = new ProcessStartInfo
+            try
             {
-                FileName = path,
-                UseShellExecute = true
-            };
-            Process.Start(startInfo);
-        }
-        catch (Exception ex)
-        {
-            // Log the error or show a notification
-            Console.WriteLine($"Error opening location: {ex.Message}");
-        }
+                var path = location.Path;
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = path,
+                    UseShellExecute = true
+                };
+                Process.Start(startInfo);
+            }
+            catch (Exception ex)
+            {
+                // Log the error or show a notification
+                Console.WriteLine($"Error opening location: {ex.Message}");
+            }
+        });
     }
 
     private async Task HandleRename()
@@ -446,10 +400,7 @@
         Workspace.Name = NewWorkspaceName;
 
         // Close the modal and clear state
-        if (renameModal is not null)
-        {
-            await renameModal.InvokeVoidAsync("hide");
-        }
+        isRenameModalVisible = false;
         NewWorkspaceName = string.Empty;
         ErrorMessage = null;
 

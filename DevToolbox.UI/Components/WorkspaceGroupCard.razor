@@ -35,24 +35,10 @@
             </ul>
         </div>
     </div>
-    @if (IsExpanded)
-    {
-        <div class="px-3 mt-2" @onclick:stopPropagation>
-            <div class="input-group input-group-sm">
-                <span class="input-group-text bg-dark text-light border-secondary">
-                    <i class="bi bi-search"></i>
-                </span>
-                <input type="text" 
-                       class="form-control form-control-sm bg-dark text-light border-secondary" 
-                       placeholder="Search workspaces..."
-                       @bind="SearchTerm"
-                       @bind:event="oninput" />
-            </div>
-        </div>
-    }
+    
     <div class="card-body @(IsExpanded ? "expanded" : "collapsed")">
         <div class="row g-3">
-            @foreach (var workspace in FilteredWorkspaces)
+            @foreach (var workspace in Group.Workspaces)
             {
                 <div class="col-md-6 col-lg-4">
                     <WorkspaceCard 
@@ -253,16 +239,7 @@
     [Parameter] public EventCallback<(Workspace workspace, string groupName)> OnMoveToGroup { get; set; }
     [Parameter] public EventCallback<Workspace> OnDeleteWorkspace { get; set; }
     [Parameter] public EventCallback<WorkspaceLocation> OnDeleteLocation { get; set; }
-
-    private string SearchTerm { get; set; } = string.Empty;
-
     private bool IsExpanded => CardStateService.IsExpanded("group", Group.Name);
-
-    private IEnumerable<Workspace> FilteredWorkspaces =>
-        string.IsNullOrWhiteSpace(SearchTerm)
-            ? Group.Workspaces
-            : Group.Workspaces.Where(w => w.Name.Contains(SearchTerm, StringComparison.OrdinalIgnoreCase));
-
     private AddWorkspaceLocation? locationForm;
     private IJSObjectReference? addWorkspaceModal;
     private string NewWorkspaceName = string.Empty;

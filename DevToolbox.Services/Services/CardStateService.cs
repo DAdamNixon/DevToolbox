@@ -44,5 +44,28 @@ namespace DevToolbox.Services.Services
         {
             return _expandedStates.GetValueOrDefault($"{type}_{id}", false);
         }
+
+        public void SetSearchExpanded(bool isSearching, IEnumerable<string> groupNames)
+        {
+            if (isSearching)
+            {
+                // Expand all provided group IDs
+                foreach (var name in groupNames)
+                {
+                    var key = $"group_{name}";
+                    _expandedStates[key] = true;
+                }
+            }
+            else
+            {
+                // When search is cleared, collapse all groups
+                var groupKeys = _expandedStates.Keys.Where(k => k.StartsWith("group_")).ToList();
+                foreach (var key in groupKeys)
+                {
+                    _expandedStates[key] = false;
+                }
+            }
+            OnStateChanged.Invoke(this, new CardStateChangedEventArgs(string.Empty, string.Empty));
+        }
     }
 } 
