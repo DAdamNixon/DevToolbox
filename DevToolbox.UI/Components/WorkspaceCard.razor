@@ -111,7 +111,7 @@
                         </div>
                         <div class="card-body">
                             <p class="card-text">
-                                <small class="text-muted overflow-hidden text-truncate">@location.Path</small>
+                                <small class="text-muted path-truncate" title="@location.Path">@location.Path</small>
                             </p>
                         </div>
                     </div>
@@ -123,8 +123,8 @@
 
 <Modal @bind-IsVisible="isAddLocationModalVisible" Title="@AddLocationModalTitle">
     <AddWorkspaceLocation @ref="locationForm" 
-                         OnLocationSubmitted="HandleLocationAdded" 
-                         ButtonText="Add Location"/>
+        OnLocationSubmitted="HandleLocationAdded" 
+        ButtonText="Add Location"/>
 </Modal>
 
 <Modal @bind-IsVisible="isMoveToGroupModalVisible" Title="@MoveToGroupModalTitle">
@@ -156,9 +156,9 @@
     <div class="mb-4">
         <label class="form-label mb-2">New Name</label>
         <input type="text" 
-               class="form-control bg-dark text-light border-secondary" 
-               @bind="NewWorkspaceName" 
-               placeholder="Enter new name" />
+            class="form-control bg-dark text-light border-secondary" 
+            @bind="NewWorkspaceName" 
+            placeholder="Enter new name" />
         @if (!string.IsNullOrEmpty(ErrorMessage))
         {
             <div class="invalid-feedback d-block mt-2">
@@ -233,6 +233,17 @@
     .card .card:hover {
         box-shadow: 0 4px 12px rgba(13, 110, 253, 0.15);
         border-color: var(--bs-primary) !important;
+    }
+
+    /* Path truncation styles */
+    .path-truncate {
+        display: block;
+        direction: rtl;
+        text-align: left;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        width: 100%;
     }
 
     /* Modal content styles */

@@ -20,21 +20,21 @@
 
 <div class="container-fluid">
     <div class="row">
-        <div class="col-12">
-            <h1 class="display-4 mb-4">DevToolbox</h1>
-            <div class="search-container mb-4">
-                <input type="text" 
-                    class="form-control form-control-lg"
-                    placeholder="Search across all workspaces..."
-                    @ref="searchInput"
-    value="@searchText"
-    @oninput="HandleSearchInput" />
-            </div>
+        <div class="col-7 offset-1">
+            <h1 class="display-4 mb-4">Projects</h1>
+        </div>
+        <div class="col-3 search-container mt-3">
+            <input type="text" 
+                class="form-control"
+                placeholder="Search across all workspaces..."
+                @ref="searchInput"
+                value="@searchText"
+                @oninput="HandleSearchInput" />
         </div>
     </div>
 
     <div class="row">
-        <div class="col-12">
+        <div class="col-10 offset-1">
             <div class="d-flex flex-column gap-4">
                 @foreach (var group in FilteredGroups)
                 {

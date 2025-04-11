@@ -10,7 +10,7 @@ namespace DevToolbox.UI
         public MainWindow(IServiceProvider serviceProvider)
         {
             // Set DPI awareness for better scaling
-            SetProcessDPIAware();
+            // SetProcessDPIAware();
 
             InitializeComponent();
 
@@ -24,7 +24,7 @@ namespace DevToolbox.UI
             blazorWebView1.Services = serviceProvider;
             blazorWebView1.RootComponents.Add<App>("#app");
 
-            this.Icon = Properties.Resources.images_iAC_icon;
+            this.Icon = Properties.Resources.toolbox_icon;
         }
 
         private void MainWindow_Load(object sender, EventArgs e)

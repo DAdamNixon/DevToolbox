@@ -63,10 +63,10 @@ namespace DevToolbox.UI.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Icon similar to (Icon).
         /// </summary>
-        internal static System.Drawing.Icon images_iAC_icon
+        internal static System.Drawing.Icon toolbox_icon
         {
             get {
-                object obj = ResourceManager.GetObject("images_iAC_icon", resourceCulture);
+                object obj = ResourceManager.GetObject("toolbox_icon", resourceCulture);
                 return ((System.Drawing.Icon)(obj));
             }
         }
