@@ -1,0 +1,96 @@
+@using System.Net.NetworkInformation
+@implements IDisposable
+
+<div class="server-status @(IsOnline ? "online" : "offline")" title="@StatusText">
+    <span class="status-dot"></span>
+    <span class="server-name">@ServerName</span>
+</div>
+
+<style>
+    .server-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.25rem 0.75rem;
+        border-radius: 4px;
+        font-size: 0.875rem;
+    }
+
+    .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+    }
+
+    .online {
+        background-color: rgba(25, 135, 84, 0.1);
+    }
+
+    .online .status-dot {
+        background-color: #198754;
+    }
+
+    .offline {
+        background-color: rgba(220, 53, 69, 0.1);
+    }
+
+    .offline .status-dot {
+        background-color: #dc3545;
+    }
+
+    .server-name {
+        color: var(--bs-light);
+    }
+</style>
+
+@code {
+    [Parameter] public string ServerName { get; set; } = "";
+    [Parameter] public string ServerAddress { get; set; } = "";
+    [Parameter] public int PingInterval { get; set; } = 30000; // Default 30 seconds
+
+    private bool IsOnline { get; set; }
+    private string StatusText => $"{ServerName}: {(IsOnline ? "Online" : "Offline")}";
+    private System.Windows.Forms.Timer? _timer;
+    private readonly Ping _ping = new();
+
+    protected override void OnInitialized()
+    {
+
+        // Check server status immediately on initialization
+        _ = CheckServerStatus();
+
+        // Start periodic ping using System.Windows.Forms.Timer
+        var formsTimer = new System.Windows.Forms.Timer
+        {
+            Interval = PingInterval
+        };
+        formsTimer.Tick += async (_, _) =>
+        {
+            await CheckServerStatus();
+            await InvokeAsync(StateHasChanged);
+        };
+        formsTimer.Start();
+        _timer = formsTimer;
+    }
+
+    private async Task CheckServerStatus()
+    {
+        try
+        {
+            var reply = await _ping.SendPingAsync(ServerAddress);
+            IsOnline = reply.Status == IPStatus.Success;
+        }
+        catch
+        {
+            IsOnline = false;
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        _timer?.Dispose();
+        _ping.Dispose();
+    }
+}
