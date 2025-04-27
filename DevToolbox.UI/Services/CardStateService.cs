@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
+using System.Linq;
 
-namespace DevToolbox.Services.Services
+namespace DevToolbox.UI.Services
 {
     public class CardStateChangedEventArgs : EventArgs
     {

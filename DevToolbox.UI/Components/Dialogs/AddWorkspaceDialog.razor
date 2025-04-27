@@ -1,0 +1,64 @@
+@using DevToolbox.Services.Models
+@using DevToolbox.UI.Components
+
+<div class="mb-4">
+    <label class="form-label mb-2">Workspace Name</label>
+    <input type="text" 
+        class="form-control bg-dark text-light border-secondary" 
+        @bind="WorkspaceName" 
+        placeholder="Enter workspace name" />
+    @if (!string.IsNullOrEmpty(ErrorMessage))
+    {
+        <div class="invalid-feedback d-block mt-2">
+            @ErrorMessage
+        </div>
+    }
+</div>
+<AddWorkspaceLocation @ref="locationForm" 
+    OnLocationSubmitted="HandleLocationSubmitted" 
+    ButtonText="Create Workspace"/>
+
+@code {
+    [Parameter] public string WorkspaceName { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> WorkspaceNameChanged { get; set; }
+    [Parameter] public string? ErrorMessage { get; set; }
+    [Parameter] public EventCallback<string?> ErrorMessageChanged { get; set; }
+    [Parameter] public string GroupName { get; set; } = string.Empty;
+    [Parameter] public List<Workspace> AllWorkspaces { get; set; } = new();
+    [Parameter] public List<Workspace> GroupWorkspaces { get; set; } = new();
+    [Parameter] public EventCallback<Workspace> OnWorkspaceCreated { get; set; }
+
+    private AddWorkspaceLocation? locationForm;
+
+    private async Task HandleLocationSubmitted(WorkspaceLocation location)
+    {
+        if (string.IsNullOrWhiteSpace(WorkspaceName))
+        {
+            await ErrorMessageChanged.InvokeAsync("Please enter a workspace name.");
+            return;
+        }
+
+        if (GroupWorkspaces.Any(w => w.Name.Equals(WorkspaceName, StringComparison.OrdinalIgnoreCase)))
+        {
+            await ErrorMessageChanged.InvokeAsync("A workspace with this name already exists in this group.");
+            return;
+        }
+
+        var workspace = new Workspace
+        {
+            Id = AllWorkspaces.Any() ? AllWorkspaces.Max(w => w.Id) + 1 : 1,
+            Name = WorkspaceName,
+            GroupName = GroupName,
+            Locations = new List<WorkspaceLocation> { location }
+        };
+
+        // Clear error message
+        await ErrorMessageChanged.InvokeAsync(null);
+        
+        // Reset form
+        locationForm?.ResetForm();
+        
+        // Notify parent
+        await OnWorkspaceCreated.InvokeAsync(workspace);
+    }
+} 

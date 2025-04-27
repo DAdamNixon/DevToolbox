@@ -11,6 +11,7 @@ namespace DevToolbox.Services.Services
     {
         private readonly IYamlStorageService _yamlStorage;
         private readonly PowerShellService _powerShellService;
+        private readonly ISystemService _systemService;
         private readonly string _workspaceGroupsKey = "workspaceGroups";
         private readonly string _customOpenOptionsKey = "customOpenOptions";
         private List<WorkspaceGroup> _workspaceGroups = new();
@@ -19,10 +20,12 @@ namespace DevToolbox.Services.Services
 
         public List<WorkspaceGroup> WorkspaceGroups => _workspaceGroups;
 
-        public WorkspaceService(IYamlStorageService yamlStorage, PowerShellService powerShellService, IConfiguration configuration)
+        public WorkspaceService(IYamlStorageService yamlStorage, PowerShellService powerShellService, 
+                               ISystemService systemService, IConfiguration configuration)
         {
             _yamlStorage = yamlStorage;
             _powerShellService = powerShellService;
+            _systemService = systemService;
             _ = LoadWorkspaceGroupsAsync();
         }
 
@@ -113,75 +116,22 @@ namespace DevToolbox.Services.Services
 
         public async Task OpenWorkspaceLocationAsync(Workspace workspace, WorkspaceLocation location)
         {
-            await Task.Run(() =>
-            {
-                if (File.Exists(location.Path))
-                {
-                    var startInfo = new ProcessStartInfo
-                    {
-                        FileName = location.Path,
-                        UseShellExecute = true
-                    };
-                    Process.Start(startInfo);
-                }
-                else if (Directory.Exists(location.Path))
-                {
-                    Process.Start("explorer.exe", location.Path);
-                }
-            });
+            await _systemService.OpenLocationAsync(location.Path);
         }
 
         public async Task OpenLocationInExplorerAsync(WorkspaceLocation location)
         {
-            await Task.Run(() =>
-            {
-                if (Directory.Exists(location.Root))
-                {
-                    Process.Start("explorer.exe", location.Root);
-                }
-            });
+            await _systemService.OpenInExplorerAsync(location.Root);
         }
 
         public async Task OpenLocationInTerminalAsync(WorkspaceLocation location)
         {
-            await Task.Run(() =>
-            {
-                if (Directory.Exists(location.Root))
-                {
-                    Process.Start("wt.exe", $"-d \"{location.Root}\"");
-                }
-            });
+            await _systemService.OpenInTerminalAsync(location.Root);
         }
 
         public async Task OpenLocationWithCustomAppAsync(Workspace workspace, WorkspaceLocation location, CustomOpenOption option)
         {
-            await Task.Run(() =>
-            {
-                if (option.Type == OpenOptionType.Executable)
-                {
-                    var startInfo = new ProcessStartInfo
-                    {
-                        FileName = option.ExecutablePath,
-                        Arguments = string.Format(option.Arguments, location.Root),
-                        UseShellExecute = false
-                    };
-                    Process.Start(startInfo);
-                }
-                else
-                {
-                    var command = string.Format(option.Command ?? "", location.Root);
-                    var startInfo = new ProcessStartInfo
-                    {
-                        FileName = "powershell.exe",
-                        Arguments = $"-NoProfile -Command \"{command}\"",
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true
-                    };
-                    Process.Start(startInfo);
-                }
-            });
+            await _systemService.OpenWithCustomAppAsync(location.Root, option);
         }
 
         public async Task RunScriptOnLocationAsync(ScriptInfo script, Workspace workspace, WorkspaceLocation location)
@@ -193,7 +143,7 @@ namespace DevToolbox.Services.Services
                     { "ProjectPath", location.Root }
                 };
 
-                await _powerShellService.ExecuteScriptFileAsync(script.Name, parameters);
+                await _systemService.ExecuteScriptAsync(script.Name, parameters);
             }
         }
 

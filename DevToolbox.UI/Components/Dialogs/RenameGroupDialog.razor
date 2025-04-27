@@ -1,0 +1,63 @@
+@using DevToolbox.Services.Models
+
+<div class="mb-4">
+    <label class="form-label mb-2">New Name</label>
+    <input type="text" 
+        class="form-control bg-dark text-light border-secondary" 
+        @bind="GroupName" 
+        placeholder="Enter new name" />
+    @if (!string.IsNullOrEmpty(ErrorMessage))
+    {
+        <div class="invalid-feedback d-block mt-2">
+            @ErrorMessage
+        </div>
+    }
+</div>
+<button class="btn btn-primary" 
+        @onclick="HandleRename" 
+        disabled="@string.IsNullOrEmpty(GroupName)">
+    <i class="bi bi-check-lg me-2"></i>Rename
+</button>
+
+@code {
+    [Parameter] public string GroupName { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> GroupNameChanged { get; set; }
+    [Parameter] public string? ErrorMessage { get; set; }
+    [Parameter] public EventCallback<string?> ErrorMessageChanged { get; set; }
+    [Parameter] public WorkspaceGroup Group { get; set; } = null!;
+    [Parameter] public List<WorkspaceGroup> AllGroups { get; set; } = new();
+    [Parameter] public EventCallback OnRenameCompleted { get; set; }
+
+    private async Task HandleRename()
+    {
+        if (string.IsNullOrWhiteSpace(GroupName))
+        {
+            await ErrorMessageChanged.InvokeAsync("Please enter a name.");
+            return;
+        }
+
+        if (AllGroups.Any(g => g.Name.Equals(GroupName, StringComparison.OrdinalIgnoreCase) && g.Name != Group.Name))
+        {
+            await ErrorMessageChanged.InvokeAsync("A group with this name already exists.");
+            return;
+        }
+
+        // Update all workspaces in this group to use the new group name
+        foreach (var workspace in Group.Workspaces)
+        {
+            workspace.GroupName = GroupName;
+        }
+
+        // Update the domain model
+        Group.Name = GroupName;
+        
+        // Clear error and notify
+        await ErrorMessageChanged.InvokeAsync(null);
+        await OnRenameCompleted.InvokeAsync();
+    }
+    
+    public void ResetForm()
+    {
+        ErrorMessageChanged.InvokeAsync(null);
+    }
+} 

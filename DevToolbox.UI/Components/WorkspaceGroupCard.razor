@@ -2,14 +2,19 @@
 @using DevToolbox.Services.Models
 @using DevToolbox.Services.Interfaces
 @using DevToolbox.Services.Services
+@using DevToolbox.UI.Services
+@using DevToolbox.UI.Models
 @using Microsoft.JSInterop
+@using DevToolbox.UI.Components.Dialogs
 @inject IJSRuntime JS
 @inject CardStateService CardStateService
+@inject ViewModelFactory ViewModelFactory
+@inject ModalStateService ModalStateService
 
-<div class="card bg-dark text-light border-secondary mb-3 @(IsExpanded ? "expanded" : "")">
+<div class="card bg-dark text-light border-secondary mb-3 @(GroupViewModel.IsExpanded ? "expanded" : "")">
     <div class="card-header border-secondary d-flex align-items-center p-0">
         <div class="flex-grow-1 h-100 px-3 py-2" @onclick="ToggleExpand" style="cursor: pointer;">
-            <h5 class="card-title mb-0">@Group.Name</h5>
+            <h5 class="card-title mb-0">@GroupViewModel.Name</h5>
         </div>
         <div class="dropdown h-100 border-start border-secondary">
             <button class="btn btn-link text-light dropdown-toggle h-100 px-3" data-bs-toggle="dropdown" aria-expanded="false">
@@ -36,18 +41,19 @@
         </div>
     </div>
     
-    <div class="card-body @(IsExpanded ? "expanded" : "collapsed")">
+    <div class="card-body @(GroupViewModel.IsExpanded ? "expanded" : "collapsed")">
         <div class="row g-3">
-            @foreach (var workspace in Group.Workspaces)
+            @foreach (var workspaceViewModel in GroupViewModel.Workspaces)
             {
                 <div class="col-md-6 col-lg-4">
                     <WorkspaceCard 
-                        Workspace="workspace"
+                        WorkspaceViewModel="workspaceViewModel"
                         GlobalOptions="GlobalOptions"
                         AvailableScripts="AvailableScripts"
-                        AvailableGroups="AllGroups.Where(g => g.Name != Group.Name).ToList()"
+                        AvailableGroups="AllGroups.Where(g => g.Name != GroupViewModel.Name).ToList()"
                         AllGroups="AllGroups"
-                        OnDeleteWorkspace="() => OnDeleteWorkspace.InvokeAsync(workspace)"
+                        OnDeleteWorkspace="() => DeleteWorkspace(workspaceViewModel.Workspace)"
+                        OnOpenWorkspaceLocation="OnOpenWorkspaceLocation"
                         OnOpenInExplorer="OnOpenInExplorer"
                         OnOpenInTerminal="OnOpenInTerminal"
                         OnOpenWithCustomApp="OnOpenWithCustomApp"
@@ -61,57 +67,28 @@
     </div>
 </div>
 
-<div class="modal fade" id="@AddWorkspaceModalId" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content bg-dark text-light">
-            <div class="modal-header border-secondary">
-                <h5 class="modal-title">Add Workspace to @Group.Name</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body py-4">
-                <div class="mb-4">
-                    <label class="form-label mb-2">Workspace Name</label>
-                    <input type="text" class="form-control bg-dark text-light border-secondary" @bind="NewWorkspaceName" 
-                           placeholder="Enter workspace name" />
-                    @if (!string.IsNullOrEmpty(ErrorMessage))
-                    {
-                        <div class="invalid-feedback d-block mt-2">
-                            @ErrorMessage
-                        </div>
-                    }
-                </div>
-                <AddWorkspaceLocation @ref="locationForm" OnLocationSubmitted="HandleWorkspaceCreated" ButtonText="Create Workspace"/>
-            </div>
-        </div>
-    </div>
-</div>
+<Modal @bind-IsVisible="IsAddWorkspaceModalVisible" Title="@AddWorkspaceModalTitle">
+    <AddWorkspaceDialog 
+        WorkspaceName="@NewWorkspaceName"
+        WorkspaceNameChanged="(name) => NewWorkspaceName = name"
+        ErrorMessage="@GetModalError(AddWorkspaceModalKey)"
+        ErrorMessageChanged="(msg) => ModalStateService.SetError(AddWorkspaceModalKey, msg)"
+        GroupName="@GroupViewModel.Name"
+        AllWorkspaces="AllWorkspaces"
+        GroupWorkspaces="GroupViewModel.Group.Workspaces"
+        OnWorkspaceCreated="HandleWorkspaceCreated" />
+</Modal>
 
-<div class="modal fade" id="@RenameModalId" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content bg-dark text-light">
-            <div class="modal-header border-secondary">
-                <h5 class="modal-title">Rename Group</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body py-4">
-                <div class="mb-4">
-                    <label class="form-label mb-2">New Name</label>
-                    <input type="text" class="form-control bg-dark text-light border-secondary" @bind="NewGroupName" 
-                           placeholder="Enter new name" />
-                    @if (!string.IsNullOrEmpty(ErrorMessage))
-                    {
-                        <div class="invalid-feedback d-block mt-2">
-                            @ErrorMessage
-                        </div>
-                    }
-                </div>
-                <button class="btn btn-primary" @onclick="HandleRename" disabled="@string.IsNullOrEmpty(NewGroupName)">
-                    <i class="bi bi-check-lg me-2"></i>Rename
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
+<Modal @bind-IsVisible="IsRenameModalVisible" Title="Rename Group">
+    <RenameGroupDialog @ref="renameGroupDialog"
+        GroupName="@NewGroupName"
+        GroupNameChanged="(name) => NewGroupName = name"
+        ErrorMessage="@GetModalError(RenameModalKey)"
+        ErrorMessageChanged="(msg) => ModalStateService.SetError(RenameModalKey, msg)"
+        Group="GroupViewModel.Group"
+        AllGroups="AllGroups"
+        OnRenameCompleted="HandleRenameCompleted" />
+</Modal>
 
 <style>
     /* Base card styles */
@@ -195,145 +172,140 @@
 
     /* Main card hover effect */
     .card:hover {
-        box-shadow: 0 4px 12px rgba(13, 110, 253, 0.15);
-        border-color: var(--bs-primary) !important;
+        transform: translateY(-2px);
     }
 
-    /* Fix dropdown toggle button */
-    .dropdown-toggle::after {
-        display: none;
+    /* Ensure consistent dropdown z-index */
+    .dropdown {
+        position: relative;
     }
-
-    /* Prevent interaction with collapsed or hidden elements */
-    .collapse:not(.show),
-    .card-body.collapsed,
-    [style*="display: none"],
-    [hidden] {
-        pointer-events: none;
-    }
-
-    /* Ensure dropdowns are still interactive when shown */
-    .dropdown-menu.show {
-        pointer-events: auto;
-    }
-
-    /* Ensure modals are still interactive when shown */
-    .modal.show {
-        pointer-events: auto;
+    
+    .dropdown-menu {
+        z-index: 1050 !important;
     }
 </style>
 
 @code {
-    [Parameter] public WorkspaceGroup Group { get; set; } = null!;
+    [Parameter] public WorkspaceGroupViewModel GroupViewModel { get; set; } = null!;
     [Parameter] public GlobalCustomOpenOptions GlobalOptions { get; set; } = null!;
     [Parameter] public List<ScriptInfo> AvailableScripts { get; set; } = null!;
-    [Parameter] public List<Workspace> AllWorkspaces { get; set; } = null!;
     [Parameter] public List<WorkspaceGroup> AllGroups { get; set; } = null!;
+    [Parameter] public List<Workspace> AllWorkspaces { get; set; } = new();
+    [Parameter] public EventCallback<Workspace> OnDeleteWorkspace { get; set; }
     [Parameter] public EventCallback<WorkspaceGroup> OnDeleteGroup { get; set; }
     [Parameter] public EventCallback<(Workspace, WorkspaceLocation)> OnOpenWorkspaceLocation { get; set; }
     [Parameter] public EventCallback<WorkspaceLocation> OnOpenInExplorer { get; set; }
     [Parameter] public EventCallback<WorkspaceLocation> OnOpenInTerminal { get; set; }
     [Parameter] public EventCallback<(Workspace, WorkspaceLocation, CustomOpenOption)> OnOpenWithCustomApp { get; set; }
     [Parameter] public EventCallback<(ScriptInfo, Workspace, WorkspaceLocation)> OnRunScriptOnLocation { get; set; }
+    [Parameter] public EventCallback<(Workspace, string)> OnMoveToGroup { get; set; }
     [Parameter] public EventCallback OnAddWorkspace { get; set; }
-    [Parameter] public EventCallback<(Workspace workspace, string groupName)> OnMoveToGroup { get; set; }
-    [Parameter] public EventCallback<Workspace> OnDeleteWorkspace { get; set; }
-    [Parameter] public EventCallback<WorkspaceLocation> OnDeleteLocation { get; set; }
-    private bool IsExpanded => CardStateService.IsExpanded("group", Group.Name);
-    private AddWorkspaceLocation? locationForm;
-    private IJSObjectReference? addWorkspaceModal;
-    private string NewWorkspaceName = string.Empty;
-    private string? ErrorMessage;
 
-    private string AddWorkspaceModalId => $"addWorkspaceModal_{Group.Name.Replace(" ", "_").ToLower()}";
-    private string RenameModalId => $"renameGroupModal_{Group.Name.Replace(" ", "_").ToLower()}";
-    private IJSObjectReference? renameModal;
+    private string NewWorkspaceName = string.Empty;
     private string NewGroupName = string.Empty;
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    // Modal keys for ModalStateService
+    private string AddWorkspaceModalKey => ModalStateService.GetModalKey("addWorkspace", GroupViewModel.Group.Name);
+    private string RenameModalKey => ModalStateService.GetModalKey("renameGroup", GroupViewModel.Group.Name);
+    
+    // Properties for binding to Modal components
+    private bool IsAddWorkspaceModalVisible
     {
-        if (firstRender)
+        get => ModalStateService.IsModalVisible(AddWorkspaceModalKey);
+        set 
         {
-            addWorkspaceModal = await JS.InvokeAsync<IJSObjectReference>("bootstrap.Modal.getOrCreateInstance", $"#{AddWorkspaceModalId}");
-            renameModal = await JS.InvokeAsync<IJSObjectReference>("bootstrap.Modal.getOrCreateInstance", $"#{RenameModalId}");
+            if (value) ModalStateService.ShowModal(AddWorkspaceModalKey);
+            else ModalStateService.HideModal(AddWorkspaceModalKey);
         }
+    }
+    
+    private bool IsRenameModalVisible
+    {
+        get => ModalStateService.IsModalVisible(RenameModalKey);
+        set 
+        {
+            if (value) ModalStateService.ShowModal(RenameModalKey);
+            else ModalStateService.HideModal(RenameModalKey);
+        }
+    }
+
+    private string? GetModalError(string modalKey) => ModalStateService.GetError(modalKey);
+    private string AddWorkspaceModalTitle => $"Add Workspace to {GroupViewModel.Name}";
+
+    // Component references for forms
+    private RenameGroupDialog? renameGroupDialog;
+
+    protected override void OnParametersSet()
+    {
+        // Ensure the view model's expanded state is updated from CardStateService
+        ViewModelFactory.UpdateGroupExpandedState(GroupViewModel);
     }
 
     private void ToggleExpand()
     {
-        CardStateService.ToggleExpand("group", Group.Name);
+        CardStateService.ToggleExpand("group", GroupViewModel.Group.Name);
+        GroupViewModel.IsExpanded = !GroupViewModel.IsExpanded;
     }
 
     private void ShowAddWorkspaceModal()
     {
-        if (addWorkspaceModal is not null)
-        {
-            addWorkspaceModal.InvokeVoidAsync("show");
-        }
+        NewWorkspaceName = string.Empty;
+        IsAddWorkspaceModalVisible = true;
     }
 
     private void ShowRenameModal()
     {
-        NewGroupName = Group.Name;
-        if (renameModal is not null)
-        {
-            renameModal.InvokeVoidAsync("show");
-        }
+        NewGroupName = GroupViewModel.Name;
+        IsRenameModalVisible = true;
     }
 
-    private async Task HandleWorkspaceCreated(WorkspaceLocation location)
+    private async Task HandleWorkspaceCreated(Workspace workspace)
     {
-        if (string.IsNullOrWhiteSpace(NewWorkspaceName))
-        {
-            ErrorMessage = "Please enter a workspace name.";
-            return;
-        }
-
-        if (Group.Workspaces.Any(w => w.Name.Equals(NewWorkspaceName, StringComparison.OrdinalIgnoreCase)))
-        {
-            ErrorMessage = "A workspace with this name already exists in this group.";
-            return;
-        }
-
-        var workspace = new Workspace
-        {
-            Id = AllWorkspaces.Any() ? AllWorkspaces.Max(w => w.Id) + 1 : 1,
-            Name = NewWorkspaceName,
-            GroupName = Group.Name,
-            Locations = new List<WorkspaceLocation> { location }
-        };
-
-        Group.Workspaces.Add(workspace);
+        GroupViewModel.Group.Workspaces.Add(workspace);
+        
+        // Add to the view model as well
+        var workspaceViewModel = ViewModelFactory.CreateWorkspaceViewModel(workspace);
+        GroupViewModel.Workspaces.Add(workspaceViewModel);
+        
         await OnAddWorkspace.InvokeAsync();
 
-        if (addWorkspaceModal is not null)
-        {
-            await addWorkspaceModal.InvokeVoidAsync("hide");
-        }
-
+        IsAddWorkspaceModalVisible = false;
         NewWorkspaceName = string.Empty;
-        locationForm?.ResetForm();
-        ErrorMessage = null;
         StateHasChanged();
-        await InvokeAsync(StateHasChanged);
     }
 
     private async Task DeleteWorkspace(Workspace workspace)
     {
-        Group.Workspaces.Remove(workspace);
+        // Remove from domain model
+        GroupViewModel.Group.Workspaces.Remove(workspace);
+        
+        // Remove from view model
+        var workspaceViewModel = GroupViewModel.Workspaces.FirstOrDefault(vm => vm.Workspace.Id == workspace.Id);
+        if (workspaceViewModel != null)
+        {
+            GroupViewModel.Workspaces.Remove(workspaceViewModel);
+        }
+        
         await OnAddWorkspace.InvokeAsync();
         StateHasChanged();
     }
 
     private async Task HandleMoveToGroup((Workspace workspace, string groupName) args)
     {
-        // Remove workspace from current group
-        Group.Workspaces.Remove(args.workspace);
+        // Remove from view model
+        var workspaceViewModel = GroupViewModel.Workspaces.FirstOrDefault(vm => vm.Workspace.Id == args.workspace.Id);
+        if (workspaceViewModel != null)
+        {
+            GroupViewModel.Workspaces.Remove(workspaceViewModel);
+        }
+        
+        // Remove from domain model
+        GroupViewModel.Group.Workspaces.Remove(args.workspace);
         
         // Update workspace's group name
         args.workspace.GroupName = args.groupName;
         
-        // Add workspace to new group
+        // Add workspace to new group in domain model
         var targetGroup = AllGroups.FirstOrDefault(g => g.Name == args.groupName);
         if (targetGroup != null)
         {
@@ -346,32 +318,7 @@
 
     private async Task OnDelete()
     {
-        await OnDeleteGroup.InvokeAsync(Group);
-    }
-
-    private async Task OpenWorkspaceLocation((Workspace workspace, WorkspaceLocation location) args)
-    {
-        await OnOpenWorkspaceLocation.InvokeAsync(args);
-    }
-
-    private async Task OpenLocationInExplorer(WorkspaceLocation location)
-    {
-        await OnOpenInExplorer.InvokeAsync(location);
-    }
-
-    private async Task OpenLocationInTerminal(WorkspaceLocation location)
-    {
-        await OnOpenInTerminal.InvokeAsync(location);
-    }
-
-    private async Task OpenLocationWithCustomApp((Workspace workspace, WorkspaceLocation location, CustomOpenOption option) args)
-    {
-        await OnOpenWithCustomApp.InvokeAsync(args);
-    }
-
-    private async Task RunScriptOnLocation((ScriptInfo script, Workspace workspace, WorkspaceLocation location) args)
-    {
-        await OnRunScriptOnLocation.InvokeAsync(args);
+        await OnDeleteGroup.InvokeAsync(GroupViewModel.Group);
     }
 
     private async Task SaveWorkspaces()
@@ -379,54 +326,11 @@
         await OnAddWorkspace.InvokeAsync();
     }
 
-    private void CreateNewWorkspace()
+    private async Task HandleRenameCompleted()
     {
-        if (string.IsNullOrWhiteSpace(NewWorkspaceName))
-        {
-            ErrorMessage = "Please enter a workspace name";
-            return;
-        }
-
-        var newWorkspace = new Workspace
-        {
-            Id = Group.Workspaces.Any() ? Group.Workspaces.Max(w => w.Id) + 1 : 1,
-            Name = NewWorkspaceName,
-            GroupName = Group.Name,
-            Locations = new List<WorkspaceLocation>()
-        };
-
-        Group.Workspaces.Add(newWorkspace);
-        NewWorkspaceName = string.Empty;
-        ErrorMessage = string.Empty;
-    }
-
-    private async Task HandleRename()
-    {
-        if (string.IsNullOrWhiteSpace(NewGroupName))
-        {
-            ErrorMessage = "Please enter a name.";
-            return;
-        }
-
-        if (AllGroups.Any(g => g.Name.Equals(NewGroupName, StringComparison.OrdinalIgnoreCase) && g.Name != Group.Name))
-        {
-            ErrorMessage = "A group with this name already exists.";
-            return;
-        }
-
-        // Update all workspaces in this group to use the new group name
-        foreach (var workspace in Group.Workspaces)
-        {
-            workspace.GroupName = NewGroupName;
-        }
-
-        Group.Name = NewGroupName;
-        if (renameModal is not null)
-        {
-            await renameModal.InvokeVoidAsync("hide");
-        }
+        IsRenameModalVisible = false;
         NewGroupName = string.Empty;
-        ErrorMessage = null;
+        renameGroupDialog?.ResetForm();
         await OnAddWorkspace.InvokeAsync();
         StateHasChanged();
     }

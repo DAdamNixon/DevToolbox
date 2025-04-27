@@ -4,10 +4,13 @@
 @using DevToolbox.Services.Models
 @using DevToolbox.Services.Services
 @using DevToolbox.UI.Components
+@using DevToolbox.UI.Services
+@using DevToolbox.UI.Models
 @using Microsoft.JSInterop
 @using System.IO
 @using Microsoft.Extensions.Configuration
 @inject CardStateService CardStateService
+@inject ViewModelFactory ViewModelFactory
 @inject IYamlStorageService YamlStorage
 @inject DirectoryStructureService DirectoryService
 @inject PowerShellService PowerShellService
@@ -36,10 +39,10 @@
     <div class="row">
         <div class="col-10 offset-1">
             <div class="d-flex flex-column gap-4">
-                @foreach (var group in FilteredGroups)
+                @foreach (var groupViewModel in FilteredGroupViewModels)
                 {
                     <WorkspaceGroupCard 
-                        Group="group"
+                        GroupViewModel="groupViewModel"
                         GlobalOptions="GlobalOptions"
                         AvailableScripts="AvailableScripts"
                         AllWorkspaces="AllWorkspaces"
@@ -66,17 +69,23 @@
     private GlobalCustomOpenOptions GlobalOptions { get; set; } = new();
     private List<ScriptInfo> AvailableScripts { get; set; } = new();
     private List<Workspace> AllWorkspaces { get; set; } = new();
+    private List<WorkspaceGroupViewModel> GroupViewModels { get; set; } = new();
     private ElementReference searchInput;
     private string searchText = "";
     
-    private List<WorkspaceGroup> FilteredGroups => string.IsNullOrWhiteSpace(searchText) 
-        ? WorkspaceService.WorkspaceGroups 
-        : WorkspaceService.WorkspaceGroups
-            .Select(g => new WorkspaceGroup { Id = g.Id, Name = g.Name, Workspaces = FilterWorkspaces(g.Workspaces) })
+    private List<WorkspaceGroupViewModel> FilteredGroupViewModels => string.IsNullOrWhiteSpace(searchText) 
+        ? GroupViewModels 
+        : GroupViewModels
+            .Select(g => new WorkspaceGroupViewModel
+            {
+                Group = g.Group,
+                IsExpanded = !string.IsNullOrWhiteSpace(searchText) || g.IsExpanded,
+                Workspaces = FilterWorkspaceViewModels(g.Workspaces)
+            })
             .Where(g => g.Workspaces.Any())
             .ToList();
 
-    private List<Workspace> FilterWorkspaces(List<Workspace> workspaces)
+    private List<WorkspaceViewModel> FilterWorkspaceViewModels(List<WorkspaceViewModel> workspaces)
     {
         if (string.IsNullOrWhiteSpace(searchText))
             return workspaces;
@@ -101,12 +110,22 @@
     {
         var groups = await WorkspaceService.GetWorkspaceGroupsAsync();
         AllWorkspaces = groups.SelectMany(g => g.Workspaces).ToList();
+        
+        // Convert domain models to view models
+        GroupViewModels = groups
+            .Select(g => ViewModelFactory.CreateWorkspaceGroupViewModel(g))
+            .ToList();
+            
         StateHasChanged();
     }
 
     private async Task HandleGroupCreated(WorkspaceGroup group)
     {
         WorkspaceService.WorkspaceGroups.Add(group);
+        
+        // Add the new group as a view model
+        GroupViewModels.Add(ViewModelFactory.CreateWorkspaceGroupViewModel(group));
+        
         await SaveWorkspaces();
         StateHasChanged();
     }
@@ -114,6 +133,14 @@
     private async Task DeleteGroup(WorkspaceGroup group)
     {
         WorkspaceService.WorkspaceGroups.Remove(group);
+        
+        // Remove the group view model
+        var viewModel = GroupViewModels.FirstOrDefault(vm => vm.Group.Id == group.Id);
+        if (viewModel != null)
+        {
+            GroupViewModels.Remove(viewModel);
+        }
+        
         await SaveWorkspaces();
         StateHasChanged();
     }
@@ -169,8 +196,12 @@
     private void HandleSearchInput(ChangeEventArgs e)
     {
         searchText = e.Value?.ToString() ?? string.Empty;
-        var groupIds = FilteredGroups.Select(g => g.Name).ToList();
-        CardStateService.SetSearchExpanded(!string.IsNullOrWhiteSpace(searchText), groupIds);
+        bool isSearching = !string.IsNullOrWhiteSpace(searchText);
+        
+        // Update CardStateService before computing filtered groups
+        CardStateService.SetSearchExpanded(isSearching, 
+            GroupViewModels.Select(g => g.Group.Name).ToList());
+        
         StateHasChanged();
     }
 

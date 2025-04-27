@@ -1,4 +1,5 @@
 using DevToolbox.Services.Interfaces;
+using DevToolbox.Services.Models;
 using Microsoft.PowerShell;
 using System.Management.Automation;
 using System.Text;
@@ -152,9 +153,9 @@ public class ScriptExecutionService : IScriptExecutionService
         await powershell.InvokeAsync();
     }
 
-    public async Task<List<ScriptInfo>> GetAvailableScriptsAsync()
+    public async Task<List<DevToolbox.Services.Models.ScriptInfo>> GetAvailableScriptsAsync()
     {
-        var scripts = new List<ScriptInfo>();
+        var scripts = new List<DevToolbox.Services.Models.ScriptInfo>();
         var files = Directory.GetFiles(_scriptsDirectory, "*.ps1");
         
         foreach (var file in files)
@@ -163,7 +164,11 @@ public class ScriptExecutionService : IScriptExecutionService
             var name = Path.GetFileNameWithoutExtension(file);
             var description = ExtractScriptDescription(scriptContent);
             
-            scripts.Add(new ScriptInfo { Name = name });
+            scripts.Add(new DevToolbox.Services.Models.ScriptInfo { 
+                Name = name,
+                FullPath = file,
+                LastModified = File.GetLastWriteTime(file)
+            });
         }
         
         return scripts;

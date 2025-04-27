@@ -1,39 +1,30 @@
 @using System.Windows.Forms
 @using System.IO
+@using DevToolbox.UI.Components
 
-<div class="modal fade show" style="display: block;" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content bg-dark">
-            <div class="modal-header">
-                <h5 class="modal-title">Select File or Folder</h5>
-                <button type="button" class="btn-close btn-close-white" @onclick="OnCanceled"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label">Path</label>
-                    <input type="text" class="form-control bg-dark text-light border-secondary" 
-                        value="@CurrentPath" 
-                        @onchange="OnPathChanged" />
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Files</label>
-                    <select class="form-select bg-dark text-light border-secondary" 
-                            @onchange="OnFileSelected">
-                        <option value="">Select a file...</option>
-                        @foreach (var file in Files)
-                        {
-                            <option value="@file">@file</option>
-                        }
-                    </select>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" @onclick="OnCanceled">Cancel</button>
-                <button type="button" class="btn btn-primary" @onclick="OnSelect">Select</button>
-            </div>
-        </div>
+<Modal @bind-IsVisible="IsVisible" Title="Select File or Folder">
+    <div class="mb-3">
+        <label class="form-label">Path</label>
+        <input type="text" class="form-control bg-dark text-light border-secondary" 
+            value="@CurrentPath" 
+            @onchange="OnPathChanged" />
     </div>
-</div>
+    <div class="mb-3">
+        <label class="form-label">Files</label>
+        <select class="form-select bg-dark text-light border-secondary" 
+                @onchange="OnFileSelected">
+            <option value="">Select a file...</option>
+            @foreach (var file in Files)
+            {
+                <option value="@file">@file</option>
+            }
+        </select>
+    </div>
+    <div class="mt-4 d-flex justify-content-end gap-2">
+        <button type="button" class="btn btn-secondary" @onclick="Cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" @onclick="OnSelect">Select</button>
+    </div>
+</Modal>
 
 @code {
     [Parameter] public string InitialPath { get; set; } = string.Empty;
@@ -42,6 +33,8 @@
     [Parameter] public bool AllowFolderSelection { get; set; } = true;
     [Parameter] public EventCallback<string> OnPathSelected { get; set; }
     [Parameter] public EventCallback OnCanceled { get; set; }
+    [Parameter] public bool IsVisible { get; set; }
+    [Parameter] public EventCallback<bool> IsVisibleChanged { get; set; }
 
     private string CurrentPath { get; set; } = string.Empty;
     private List<string> Files { get; set; } = new();
@@ -98,5 +91,12 @@
         {
             await OnPathSelected.InvokeAsync(CurrentPath);
         }
+        await IsVisibleChanged.InvokeAsync(false);
+    }
+
+    private async Task Cancel()
+    {
+        await OnCanceled.InvokeAsync();
+        await IsVisibleChanged.InvokeAsync(false);
     }
 } 

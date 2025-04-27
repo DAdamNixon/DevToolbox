@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using DevToolbox.Services.Interfaces;
 using DevToolbox.Services.Services;
 using DevToolbox.Services;
+using DevToolbox.UI.Services;
 
 namespace DevToolbox.UI
 {
@@ -33,12 +34,17 @@ namespace DevToolbox.UI
 
             // Register services
             services.AddScoped<IWorkspaceService, WorkspaceService>();
+            services.AddScoped<ISystemService, SystemService>();
             services.AddScoped<DirectoryStructureService>();
-            services.AddScoped<PowerShellService>();
-            services.AddScoped<CardStateService>();
+            services.AddScoped<DevToolbox.Services.Services.PowerShellService>();
+            services.AddScoped<DevToolbox.UI.Services.CardStateService>();
             services.AddScoped<IConfigurationService, ConfigurationService>();
             services.AddScoped<IScriptExecutionService, ScriptExecutionService>();
             services.AddScoped<IYamlStorageService, YamlStorageService>();
+            
+            // Register UI-specific services
+            services.AddScoped<ViewModelFactory>();
+            services.AddScoped<ModalStateService>();
 
             var serviceProvider = services.BuildServiceProvider();
             Application.Run(new MainWindow(serviceProvider));

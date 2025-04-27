@@ -1,0 +1,60 @@
+@using DevToolbox.Services.Models
+
+<div class="mb-4">
+    <label class="form-label mb-2">New Name</label>
+    <input type="text" 
+        class="form-control bg-dark text-light border-secondary" 
+        @bind="WorkspaceName" 
+        placeholder="Enter new name" />
+    @if (!string.IsNullOrEmpty(ErrorMessage))
+    {
+        <div class="invalid-feedback d-block mt-2">
+            @ErrorMessage
+        </div>
+    }
+</div>
+<button class="btn btn-primary" 
+        @onclick="HandleRename" 
+        disabled="@string.IsNullOrEmpty(WorkspaceName)">
+    <i class="bi bi-check-lg me-2"></i>Rename
+</button>
+
+@code {
+    [Parameter] public string WorkspaceName { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> WorkspaceNameChanged { get; set; }
+    [Parameter] public string? ErrorMessage { get; set; }
+    [Parameter] public EventCallback<string?> ErrorMessageChanged { get; set; }
+    [Parameter] public Workspace Workspace { get; set; } = null!;
+    [Parameter] public List<WorkspaceGroup> AllGroups { get; set; } = new();
+    [Parameter] public EventCallback OnRenameCompleted { get; set; }
+
+    private async Task HandleRename()
+    {
+        if (string.IsNullOrWhiteSpace(WorkspaceName))
+        {
+            await ErrorMessageChanged.InvokeAsync("Please enter a name.");
+            return;
+        }
+
+        // Check if the name exists in the same group
+        var currentGroup = AllGroups.FirstOrDefault(g => g.Name == Workspace.GroupName);
+        if (currentGroup != null && currentGroup.Workspaces.Any(w => 
+            w.Name.Equals(WorkspaceName, StringComparison.OrdinalIgnoreCase) && w.Id != Workspace.Id))
+        {
+            await ErrorMessageChanged.InvokeAsync($"A workspace with the name '{WorkspaceName}' already exists in this group.");
+            return;
+        }
+
+        // Update the workspace name
+        Workspace.Name = WorkspaceName;
+
+        // Clear error and notify
+        await ErrorMessageChanged.InvokeAsync(null);
+        await OnRenameCompleted.InvokeAsync();
+    }
+    
+    public void ResetForm()
+    {
+        ErrorMessageChanged.InvokeAsync(null);
+    }
+} 

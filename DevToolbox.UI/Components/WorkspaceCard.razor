@@ -2,15 +2,21 @@
 @using DevToolbox.Services.Models
 @using DevToolbox.Services.Interfaces
 @using DevToolbox.Services.Services
+@using DevToolbox.UI.Services
+@using DevToolbox.UI.Models
 @using Microsoft.JSInterop
 @using System.Diagnostics
+@using DevToolbox.UI.Components.Dialogs
 @inject IJSRuntime JS
 @inject CardStateService CardStateService
+@inject ViewModelFactory ViewModelFactory
+@inject ModalStateService ModalStateService
+@inject ISystemService SystemService
 
-<div class="card bg-dark text-light border-secondary mb-3 @(IsExpanded ? "expanded" : "")">
+<div class="card bg-dark text-light border-secondary mb-3 @(WorkspaceViewModel.IsExpanded ? "expanded" : "")">
     <div class="card-header border-secondary d-flex align-items-center p-0">
         <div class="flex-grow-1 h-100 px-3 py-2" @onclick="ToggleExpand" style="cursor: pointer;">
-            <h5 class="card-title mb-0">@Workspace.Name</h5>
+            <h5 class="card-title mb-0">@WorkspaceViewModel.Name</h5>
         </div>
         <div class="dropdown h-100 border-start border-secondary">
             <button class="btn btn-link text-light dropdown-toggle h-100 px-3" data-bs-toggle="dropdown" aria-expanded="false">
@@ -43,11 +49,11 @@
         </div>
     </div>
 
-    @if (IsExpanded)
+    @if (WorkspaceViewModel.IsExpanded)
     {
         <div class="card-body">
             <div class="d-flex flex-column gap-3">
-                @foreach (var location in Workspace.Locations)
+                @foreach (var location in WorkspaceViewModel.Locations)
                 {
                     <div class="card bg-dark text-light border-secondary">
                         <div class="card-header border-secondary d-flex justify-content-between align-items-center">
@@ -59,10 +65,10 @@
                                     <i class="bi bi-folder"></i>
                                 </button>
                                 <div class="dropdown">
-                                    <button class="btn btn-outline-light btn-sm" title="More Options" data-bs-toggle="dropdown">
+                                    <button class="btn btn-outline-light btn-sm dropdown-toggle" title="More Options" data-bs-toggle="dropdown" aria-expanded="false">
                                         <i class="bi bi-three-dots-vertical"></i>
                                     </button>
-                                    <ul class="dropdown-menu dropdown-menu-dark">
+                                    <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
                                         <li>
                                             <button class="dropdown-item" @onclick="() => OnOpenInExplorer.InvokeAsync(location)">
                                                 <i class="bi bi-folder2-open me-2"></i>Open in Explorer
@@ -80,7 +86,7 @@
                                             @foreach (var option in GlobalOptions.Options)
                                             {
                                                 <li>
-                                                    <button class="dropdown-item" @onclick="() => OnOpenWithCustomApp.InvokeAsync((Workspace, location, option.Value))">
+                                                    <button class="dropdown-item" @onclick="() => OnOpenWithCustomApp.InvokeAsync((WorkspaceViewModel.Workspace, location, option.Value))">
                                                         <i class="bi bi-box-arrow-up-right me-2"></i>@option.Key
                                                     </button>
                                                 </li>
@@ -93,7 +99,7 @@
                                             @foreach (var script in AvailableScripts)
                                             {
                                                 <li>
-                                                    <button class="dropdown-item" @onclick="() => OnRunScriptOnLocation.InvokeAsync((script, Workspace, location))">
+                                                    <button class="dropdown-item" @onclick="() => OnRunScriptOnLocation.InvokeAsync((script, WorkspaceViewModel.Workspace, location))">
                                                         <i class="bi bi-play-circle me-2"></i>@script.Name
                                                     </button>
                                                 </li>
@@ -121,56 +127,32 @@
     }
 </div>
 
-<Modal @bind-IsVisible="isAddLocationModalVisible" Title="@AddLocationModalTitle">
+<Modal @bind-IsVisible="IsAddLocationModalVisible" Title="@AddLocationModalTitle">
     <AddWorkspaceLocation @ref="locationForm" 
         OnLocationSubmitted="HandleLocationAdded" 
-        ButtonText="Add Location"/>
+        ButtonText="Add Location"
+        ErrorMessage="@GetModalError(AddLocationModalKey)"
+        ErrorMessageChanged="(msg) => ModalStateService.SetError(AddLocationModalKey, msg)"/>
 </Modal>
 
-<Modal @bind-IsVisible="isMoveToGroupModalVisible" Title="@MoveToGroupModalTitle">
-    <div class="mb-4">
-        <label class="form-label mb-2">Select Group</label>
-        <select class="form-select bg-dark text-light border-secondary" @bind="SelectedGroupName">
-            <option value="">Select a group...</option>
-            @foreach (var group in AvailableGroups)
-            {
-                @if (group.Name != Workspace.GroupName)
-                {
-                    <option value="@group.Name">@group.Name</option>
-                }
-            }
-        </select>
-        @if (!string.IsNullOrEmpty(ErrorMessage))
-        {
-            <div class="invalid-feedback d-block mt-2">
-                @ErrorMessage
-            </div>
-        }
-    </div>
-    <button class="btn btn-primary" @onclick="HandleMoveToGroup" disabled="@string.IsNullOrEmpty(SelectedGroupName)">
-        <i class="bi bi-folder2 me-2"></i>Move to Group
-    </button>
+<Modal @bind-IsVisible="IsMoveToGroupModalVisible" Title="@MoveToGroupModalTitle">
+    <MoveWorkspaceDialog @ref="moveWorkspaceDialog"
+        Workspace="WorkspaceViewModel.Workspace"
+        AvailableGroups="AvailableGroups"
+        ErrorMessage="@GetModalError(MoveGroupModalKey)"
+        ErrorMessageChanged="(msg) => ModalStateService.SetError(MoveGroupModalKey, msg)"
+        OnMoveToGroup="HandleMoveToGroup" />
 </Modal>
 
-<Modal @bind-IsVisible="isRenameModalVisible" Title="Rename Workspace">
-    <div class="mb-4">
-        <label class="form-label mb-2">New Name</label>
-        <input type="text" 
-            class="form-control bg-dark text-light border-secondary" 
-            @bind="NewWorkspaceName" 
-            placeholder="Enter new name" />
-        @if (!string.IsNullOrEmpty(ErrorMessage))
-        {
-            <div class="invalid-feedback d-block mt-2">
-                @ErrorMessage
-            </div>
-        }
-    </div>
-    <button class="btn btn-primary" 
-            @onclick="HandleRename" 
-            disabled="@string.IsNullOrEmpty(NewWorkspaceName)">
-        <i class="bi bi-check-lg me-2"></i>Rename
-    </button>
+<Modal @bind-IsVisible="IsRenameModalVisible" Title="Rename Workspace">
+    <RenameWorkspaceDialog @ref="renameWorkspaceDialog"
+        WorkspaceName="@WorkspaceViewModel.Name"
+        WorkspaceNameChanged="@((name) => { /* Name property is read-only and updated via the Workspace object */ })"
+        ErrorMessage="@GetModalError(RenameModalKey)"
+        ErrorMessageChanged="(msg) => ModalStateService.SetError(RenameModalKey, msg)"
+        Workspace="WorkspaceViewModel.Workspace"
+        AllGroups="AllGroups"
+        OnRenameCompleted="HandleRenameCompleted" />
 </Modal>
 
 <style>
@@ -257,6 +239,15 @@
         display: none;
     }
 
+    /* Ensure consistent dropdown z-index */
+    .dropdown {
+        position: relative;
+    }
+    
+    .dropdown-menu {
+        z-index: 1050 !important;
+    }
+
     /* Prevent interaction with collapsed or hidden elements */
     .collapse:not(.show),
     .card-body.collapsed,
@@ -269,15 +260,10 @@
     .dropdown-menu.show {
         pointer-events: auto;
     }
-
-    /* Ensure modals are still interactive when shown */
-    .modal.show {
-        pointer-events: auto;
-    }
 </style>
 
 @code {
-    [Parameter] public Workspace Workspace { get; set; } = null!;
+    [Parameter] public WorkspaceViewModel WorkspaceViewModel { get; set; } = null!;
     [Parameter] public GlobalCustomOpenOptions GlobalOptions { get; set; } = null!;
     [Parameter] public List<ScriptInfo> AvailableScripts { get; set; } = null!;
     [Parameter] public List<WorkspaceGroup> AvailableGroups { get; set; } = null!;
@@ -292,130 +278,108 @@
     [Parameter] public EventCallback<(Workspace, string)> OnMoveToGroup { get; set; }
     [Parameter] public EventCallback OnRename { get; set; }
 
-    private bool isAddLocationModalVisible;
-    private bool isMoveToGroupModalVisible;
-    private bool isRenameModalVisible;
-    private bool IsExpanded => CardStateService.IsExpanded("workspace", Workspace.Id.ToString());
+    // Component references for forms
     private AddWorkspaceLocation? locationForm;
-    private string SelectedGroupName = string.Empty;
-    private string RenameModalId => $"renameModal_{Workspace.Name.Replace(" ", "_").ToLower()}";
-    private string NewWorkspaceName = string.Empty;
-    private string? ErrorMessage;
+    private MoveWorkspaceDialog? moveWorkspaceDialog;
+    private RenameWorkspaceDialog? renameWorkspaceDialog;
 
-    private string ModalId => $"addLocationModal_{Workspace.Name.Replace(" ", "_").ToLower()}";
-    private string MoveToGroupModalId => $"moveToGroupModal_{Workspace.Name.Replace(" ", "_").ToLower()}";
-    private string MoveToGroupModalTitle => $"Move {Workspace.Name} to Group";
+    // Modal keys for ModalStateService - centralized approach
+    private string AddLocationModalKey => ModalStateService.GetModalKey("addLocation", WorkspaceViewModel.Workspace.Id.ToString());
+    private string MoveGroupModalKey => ModalStateService.GetModalKey("moveGroup", WorkspaceViewModel.Workspace.Id.ToString());
+    private string RenameModalKey => ModalStateService.GetModalKey("rename", WorkspaceViewModel.Workspace.Id.ToString());
+    
+    // Create a helper method to get/set modal visibility to reduce duplication
+    private bool GetModalVisibility(string modalKey) => ModalStateService.IsModalVisible(modalKey);
+    private void SetModalVisibility(string modalKey, bool isVisible)
+    {
+        if (isVisible) ModalStateService.ShowModal(modalKey);
+        else ModalStateService.HideModal(modalKey);
+    }
+    
+    // Properties for binding to Modal components using the helper methods
+    private bool IsAddLocationModalVisible
+    {
+        get => GetModalVisibility(AddLocationModalKey);
+        set => SetModalVisibility(AddLocationModalKey, value);
+    }
+    
+    private bool IsMoveToGroupModalVisible
+    {
+        get => GetModalVisibility(MoveGroupModalKey);
+        set => SetModalVisibility(MoveGroupModalKey, value);
+    }
+    
+    private bool IsRenameModalVisible
+    {
+        get => GetModalVisibility(RenameModalKey);
+        set => SetModalVisibility(RenameModalKey, value);
+    }
+
+    private string? GetModalError(string modalKey) => ModalStateService.GetError(modalKey);
+    
+    private string AddLocationModalTitle => $"Add Location to {WorkspaceViewModel.Name}";
+    private string MoveToGroupModalTitle => $"Move {WorkspaceViewModel.Name} to Group";
+
+    protected override void OnParametersSet()
+    {
+        // Ensure the view model's expanded state is updated from CardStateService
+        ViewModelFactory.UpdateWorkspaceExpandedState(WorkspaceViewModel);
+    }
 
     private void ToggleExpand()
     {
-        CardStateService.ToggleExpand("workspace", Workspace.Id.ToString());
+        CardStateService.ToggleExpand("workspace", WorkspaceViewModel.Workspace.Id.ToString());
+        WorkspaceViewModel.IsExpanded = !WorkspaceViewModel.IsExpanded;
     }
-
-    private string AddLocationModalTitle => $"Add Location to {Workspace.Name}";
     
     private void ShowAddLocationModal()
     {
-        isAddLocationModalVisible = true;
-        ErrorMessage = null;
+        IsAddLocationModalVisible = true;
     }
 
     private void ShowMoveToGroupModal()
     {
-        isMoveToGroupModalVisible = true;
-        ErrorMessage = null;
+        IsMoveToGroupModalVisible = true;
     }
 
     private void ShowRenameModal()
     {
-        isRenameModalVisible = true;
-        ErrorMessage = null;
+        IsRenameModalVisible = true;
     }
 
     private async Task HandleLocationAdded(WorkspaceLocation location)
     {
-        isAddLocationModalVisible = false;
-        Workspace.Locations.Add(location);
+        IsAddLocationModalVisible = false;
+        WorkspaceViewModel.Workspace.Locations.Add(location);
         locationForm?.ResetForm();
         await OnAddLocation.InvokeAsync();
-        ErrorMessage = null;
         StateHasChanged();
     }
 
-    private async Task HandleMoveToGroup()
+    private async Task HandleMoveToGroup((Workspace workspace, string groupName) moveInfo)
     {
-        // Check if the name exists in the target group
-        var targetGroup = AvailableGroups.FirstOrDefault(g => g.Name == SelectedGroupName);
-        if (targetGroup != null && targetGroup.Workspaces.Any(w => w.Name.Equals(Workspace.Name, StringComparison.OrdinalIgnoreCase)))
-        {
-            ErrorMessage = $"A workspace with the name '{Workspace.Name}' already exists in the group '{SelectedGroupName}'.";
-            StateHasChanged();
-            return;
-        }
-
-        isMoveToGroupModalVisible = false;
-        ErrorMessage = null; // Clear any previous error message
-        await OnMoveToGroup.InvokeAsync((Workspace, SelectedGroupName));
-        SelectedGroupName = string.Empty;
+        IsMoveToGroupModalVisible = false;
+        moveWorkspaceDialog?.ResetForm();
+        await OnMoveToGroup.InvokeAsync(moveInfo);
         StateHasChanged();
     }
 
     private void DeleteLocation(WorkspaceLocation location)
     {
-        Workspace.Locations.Remove(location);
+        WorkspaceViewModel.Workspace.Locations.Remove(location);
         OnAddLocation.InvokeAsync();
-        ErrorMessage = null;
         StateHasChanged();
     }
 
     private async Task OpenLocation(WorkspaceLocation location)
     {
-        await Task.Run(() =>
-        {
-            try
-            {
-                var path = location.Path;
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = path,
-                    UseShellExecute = true
-                };
-                Process.Start(startInfo);
-            }
-            catch (Exception ex)
-            {
-                // Log the error or show a notification
-                Console.WriteLine($"Error opening location: {ex.Message}");
-            }
-        });
+        await OnOpenWorkspaceLocation.InvokeAsync((WorkspaceViewModel.Workspace, location));
     }
 
-    private async Task HandleRename()
+    private async Task HandleRenameCompleted()
     {
-        if (string.IsNullOrWhiteSpace(NewWorkspaceName))
-        {
-            ErrorMessage = "Please enter a name.";
-            StateHasChanged();
-            return;
-        }
-
-        // Check if the name exists in the same group
-        var currentGroup = AllGroups.FirstOrDefault(g => g.Name == Workspace.GroupName);
-        if (currentGroup != null && currentGroup.Workspaces.Any(w => w.Name.Equals(NewWorkspaceName, StringComparison.OrdinalIgnoreCase) && w.Id != Workspace.Id))
-        {
-            ErrorMessage = $"A workspace with the name '{NewWorkspaceName}' already exists in this group.";
-            StateHasChanged();
-            return;
-        }
-
-        // Update the workspace name
-        Workspace.Name = NewWorkspaceName;
-
-        // Close the modal and clear state
-        isRenameModalVisible = false;
-        NewWorkspaceName = string.Empty;
-        ErrorMessage = null;
-
-        // Notify parent and update UI
+        IsRenameModalVisible = false;
+        renameWorkspaceDialog?.ResetForm();
         await OnRename.InvokeAsync();
         StateHasChanged();
     }

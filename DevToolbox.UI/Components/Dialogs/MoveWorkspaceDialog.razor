@@ -1,0 +1,60 @@
+@using DevToolbox.Services.Models
+
+<div class="mb-4">
+    <label class="form-label mb-2">Select Group</label>
+    <select class="form-select bg-dark text-light border-secondary" @bind="SelectedGroupName">
+        <option value="">Select a group...</option>
+        @foreach (var group in AvailableGroups)
+        {
+            @if (group.Name != Workspace.GroupName)
+            {
+                <option value="@group.Name">@group.Name</option>
+            }
+        }
+    </select>
+    @if (!string.IsNullOrEmpty(ErrorMessage))
+    {
+        <div class="invalid-feedback d-block mt-2">
+            @ErrorMessage
+        </div>
+    }
+</div>
+<button class="btn btn-primary" @onclick="HandleMoveToGroup" disabled="@string.IsNullOrEmpty(SelectedGroupName)">
+    <i class="bi bi-folder2 me-2"></i>Move to Group
+</button>
+
+@code {
+    [Parameter] public string? ErrorMessage { get; set; }
+    [Parameter] public EventCallback<string?> ErrorMessageChanged { get; set; }
+    [Parameter] public Workspace Workspace { get; set; } = null!;
+    [Parameter] public List<WorkspaceGroup> AvailableGroups { get; set; } = new();
+    [Parameter] public EventCallback<(Workspace, string)> OnMoveToGroup { get; set; }
+
+    private string SelectedGroupName = string.Empty;
+
+    private async Task HandleMoveToGroup()
+    {
+        // Check if the name exists in the target group
+        var targetGroup = AvailableGroups.FirstOrDefault(g => g.Name == SelectedGroupName);
+        if (targetGroup != null && targetGroup.Workspaces.Any(w => w.Name.Equals(Workspace.Name, StringComparison.OrdinalIgnoreCase)))
+        {
+            await ErrorMessageChanged.InvokeAsync($"A workspace with the name '{Workspace.Name}' already exists in the group '{SelectedGroupName}'.");
+            return;
+        }
+
+        // Clear error message
+        await ErrorMessageChanged.InvokeAsync(null);
+        
+        // Move the workspace
+        await OnMoveToGroup.InvokeAsync((Workspace, SelectedGroupName));
+        
+        // Reset the selection
+        SelectedGroupName = string.Empty;
+    }
+    
+    public void ResetForm()
+    {
+        ErrorMessageChanged.InvokeAsync(null);
+        SelectedGroupName = string.Empty;
+    }
+} 

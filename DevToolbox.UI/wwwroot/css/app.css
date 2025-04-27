@@ -25,6 +25,7 @@
 /* Custom transitions for cards */
 .card {
     transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    isolation: isolate;
 }
 
 .card:hover {

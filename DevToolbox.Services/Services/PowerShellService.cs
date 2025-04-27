@@ -2,8 +2,9 @@ using System.Management.Automation;
 using System.Management.Automation.Runspaces;
 using System.Text;
 using System.Reflection;
+using DevToolbox.Services.Models;
 
-namespace DevToolbox.Services;
+namespace DevToolbox.Services.Services;
 
 public class PowerShellService
 {
@@ -32,7 +33,7 @@ public class PowerShellService
     /// <summary>
     /// Gets a list of available script files
     /// </summary>
-    public IEnumerable<ScriptInfo> GetAvailableScripts()
+    public IEnumerable<DevToolbox.Services.Models.ScriptInfo> GetAvailableScripts()
     {
         if (!Directory.Exists(_scriptsDirectory))
         {
@@ -41,7 +42,7 @@ public class PowerShellService
         
         foreach (var file in Directory.GetFiles(_scriptsDirectory, "*.ps1"))
         {
-            yield return new ScriptInfo
+            yield return new DevToolbox.Services.Models.ScriptInfo
             {
                 Name = Path.GetFileNameWithoutExtension(file),
                 FullPath = file,
@@ -208,10 +209,10 @@ public class PowerShellService
     }
     
     /// <summary>
-    /// Gets the content of a script file
+    /// Gets the content of a script
     /// </summary>
     /// <param name="scriptName">The name of the script (without extension)</param>
-    /// <returns>The script content or null if not found</returns>
+    /// <returns>The script content or null if the script doesn't exist</returns>
     public async Task<string?> GetScriptContentAsync(string scriptName)
     {
         string scriptPath = Path.Combine(_scriptsDirectory, $"{scriptName}.ps1");
@@ -221,25 +222,4 @@ public class PowerShellService
         }
         return null;
     }
-}
-
-/// <summary>
-/// Represents information about a PowerShell script file
-/// </summary>
-public class ScriptInfo
-{
-    /// <summary>
-    /// The name of the script (without extension)
-    /// </summary>
-    public string Name { get; set; } = string.Empty;
-    
-    /// <summary>
-    /// The full path to the script file
-    /// </summary>
-    public string FullPath { get; set; } = string.Empty;
-    
-    /// <summary>
-    /// The last modified date of the script file
-    /// </summary>
-    public DateTime LastModified { get; set; }
 } 

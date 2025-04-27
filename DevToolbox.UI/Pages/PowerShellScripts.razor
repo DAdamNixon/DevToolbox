@@ -1,5 +1,5 @@
 @page "/powershell"
-@namespace DevToolbox.Pages.PowerShellScripts
+@namespace DevToolbox.UI.Pages
 <div class="grid-container">
     <!-- Left Sidebar -->
     <div class="sidebar row">
@@ -13,8 +13,6 @@
         <div class="script-list d-flex gap-3 mb-4">
             @foreach (var script in FilteredScripts)
             {
-
-
                 <div class="btn btn-secondary mt-2 btn-block script-item @(script.Name == selectedScript ? "selected" : "")"
                     @onclick="() => LoadScript(script.Name)">
                     @script.Name
