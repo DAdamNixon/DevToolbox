@@ -64,6 +64,40 @@
     </div>
 </div>
 
+<style>
+    /* Match the background and styling from the PowerShell page */
+    ::deep .card {
+        background-color: #333;
+        border-color: #444;
+    }
+    
+    ::deep .card-header {
+        background-color: #2d2d2d;
+        border-color: #444;
+    }
+    
+    body {
+        background-color: #333;
+    }
+    
+    /* Make text more visible on dark background */
+    h1, h2, h3, h4, h5, h6 {
+        color: #f8f9fa;
+    }
+    
+    /* Adjust form controls */
+    .form-control {
+        background-color: #2d2d2d;
+        color: #f8f9fa;
+        border-color: #444;
+    }
+    
+    .form-control:focus {
+        background-color: #2d2d2d;
+        color: #f8f9fa;
+    }
+</style>
+
 @code {
     private DotNetObjectReference<Index>? objRef;
     private GlobalCustomOpenOptions GlobalOptions { get; set; } = new();

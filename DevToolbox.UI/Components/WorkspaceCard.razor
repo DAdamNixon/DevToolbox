@@ -130,9 +130,7 @@
 <Modal @bind-IsVisible="IsAddLocationModalVisible" Title="@AddLocationModalTitle">
     <AddWorkspaceLocation @ref="locationForm" 
         OnLocationSubmitted="HandleLocationAdded" 
-        ButtonText="Add Location"
-        ErrorMessage="@GetModalError(AddLocationModalKey)"
-        ErrorMessageChanged="(msg) => ModalStateService.SetError(AddLocationModalKey, msg)"/>
+        ButtonText="Add Location" />
 </Modal>
 
 <Modal @bind-IsVisible="IsMoveToGroupModalVisible" Title="@MoveToGroupModalTitle">
@@ -156,67 +154,10 @@
 </Modal>
 
 <style>
-    /* Base card styles */
-    .card {
-        transition: all 0.3s ease-in-out;
-        border-width: 2px !important;
-    }
     
-    .card.expanded {
-        box-shadow: 0 0 15px rgba(13, 110, 253, 0.15) !important;
-        border-color: var(--bs-primary) !important;
-    }
     
-    .card-header {
-        background-color: rgba(13, 110, 253, 0.1) !important;
-    }
-
-    /* Card body styles */
-    .card-body {
-        transition: all 0.3s ease-out;
-    }
     
-    /* Button styles */
-    .card .btn-outline-light {
-        border-width: 2px;
-        transition: all 0.2s ease-in-out;
-    }
     
-    .card .btn-outline-light:hover {
-        background-color: var(--bs-primary);
-        border-color: var(--bs-primary);
-        box-shadow: 0 0 10px rgba(13, 110, 253, 0.3);
-    }
-    
-    .dropdown-item:active {
-        background-color: var(--bs-primary);
-    }
-    
-    .card .btn-link {
-        color: var(--bs-primary);
-        transition: all 0.2s ease-in-out;
-    }
-    
-    .card .btn-link:hover {
-        color: var(--bs-primary);
-        opacity: 0.8;
-        box-shadow: 0 0 10px rgba(13, 110, 253, 0.2);
-    }
-    
-    .text-muted {
-        color: rgba(255, 255, 255, 0.5) !important;
-    }
-    
-    /* Location card styles */
-    .card .card {
-        transition: all 0.2s ease-in-out;
-    }
-    
-    .card .card:hover {
-        box-shadow: 0 4px 12px rgba(13, 110, 253, 0.15);
-        border-color: var(--bs-primary) !important;
-    }
-
     /* Path truncation styles */
     .path-truncate {
         display: block;
@@ -227,39 +168,8 @@
         white-space: nowrap;
         width: 100%;
     }
-
-    /* Modal content styles */
-    .modal-content {
-        border-width: 2px;
-        border-color: var(--bs-primary);
-    }
-
-    /* Fix dropdown toggle button */
-    .dropdown-toggle::after {
-        display: none;
-    }
-
-    /* Ensure consistent dropdown z-index */
-    .dropdown {
-        position: relative;
-    }
+   
     
-    .dropdown-menu {
-        z-index: 1050 !important;
-    }
-
-    /* Prevent interaction with collapsed or hidden elements */
-    .collapse:not(.show),
-    .card-body.collapsed,
-    [style*="display: none"],
-    [hidden] {
-        pointer-events: none;
-    }
-
-    /* Ensure dropdowns are still interactive when shown */
-    .dropdown-menu.show {
-        pointer-events: auto;
-    }
 </style>
 
 @code {

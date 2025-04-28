@@ -1,6 +1,6 @@
 param(
-    [Parameter(Position=0)]
-    [string]$targetDir = (Get-Location).Path
+    [Parameter(Position=0, Mandatory=$true)]
+    [string]$ProjectPath
 )
 
 function Find-PackageJsonDirs {
@@ -36,10 +36,10 @@ function Find-PackageJsonDirs {
     return $results
 }
 
-Write-Host "Searching for package.json files in: $targetDir" -ForegroundColor Cyan
+Write-Host "Searching for package.json files in: $ProjectPath" -ForegroundColor Cyan
 
 try {
-    $directories = Find-PackageJsonDirs -dir $targetDir
+    $directories = Find-PackageJsonDirs -dir $ProjectPath
     
     Write-Host "`nFound $($directories.Count) directories with package.json" -ForegroundColor Green
     
@@ -58,3 +58,7 @@ try {
 catch {
     Write-Error "Error: $_"
 }
+
+# Keep window open for viewing (comment this out if not needed)
+Write-Host "`nPress any key to close this window..."
+$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")

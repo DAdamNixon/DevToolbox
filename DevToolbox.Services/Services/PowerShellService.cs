@@ -3,6 +3,7 @@ using System.Management.Automation.Runspaces;
 using System.Text;
 using System.Reflection;
 using DevToolbox.Services.Models;
+using DevToolbox.Services.Services;
 
 namespace DevToolbox.Services.Services;
 
@@ -83,14 +84,18 @@ public class PowerShellService
         
         using var ps = PowerShell.Create();
         
-        // Add the script to the PowerShell object
-        ps.AddScript(scriptText);
-        
         // Add parameters if provided
         if (parameters != null && parameters.Count > 0)
         {
-            ps.AddParameters(parameters);
+            foreach (var param in parameters)
+            {
+                // Define variables in PowerShell before running the script
+                ps.AddScript($"${param.Key} = '{param.Value}'");
+            }
         }
+        
+        // Add the script to the PowerShell object
+        ps.AddScript(scriptText);
         
         // Configure output handling
         ps.Streams.Error.DataAdded += (object sender, DataAddedEventArgs e) =>
@@ -170,18 +175,47 @@ public class PowerShellService
     /// </summary>
     /// <param name="scriptName">The name of the script (without extension)</param>
     /// <param name="scriptContent">The content of the script</param>
-    /// <returns>True if successful</returns>
-    public async Task<bool> SaveScriptAsync(string scriptName, string scriptContent)
+    /// <param name="validateScript">Whether to validate the script structure before saving</param>
+    /// <returns>Result of the save operation with validation details if applicable</returns>
+    public async Task<ScriptSaveResult> SaveScriptAsync(string scriptName, string scriptContent, bool validateScript = false)
     {
+        var result = new ScriptSaveResult { Success = false };
+        
         try
         {
+            // Validate script structure if requested
+            if (validateScript)
+            {
+                var validator = new ScriptValidationService();
+                var validationResult = validator.ValidateScript(scriptContent);
+                
+                result.ValidationResult = validationResult;
+                
+                // If script has errors, don't save it
+                if (!validationResult.IsValid)
+                {
+                    result.ErrorMessage = "Script contains validation errors and was not saved.";
+                    return result;
+                }
+                
+                // If script has warnings, note them but still save
+                if (validationResult.HasWarnings)
+                {
+                    result.WarningMessage = "Script was saved but has validation warnings.";
+                }
+            }
+            
             string scriptPath = Path.Combine(_scriptsDirectory, $"{scriptName}.ps1");
             await File.WriteAllTextAsync(scriptPath, scriptContent);
-            return true;
+            
+            result.Success = true;
+            result.ScriptPath = scriptPath;
+            return result;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            return false;
+            result.ErrorMessage = ex.Message;
+            return result;
         }
     }
     

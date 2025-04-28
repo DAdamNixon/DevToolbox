@@ -138,12 +138,26 @@ namespace DevToolbox.Services.Services
         {
             if (Directory.Exists(location.Path))
             {
-                var parameters = new Dictionary<string, object>
+                try
                 {
-                    { "ProjectPath", location.Root }
-                };
+                    Console.WriteLine($"Executing script: {script.Name} on location: {location.Path}");
+                    
+                    var parameters = new Dictionary<string, object>
+                    {
+                        { "ProjectPath", location.Root }
+                    };
 
-                await _systemService.ExecuteScriptAsync(script.Name, parameters);
+                    await _systemService.ExecuteScriptAsync(script.Name, parameters);
+                    Console.WriteLine($"Script execution initiated.");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error executing script: {ex.Message}");
+                }
+            }
+            else
+            {
+                Console.WriteLine($"Location path does not exist: {location.Path}");
             }
         }
 

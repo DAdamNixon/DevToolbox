@@ -3,9 +3,12 @@
 # Removes bin, obj, node_modules, .vs folders and package-lock.json files
 
 param(
-    [Parameter(Mandatory=$true)]
+    [Parameter(Position=0, Mandatory=$true)]
     [string]$ProjectPath
 )
+
+# Trim quotes if they exist in the path
+$ProjectPath = $ProjectPath.Trim("'", '"')
 
 # Ensure the path exists
 if (-not (Test-Path -Path $ProjectPath)) {

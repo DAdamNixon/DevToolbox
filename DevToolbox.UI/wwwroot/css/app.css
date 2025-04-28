@@ -22,14 +22,88 @@
     border-radius: 0.5rem;
 }
 
+.text-muted {
+    color: rgba(255, 255, 255, 0.5) !important;
+}
+
 /* Custom transitions for cards */
 .card {
+    border-width: 2px !important;
     transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
-    isolation: isolate;
 }
 
 .card:hover {
-    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(13, 110, 253, 0.15);
+    border-color: var(--bs-primary) !important;
+}
+
+.card.expanded {
+    box-shadow: 0 0 15px rgba(13, 110, 253, 0.15) !important;
+    border-color: var(--bs-primary) !important;
+}
+
+.card-header {
+    background-color: rgba(13, 110, 253, 0.1) !important;
+}
+
+/* Card body styles */
+.card-body {
+    transition: all 0.3s ease-out;
+}
+
+/* Button styles */
+.card .btn-link {
+    color: var(--bs-primary);
+    transition: all 0.2s ease-in-out;
+}
+
+.card .btn-link:hover {
+    color: var(--bs-primary);
+    opacity: 0.8;
+    box-shadow: 0 0 10px rgba(13, 110, 253, 0.2);
+}
+
+.card .btn-outline-light {
+    border-width: 2px;
+    transition: all 0.2s ease-in-out;
+}
+
+.card .btn-outline-light:hover {
+    background-color: var(--bs-primary);
+    border-color: var(--bs-primary);
+    box-shadow: 0 0 10px rgba(13, 110, 253, 0.3);
+}
+
+/* Fix dropdown toggle button */
+.dropdown-toggle::after {
+    display: none;
+}
+
+/* Ensure consistent dropdown z-index */
+.dropdown {
+    position: relative;
+}
+
+.dropdown-menu {
+    z-index: 1050 !important;
+}
+
+/* Prevent interaction with collapsed or hidden elements */
+.collapse:not(.show),
+.card-body.collapsed,
+[style*="display: none"],
+[hidden] {
+    pointer-events: none;
+}
+
+.card .btn-outline-light:hover {
+    background-color: var(--bs-primary);
+    border-color: var(--bs-primary);
+    box-shadow: 0 0 10px rgba(13, 110, 253, 0.3);
+}
+/* Ensure dropdowns are still interactive when shown */
+.dropdown-menu.show {
+    pointer-events: auto;
 }
 
 /* Ensure consistent spacing in workspace cards */
@@ -59,7 +133,7 @@
 /* Collapsible workspace form */
 .card-header .btn-link {
     color: inherit;
-    min-width: 200px;
+    min-width: auto;
 }
 
 .card-header .btn-link:hover {
@@ -74,8 +148,26 @@
     transform: rotate(180deg);
 }
 
+.dropdown-item:active {
+    background-color: var(--bs-primary);
+}
+
+input.form-control {
+    background-color: var(--bs-dark);
+    border-color: var(--bs-secondary);
+    color: var(--bs-light);
+    border-width: 2px;
+}
+
+input.form-control:focus {
+    background-color: var(--bs-dark);
+    border-color: var(--bs-primary);
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+    color: var(--bs-light);
+}
+
 /* Add New Workspace card specific styles */
 #AddWorkspaceCard {
     width: fit-content;
     min-width: 300px;
-} 
+}

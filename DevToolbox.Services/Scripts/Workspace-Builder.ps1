@@ -1,11 +1,12 @@
 param(
-    [Parameter(Mandatory=$true)]
-    [string]$RootDirectory,
+    [Parameter(Position=0, Mandatory=$true)]
+    [string]$ProjectPath,
+    [Parameter(Position=1)]
     [string]$OutputFile = "workspaceGroups.yaml"
 )
 
 # Find all solution files and group by name
-$solutionGroups = Get-ChildItem -Path $RootDirectory -Filter "*.sln" -Recurse | 
+$solutionGroups = Get-ChildItem -Path $ProjectPath -Filter "*.sln" -Recurse | 
     Group-Object { [System.IO.Path]::GetFileNameWithoutExtension($_.Name) }
 
 # Initialize YAML structure
@@ -55,3 +56,7 @@ foreach ($group in $solutionGroups) {
 $yaml | Out-File -FilePath $OutputFile -Encoding UTF8
 
 Write-Host "YAML configuration has been written to $OutputFile"
+
+# Keep window open for viewing
+Write-Host "`nPress any key to close this window..."
+$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")

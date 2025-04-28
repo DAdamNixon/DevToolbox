@@ -19,6 +19,11 @@
                 </div>
             }
         </div>
+        <div class="col-12">
+            <button class="btn btn-success btn-block mb-3" @onclick="CreateNewScript">
+                <i class="bi bi-plus-circle"></i> New Script
+            </button>
+        </div>
     </div>
 
     <!-- Main Content -->
@@ -28,51 +33,180 @@
             <div class="script-details">
                 <h2>@selectedScript</h2>
                 
+                <div class="validation-options mb-2">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="enableValidation" @bind="enableScriptValidation">
+                        <label class="form-check-label" for="enableValidation">
+                            Enable Script Validation
+                        </label>
+                    </div>
+                    <button class="btn btn-sm btn-outline-info" @onclick="ValidateCurrentScript">
+                        Validate Script
+                    </button>
+                </div>
+                
+                @if (showValidationResults)
+                {
+                    <div class="validation-results mb-3">
+                        @if (validationErrors.Any())
+                        {
+                            <div class="alert alert-danger">
+                                <h5>Validation Errors:</h5>
+                                <ul>
+                                    @foreach (var error in validationErrors)
+                                    {
+                                        <li>@error</li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+                        
+                        @if (validationWarnings.Any())
+                        {
+                            <div class="alert alert-warning">
+                                <h5>Validation Warnings:</h5>
+                                <ul>
+                                    @foreach (var warning in validationWarnings)
+                                    {
+                                        <li>@warning</li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+                    </div>
+                }
+                
                 <div class="script-editor">
                     <textarea @bind="scriptText" 
-                        rows="10" 
+                        rows="15" 
                         class="form-control code-editor">
                     </textarea>
                 </div>
 
-                <div class="parameters-section">
+                <div class="parameters-section mt-3">
                     <div class="form-group">
-                        <label>Project Path:</label>
-                        <input type="text" @bind="projectPath" class="form-control" />
+                        <label>Test Path Parameters:</label>
+                        <input type="text" @bind="projectPath" class="form-control" 
+                               placeholder="Enter a path to use when testing the script" />
                     </div>
                 </div>
 
-                <div class="output-section">
+                <div class="output-section mt-3">
                     @if (!string.IsNullOrEmpty(error))
                     {
-                        <div class="error-message">
-                            @error
+                        <div class="alert alert-danger">
+                            <h5>Error:</h5>
+                            <div class="error-message">
+                                @error
+                            </div>
                         </div>
                     }
                     @if (!string.IsNullOrEmpty(output))
                     {
-                        <pre class="output-text">@output</pre>
+                        <div class="alert alert-success">
+                            <h5>Output:</h5>
+                            <pre class="output-text">@output</pre>
+                        </div>
                     }
                 </div>
 
-                <div class="action-buttons">
+                <div class="action-buttons mt-3">
                     <button class="btn btn-primary" @onclick="SaveScript" disabled="@isExecuting">
-                        Save
+                        <i class="bi bi-save"></i> Save
                     </button>
                     <button class="btn btn-success" @onclick="ExecuteScript" disabled="@isExecuting">
-                        @(isExecuting ? "Running..." : "Run Script")
+                        <i class="bi bi-play"></i> @(isExecuting ? "Running..." : "Run Script")
                     </button>
                     <button class="btn btn-warning" @onclick="ExecuteScriptWithParams" disabled="@isExecuting">
-                        Run With Parameters
+                        <i class="bi bi-play-fill"></i> Run With Parameters
                     </button>
                     <button class="btn btn-danger" @onclick="DeleteScript" disabled="@isExecuting">
-                        Delete
+                        <i class="bi bi-trash"></i> Delete
                     </button>
                     <button class="btn btn-secondary" @onclick="ClearOutput" disabled="@isExecuting">
-                        Clear Output
+                        <i class="bi bi-eraser"></i> Clear Output
                     </button>
                 </div>
             </div>
         }
+        else
+        {
+            <div class="text-center mt-5">
+                <h3>Select a script from the sidebar or create a new one</h3>
+                <button class="btn btn-success mt-3" @onclick="CreateNewScript">
+                    <i class="bi bi-plus-circle"></i> Create New Script
+                </button>
+            </div>
+        }
     </div>
 </div>
+
+<style>
+    .grid-container {
+        display: grid;
+        grid-template-columns: 250px 1fr;
+        gap: 20px;
+        height: calc(100vh - 140px);
+    }
+    
+    .sidebar {
+        padding: 15px;
+        background-color: #2d2d2d;
+        border-radius: 5px;
+        height: 100%;
+        overflow-y: auto;
+    }
+    
+    .script-item {
+        text-align: left;
+        margin-bottom: 5px;
+    }
+    
+    .script-item.selected {
+        background-color: #007bff;
+    }
+    
+    .main-content {
+        padding: 15px;
+        background-color: #333;
+        border-radius: 5px;
+        height: 100%;
+        overflow-y: auto;
+    }
+    
+    .script-editor {
+        margin-bottom: 15px;
+    }
+    
+    .code-editor {
+        font-family: 'Consolas', 'Courier New', monospace;
+        resize: vertical;
+        background-color: #2d2d2d;
+        color: #f8f9fa;
+        border: 1px solid #444;
+    }
+    
+    .output-text {
+        background-color: #2d2d2d;
+        padding: 10px;
+        border-radius: 5px;
+        max-height: 200px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+    }
+    
+    .action-buttons {
+        display: flex;
+        gap: 10px;
+    }
+    
+    .error-message {
+        color: #dc3545;
+    }
+    
+    .validation-options {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+</style>

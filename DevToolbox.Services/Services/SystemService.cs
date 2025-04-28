@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using DevToolbox.Services.Interfaces;
 using DevToolbox.Services.Models;
+using System.Text;
 
 namespace DevToolbox.Services.Services
 {
@@ -148,7 +149,45 @@ namespace DevToolbox.Services.Services
         {
             try
             {
-                await _powerShellService.ExecuteScriptFileAsync(scriptName, parameters);
+                Console.WriteLine($"SystemService: Executing PowerShell script: {scriptName}");
+                
+                string scriptPath = Path.Combine(_powerShellService.ScriptsDirectory, $"{scriptName}.ps1");
+                
+                if (!File.Exists(scriptPath))
+                {
+                    Console.WriteLine($"Script file '{scriptName}.ps1' not found.");
+                    return;
+                }
+                
+                // Simplified for just ProjectPath
+                string projectPath = parameters.ContainsKey("ProjectPath") ? parameters["ProjectPath"].ToString() : "";
+                if (string.IsNullOrEmpty(projectPath))
+                {
+                    Console.WriteLine("ProjectPath parameter is required but was not provided or empty.");
+                    return;
+                }
+                
+                // Build the PowerShell command with parameters
+                var paramString = new StringBuilder();
+                foreach (var param in parameters)
+                {
+                    // Properly escape single quotes in values by doubling them
+                    string escapedValue = param.Value.ToString().Replace("'", "''");
+                    paramString.Append($"-{param.Key} '{escapedValue}' ");
+                }
+                
+                // Start PowerShell with the script and parameters
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    // -NoExit keeps the window open after script execution
+                    Arguments = $"-NoExit -ExecutionPolicy Bypass -File \"{scriptPath}\" {paramString}",
+                    UseShellExecute = true,
+                    CreateNoWindow = false
+                };
+                
+                Process.Start(startInfo);
+                Console.WriteLine($"PowerShell script '{scriptName}' launched in a new terminal window.");
             }
             catch (Exception ex)
             {

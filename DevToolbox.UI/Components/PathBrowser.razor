@@ -3,17 +3,25 @@
 
 <div class="path-browser">
     <div class="input-group">
-        <input type="text" class="form-control bg-dark text-light border-secondary" 
+        <input type="text" class="form-control" 
                value="@SelectedPath" 
                readonly 
                placeholder="Select a path..."
                @onclick="OpenFileBrowser" />
-        <button class="btn btn-outline-light" @onclick="OpenFileBrowser" title="Select a file">
-            <i class="bi bi-file-earmark"></i>
-        </button>
-        <button class="btn btn-outline-light" @onclick="OpenFolderBrowser" title="Select a folder">
-            <i class="bi bi-folder2"></i>
-        </button>
+
+        @if (isFileSelector)
+        {
+            <button class="btn btn-outline-light" @onclick="OpenFileBrowser" title="Select a file">
+                <i class="bi bi-file-earmark"></i>
+            </button>
+        }
+
+        @if (isFolderSelector)
+        {
+            <button class="btn btn-outline-light" @onclick="OpenFolderBrowser" title="Select a folder">
+                <i class="bi bi-folder2"></i>
+            </button>
+        }
     </div>
     @if (!string.IsNullOrEmpty(ErrorMessage))
     {
@@ -33,6 +41,12 @@
 
     [Parameter]
     public string Filter { get; set; } = "All Files (*.*)|*.*";
+
+    [Parameter]
+    public bool isFileSelector { get; set; } = true;
+
+    [Parameter]
+    public bool isFolderSelector { get; set; } = true;
 
     private string ErrorMessage { get; set; } = string.Empty;
 

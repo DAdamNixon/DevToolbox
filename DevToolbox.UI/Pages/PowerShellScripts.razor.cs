@@ -18,6 +18,12 @@ namespace DevToolbox.UI.Pages
         private bool isExecuting = false;
         private string projectPath = "";
         private string newScriptName = "";
+        
+        // Validation related properties
+        private bool enableScriptValidation = true;
+        private List<string> validationErrors = new();
+        private List<string> validationWarnings = new();
+        private bool showValidationResults = false;
 
         [Inject] PowerShellService powerShellService {get; set;}
         private string searchText = "";
@@ -52,6 +58,9 @@ namespace DevToolbox.UI.Pages
                 scriptText = "";
                 error = $"Could not load script '{name}'.";
             }
+            
+            // Clear validation results when loading a new script
+            ClearValidation();
         }
         
         private IEnumerable<ScriptInfo> FilteredScripts => availableScripts
@@ -66,16 +75,43 @@ namespace DevToolbox.UI.Pages
                 return;
             }
             
-            if (await powerShellService.SaveScriptAsync(selectedScript, scriptText))
+            ClearValidation();
+            
+            var result = await powerShellService.SaveScriptAsync(selectedScript, scriptText, enableScriptValidation);
+            
+            if (result.Success)
             {
                 await LoadScripts();
                 output = $"Script '{selectedScript}' saved successfully.";
                 error = "";
+                
+                // Show validation warnings if any
+                if (result.ValidationResult != null)
+                {
+                    validationWarnings = result.ValidationResult.ValidationWarnings;
+                    validationErrors = result.ValidationResult.ValidationErrors;
+                    showValidationResults = validationWarnings.Any() || validationErrors.Any();
+                }
             }
             else
             {
-                error = $"Failed to save script '{selectedScript}'.";
+                error = $"Failed to save script '{selectedScript}'. {result.ErrorMessage}";
+                
+                // Show validation errors if any
+                if (result.ValidationResult != null)
+                {
+                    validationWarnings = result.ValidationResult.ValidationWarnings;
+                    validationErrors = result.ValidationResult.ValidationErrors;
+                    showValidationResults = true;
+                }
             }
+        }
+        
+        private void ClearValidation()
+        {
+            validationErrors.Clear();
+            validationWarnings.Clear();
+            showValidationResults = false;
         }
         
         private async Task DeleteScript()
@@ -102,12 +138,48 @@ namespace DevToolbox.UI.Pages
         
         private async Task CreateNewScript()
         {
-            // Create a simple script template
-            selectedScript = "NewScript" + DateTime.Now.ToString("yyyyMMddHHmmss");
-            scriptText = "# New PowerShell Script\n# Created: " + DateTime.Now.ToString("g") + "\n\n# Add your code here\n";
+            // Create a simple script template from the ScriptTemplate.ps1
+            string templateName = "ScriptTemplate";
+            var templateContent = await powerShellService.GetScriptContentAsync(templateName);
             
-            // Save it immediately
-            await SaveScript();
+            if (string.IsNullOrEmpty(templateContent))
+            {
+                // Fallback to basic template if template file doesn't exist
+                templateContent = 
+@"param(
+    [Parameter(Mandatory=$true)]
+    [string]$ProjectPath,
+    [string]$LocationPath,
+    [string]$filePath,
+    [string]$RootDirectory
+)
+
+# New PowerShell Script
+# Created: " + DateTime.Now.ToString("g") + @"
+
+# Script logic goes here
+
+# Keep window open for viewing
+Write-Host ""`nPress any key to close this window...""
+$null = $Host.UI.RawUI.ReadKey(""NoEcho,IncludeKeyDown"")";
+            }
+            
+            selectedScript = "NewScript" + DateTime.Now.ToString("yyyyMMddHHmmss");
+            scriptText = templateContent;
+            
+            // Save it immediately, but don't validate it since it's a template
+            var result = await powerShellService.SaveScriptAsync(selectedScript, scriptText, false);
+            
+            if (result.Success)
+            {
+                await LoadScripts();
+                output = $"New script '{selectedScript}' created successfully.";
+                error = "";
+            }
+            else
+            {
+                error = $"Failed to create script: {result.ErrorMessage}";
+            }
         }
         
         private async Task ExecuteScript()
@@ -155,6 +227,38 @@ namespace DevToolbox.UI.Pages
             }
         }
         
+        private void ClearOutput()
+        {
+            output = "";
+            error = "";
+        }
+        
+        private void ToggleValidation()
+        {
+            enableScriptValidation = !enableScriptValidation;
+        }
+        
+        private async Task ValidateCurrentScript()
+        {
+            if (string.IsNullOrEmpty(scriptText))
+                return;
+                
+            ClearValidation();
+            
+            var validator = new ScriptValidationService();
+            var result = validator.ValidateScript(scriptText);
+            
+            validationErrors = result.ValidationErrors;
+            validationWarnings = result.ValidationWarnings;
+            showValidationResults = true;
+            
+            if (result.IsValid && !result.HasWarnings)
+            {
+                output = "Script validation passed successfully!";
+                error = "";
+            }
+        }
+        
         private async Task RunCleanArtifacts()
         {
             if (string.IsNullOrWhiteSpace(projectPath))
@@ -178,12 +282,6 @@ namespace DevToolbox.UI.Pages
             {
                 isExecuting = false;
             }
-        }
-        
-        private void ClearOutput()
-        {
-            output = "";
-            error = "";
         }
     }
 }

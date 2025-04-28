@@ -91,26 +91,6 @@
 </Modal>
 
 <style>
-    /* Base card styles */
-    .card {
-        transition: all 0.3s ease-in-out;
-        border-width: 2px !important;
-    }
-    
-    .card.expanded {
-        box-shadow: 0 0 15px rgba(13, 110, 253, 0.15) !important;
-        border-color: var(--bs-primary) !important;
-    }
-    
-    .card-header {
-        background-color: rgba(13, 110, 253, 0.1) !important;
-    }
-    
-    /* Card body styles */
-    .card-body {
-        transition: all 0.3s ease-out;
-    }
-
     .card-body.expanded {
         max-height: 2000px;
         opacity: 1;
@@ -121,67 +101,6 @@
         opacity: 0;
         padding: 0;
         margin: 0;
-    }
-
-    /* Button styles */
-    .card .btn-outline-light:hover {
-        background-color: var(--bs-primary);
-        border-color: var(--bs-primary);
-        box-shadow: 0 0 10px rgba(13, 110, 253, 0.3);
-    }
-    
-    .dropdown-item:active {
-        background-color: var(--bs-primary);
-    }
-    
-    .card .btn-link {
-        color: var(--bs-primary);
-        transition: all 0.2s ease-in-out;
-    }
-    
-    .card .btn-link:hover {
-        color: var(--bs-primary);
-        opacity: 0.8;
-        box-shadow: 0 0 10px rgba(13, 110, 253, 0.2);
-    }
-
-    /* Form control styles */
-    .form-control:focus {
-        border-color: var(--bs-primary);
-        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
-    }
-    
-    .input-group-text {
-        border-width: 2px;
-    }
-
-    /* Search bar styles */
-    .input-group {
-        transition: all 0.3s ease-out;
-    }
-
-    /* Add workspace button card */
-    .card .card {
-        transition: all 0.2s ease-in-out;
-    }
-    
-    .card .card:hover {
-        box-shadow: 0 4px 12px rgba(13, 110, 253, 0.15);
-        border-color: var(--bs-primary) !important;
-    }
-
-    /* Main card hover effect */
-    .card:hover {
-        transform: translateY(-2px);
-    }
-
-    /* Ensure consistent dropdown z-index */
-    .dropdown {
-        position: relative;
-    }
-    
-    .dropdown-menu {
-        z-index: 1050 !important;
     }
 </style>
 
