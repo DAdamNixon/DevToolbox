@@ -1,13 +1,13 @@
- @using System.Windows.Forms
+@using System.Windows.Forms
 @using System.IO
 
 <div class="path-browser">
     <div class="input-group">
         <input type="text" class="form-control" 
-               value="@SelectedPath" 
-               readonly 
-               placeholder="Select a path..."
-               @onclick="OpenFileBrowser" />
+                value="@SelectedPath" 
+                readonly 
+                placeholder="Select a path..."
+                @onclick="OpenFileBrowser" />
 
         @if (isFileSelector)
         {

@@ -10,7 +10,7 @@ namespace DevToolbox.UI
         public MainWindow(IServiceProvider serviceProvider)
         {
             // Set DPI awareness for better scaling
-            // SetProcessDPIAware();
+            SetProcessDPIAware();
 
             InitializeComponent();
 

@@ -4,6 +4,7 @@
 @using DevToolbox.Services.Models
 @using DevToolbox.Services.Services
 @using DevToolbox.UI.Components
+@using DevToolbox.UI.Components.Dialogs
 @using DevToolbox.UI.Services
 @using DevToolbox.UI.Models
 @using Microsoft.JSInterop
@@ -11,6 +12,7 @@
 @using Microsoft.Extensions.Configuration
 @inject CardStateService CardStateService
 @inject ViewModelFactory ViewModelFactory
+@inject ModalStateService ModalStateService
 @inject IYamlStorageService YamlStorage
 @inject DirectoryStructureService DirectoryService
 @inject PowerShellService PowerShellService
@@ -56,13 +58,27 @@
                         OnAddWorkspace="SaveWorkspaces"
                         OnMoveToGroup="HandleMoveToGroup"/>
                 }
-                <AddWorkspaceGroupCard 
-                    ExistingGroups="WorkspaceService.WorkspaceGroups"
-                    OnGroupCreated="HandleGroupCreated" />
+                
+                <div class="text-center mb-4">
+                    <button class="btn btn-dark-theme" @onclick="ShowAddGroupModal">
+                        <i class="bi bi-folder-plus me-2"></i>Add New Group
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 </div>
+
+<Modal @bind-IsVisible="IsAddGroupModalVisible" Title="Create New Group">
+    <AddWorkspaceGroupDialog 
+        @ref="addGroupDialog"
+        GroupName="@NewGroupName"
+        GroupNameChanged="(name) => NewGroupName = name"
+        ErrorMessage="@GetModalError(AddGroupModalKey)"
+        ErrorMessageChanged="(msg) => ModalStateService.SetError(AddGroupModalKey, msg)"
+        ExistingGroups="WorkspaceService.WorkspaceGroups"
+        OnGroupCreated="HandleGroupCreated" />
+</Modal>
 
 <style>
     /* Match the background and styling from the PowerShell page */
@@ -106,6 +122,25 @@
     private List<WorkspaceGroupViewModel> GroupViewModels { get; set; } = new();
     private ElementReference searchInput;
     private string searchText = "";
+    private string NewGroupName = string.Empty;
+
+    // Component reference for the dialog
+    private AddWorkspaceGroupDialog? addGroupDialog;
+
+    // Modal management
+    private string AddGroupModalKey => ModalStateService.GetModalKey("addGroup", "main");
+    
+    private bool IsAddGroupModalVisible
+    {
+        get => ModalStateService.IsModalVisible(AddGroupModalKey);
+        set 
+        {
+            if (value) ModalStateService.ShowModal(AddGroupModalKey);
+            else ModalStateService.HideModal(AddGroupModalKey);
+        }
+    }
+
+    private string? GetModalError(string modalKey) => ModalStateService.GetError(modalKey);
     
     private List<WorkspaceGroupViewModel> FilteredGroupViewModels => string.IsNullOrWhiteSpace(searchText) 
         ? GroupViewModels 
@@ -153,12 +188,23 @@
         StateHasChanged();
     }
 
+    private void ShowAddGroupModal()
+    {
+        NewGroupName = string.Empty;
+        IsAddGroupModalVisible = true;
+    }
+
     private async Task HandleGroupCreated(WorkspaceGroup group)
     {
         WorkspaceService.WorkspaceGroups.Add(group);
         
         // Add the new group as a view model
         GroupViewModels.Add(ViewModelFactory.CreateWorkspaceGroupViewModel(group));
+        
+        // Close modal and clear form
+        IsAddGroupModalVisible = false;
+        NewGroupName = string.Empty;
+        addGroupDialog?.ResetForm();
         
         await SaveWorkspaces();
         StateHasChanged();

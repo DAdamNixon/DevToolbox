@@ -1,0 +1,66 @@
+@using DevToolbox.Services.Models
+
+<div class="mb-4">
+    <label class="form-label mb-2">Group Name</label>
+    <input type="text" 
+        class="form-control" 
+        @bind="GroupName" 
+        placeholder="Enter unique group name" />
+    @if (!string.IsNullOrEmpty(ErrorMessage))
+    {
+        <div class="invalid-feedback d-block mt-2">
+            @ErrorMessage
+        </div>
+    }
+</div>
+<button class="btn btn-primary" @onclick="HandleCreateGroup" disabled="@(!CanCreateGroup)">
+    <i class="bi bi-folder-plus me-2"></i>Create Group
+</button>
+
+@code {
+    [Parameter] public string GroupName { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> GroupNameChanged { get; set; }
+    [Parameter] public string? ErrorMessage { get; set; }
+    [Parameter] public EventCallback<string?> ErrorMessageChanged { get; set; }
+    [Parameter] public List<WorkspaceGroup> ExistingGroups { get; set; } = new();
+    [Parameter] public EventCallback<WorkspaceGroup> OnGroupCreated { get; set; }
+
+    private bool CanCreateGroup => !string.IsNullOrWhiteSpace(GroupName);
+
+    private async Task HandleCreateGroup()
+    {
+        if (string.IsNullOrWhiteSpace(GroupName))
+        {
+            await ErrorMessageChanged.InvokeAsync("Please enter a group name.");
+            return;
+        }
+
+        if (ExistingGroups.Any(g => g.Name.Equals(GroupName, StringComparison.OrdinalIgnoreCase)))
+        {
+            await ErrorMessageChanged.InvokeAsync("A group with this name already exists.");
+            return;
+        }
+
+        var newGroup = new WorkspaceGroup
+        {
+            Id = ExistingGroups.Any() ? ExistingGroups.Max(g => g.Id) + 1 : 1,
+            Name = GroupName,
+            Workspaces = new List<Workspace>()
+        };
+
+        // Clear error message
+        await ErrorMessageChanged.InvokeAsync(null);
+        
+        // Reset form
+        await GroupNameChanged.InvokeAsync(string.Empty);
+        
+        // Notify parent
+        await OnGroupCreated.InvokeAsync(newGroup);
+    }
+
+    public void ResetForm()
+    {
+        GroupName = string.Empty;
+        ErrorMessage = null;
+    }
+}

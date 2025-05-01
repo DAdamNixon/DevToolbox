@@ -166,6 +166,28 @@ input.form-control:focus {
     color: var(--bs-light);
 }
 
+/* Custom dark theme button styling */
+.btn-dark-theme {
+    background-color: #2d2d2d;
+    color: #f8f9fa;
+    border: 2px solid #444;
+    padding: 8px 16px;
+    transition: all 0.3s ease;
+}
+
+.btn-dark-theme:hover {
+    background-color: #3d3d3d;
+    border-color: #666;
+    color: #ffffff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.btn-dark-theme:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
 /* Add New Workspace card specific styles */
 #AddWorkspaceCard {
     width: fit-content;
