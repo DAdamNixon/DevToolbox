@@ -1,35 +1,176 @@
 @page "/logs"
+@using DevToolbox.Services.Interfaces
+@using DevToolbox.Services.Models
+@inject ILogFileService LogFileService
 
 <div class="container my-4">
     <h1 class="mb-3">Log Viewer</h1>
     <p class="lead mb-4">View and analyze application logs.</p>
-    
+
     <div class="card mb-4">
         <div class="card-body">
             <div class="row g-3">
-                <div class="col-md-6">
-                    <input type="text" class="form-control" @bind="SearchText" @bind:event="oninput" placeholder="Search logs..." />
-                </div>
-                
                 <div class="col-md-2">
-                    <button class="btn btn-primary w-100" @onclick="ApplyFilters">Apply Filters</button>
+                    <select class="form-select" @bind="selectedTemplateName">
+                        @foreach (var template in availableTemplates)
+                        {
+                            <option value="@template.Name">@template.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select" @bind="logLocationPath">
+                        @foreach (var location in logLocations)
+                        {
+                            <option value="@location.Path">@location.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <input type="date" class="form-control" @bind="startDate" />
+                </div>
+                <div class="col-md-2">
+                    <input type="date" class="form-control" @bind="endDate" />
+                </div>
+                <div class="col-md-2">
+                    <input class="form-control" list="logFiles" placeholder="Log file..." @bind="logFile" />
+                    <datalist id="logFiles">
+                        @foreach (var file in availableLogFiles)
+                        {
+                            <option value="@file"></option>
+                        }
+                    </datalist>
+                </div>
+                <div class="col-md-1">
+                    <button class="btn btn-primary w-100" @onclick="SearchLogFiles" disabled="@isLoading">Search</button>
+                </div>
+            </div>
+            <div class="row mt-3">
+                <div class="col-md-6">
+                    <input type="text" class="form-control" @bind="tableSearch" @bind:event="oninput" @onkeyup="ApplyFilters" placeholder="Search table..." />
                 </div>
             </div>
         </div>
     </div>
-    
-    <div class="card">
-        <div class="card-body text-center py-5">
-            <p class="text-muted mb-0">No logs to display. Adjust your filters or check back later.</p>
+
+    @if (isLoading)
+    {
+        <div class="text-center my-5">
+            <img src="images/loading.gif" alt="Loading..." />
         </div>
-    </div>
+    }
+    else if (filteredLogLines.Count == 0)
+    {
+        <div class="card">
+            <div class="card-body text-center py-5">
+                <p class="text-muted mb-0">No logs to display. Adjust your filters or check back later.</p>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="card-body">
+                <div style="max-height: 500px; overflow: auto;">
+                    <table class="table table-striped table-hover" style="min-width: 1200px;">
+                        <thead class="table-dark">
+                            <tr>
+                                @foreach (var col in tableColumns)
+                                {
+                                    <th style="position: sticky; top: 0; background: #212529; z-index: 2; white-space: nowrap; border: 1px solid black; padding: 5px;">@col</th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var logLine in filteredLogLines)
+                            {
+                                <tr class="table-light">
+                                    @foreach (var col in tableColumns)
+                                    {
+                                        <td style="white-space: nowrap; border: 1px solid black; padding: 5px;">@logLine.GetValueOrDefault(col, "")</td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
 </div>
 
 @code {
-    private string SearchText { get; set; } = string.Empty;
+    private string logLocationPath = string.Empty;
+    private List<LogLocation> logLocations = new();
+    private DateTime startDate = DateTime.Today;
+    private DateTime endDate = DateTime.Today;
+    private string logFile = string.Empty;
+    private string tableSearch = string.Empty;
+    private List<string> availableLogFiles = new();
+    private List<LogTemplateIndexEntry> availableTemplates = new();
+    private string selectedTemplateName = "";
+    private List<Dictionary<string, string>> originalLogLines = new();
+    private List<Dictionary<string, string>> filteredLogLines = new();
+    private List<string> tableColumns = new();
+    private bool isLoading = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        logLocations = await LogFileService.GetLogLocationsAsync();
+        availableTemplates = await LogFileService.GetAvailableLogFileTemplatesAsync();
+        selectedTemplateName = availableTemplates.FirstOrDefault()?.Name ?? string.Empty;
+        logLocationPath = logLocations?.FirstOrDefault()?.Path ?? string.Empty;
+        await UpdateTableColumns();
+    }
+
+    private async Task SearchLogFiles()
+    {
+        isLoading = true;
+        StateHasChanged();
+        // You need to load the template file to get columns
+        var templateEntry = availableTemplates.FirstOrDefault(t => t.Name == selectedTemplateName);
+        if (templateEntry == null)
+        {
+            originalLogLines = new();
+            filteredLogLines = new();
+            tableColumns = new();
+            isLoading = false;
+            StateHasChanged();
+            return;
+        }
+        var template = await LogFileService.LoadTemplateAsync(templateEntry.File);
+        //tableColumns = template?.Columns ?? new();
+        originalLogLines = await LogFileService.SearchLogFilesAsync(logFile, logLocationPath, startDate, endDate, templateEntry.Name);
+        tableColumns = originalLogLines?
+             .OrderByDescending(l => l.Count)
+             .FirstOrDefault()?.Keys.ToList() ?? new List<string>();
+        ApplyFilters();
+        isLoading = false;
+        StateHasChanged();
+    }
 
     private void ApplyFilters()
     {
-        // TODO: Implement when services are ready
+        if (string.IsNullOrWhiteSpace(tableSearch))
+        {
+            filteredLogLines = new List<Dictionary<string, string>>(originalLogLines);
+        }
+        else
+        {
+            filteredLogLines = originalLogLines.Where(l =>
+                tableColumns.Any(col => l.GetValueOrDefault(col, "").Contains(tableSearch, StringComparison.OrdinalIgnoreCase))
+            ).ToList();
+        }
+        StateHasChanged();
+    }
+
+    private async Task UpdateTableColumns()
+    {
+        var templateEntry = availableTemplates.FirstOrDefault(t => t.Name == selectedTemplateName);
+        if (templateEntry != null)
+        {
+            var template = await LogFileService.LoadTemplateAsync(templateEntry.File);
+            tableColumns = template?.Columns ?? new();
+        }
     }
 }

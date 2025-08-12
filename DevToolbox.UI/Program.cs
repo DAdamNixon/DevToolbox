@@ -41,7 +41,8 @@ namespace DevToolbox.UI
             services.AddScoped<IConfigurationService, ConfigurationService>();
             services.AddScoped<IScriptExecutionService, ScriptExecutionService>();
             services.AddScoped<IYamlStorageService, YamlStorageService>();
-            
+            services.AddScoped<ILogFileService, LogFileService>();
+
             // Register UI-specific services
             services.AddScoped<ViewModelFactory>();
             services.AddScoped<ModalStateService>();
