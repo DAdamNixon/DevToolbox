@@ -1,0 +1,120 @@
+﻿@page "/config_editor"
+
+<div class="container my-4">
+    <h1 class="mb-3">Config Editor</h1>
+    <p class="lead mb-4">Choose configuration files and edit their key-value pairs.</p>
+
+    <!-- Mode Toggle -->
+    <div class="card mb-4">
+        <div class="card-body d-flex justify-content-between align-items-center">
+            <div>
+                <strong>Mode:</strong>
+                <div class="form-check form-check-inline ms-2">
+                    <input class="form-check-input" type="radio" name="mode" id="basicMode" checked>
+                    <label class="form-check-label" for="basicMode">Basic (Single File)</label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" name="mode" id="advancedMode">
+                    <label class="form-check-label" for="advancedMode">Advanced (Multi-File)</label>
+                </div>
+            </div>
+            <button class="btn btn-primary btn-sm">Apply</button>
+        </div>
+    </div>
+
+    <!-- File Selection -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="mb-3">Select File(s)</h5>
+            <div class="row g-3">
+                <!-- Single File Dropdown -->
+                <div class="col-md-4">
+                    <select class="form-select">
+                        <option>web.config</option>
+                        <option>appsettings.json</option>
+                        <option>logging.config</option>
+                        <option>custom.config</option>
+                    </select>
+                </div>
+
+                <!-- Multi-File Checkboxes (dummy) -->
+                <div class="col-md-8">
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="file1">
+                        <label class="form-check-label" for="file1">web.config</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="file2">
+                        <label class="form-check-label" for="file2">appsettings.json</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="file3">
+                        <label class="form-check-label" for="file3">logging.config</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Config Table -->
+    <div class="card">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0">Configuration Entries</h5>
+                <button class="btn btn-success btn-sm">+ Add Entry</button>
+            </div>
+            <div style="max-height: 500px; overflow: auto;">
+                <table class="table table-striped table-hover" style="min-width: 800px;">
+                    <thead class="table-dark">
+                        <tr>
+                            <th style="position: sticky; top: 0; background: #212529;">Key</th>
+                            <th style="position: sticky; top: 0; background: #212529;">Value</th>
+                            <th style="position: sticky; top: 0; background: #212529;">File(s)</th>
+                            <th style="position: sticky; top: 0; background: #212529; width: 120px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Dummy Data -->
+                        <tr>
+                            <td><input type="text" class="form-control" value="ConnectionString" /></td>
+                            <td><input type="text" class="form-control" value="Server=.;Database=AppDb;" /></td>
+                            <td><span class="badge bg-primary">web.config</span></td>
+                            <td><button class="btn btn-sm btn-danger">Delete</button></td>
+                        </tr>
+                        <tr>
+                            <td><input type="text" class="form-control" value="Logging:LogLevel:Default" /></td>
+                            <td><input type="text" class="form-control" value="Information" /></td>
+                            <td>
+                                <span class="badge bg-primary">appsettings.json</span>
+                                <span class="badge bg-secondary">logging.config</span>
+                            </td>
+                            <td><button class="btn btn-sm btn-danger">Delete</button></td>
+                        </tr>
+                        <tr>
+                            <td><input type="text" class="form-control" value="ApiKey" /></td>
+                            <td><input type="text" class="form-control" value="12345-ABCDE" /></td>
+                            <td><span class="badge bg-primary">custom.config</span></td>
+                            <td><button class="btn btn-sm btn-danger">Delete</button></td>
+                        </tr>
+                        <tr>
+                            <td><input type="text" class="form-control" value="FeatureToggle:NewUI" /></td>
+                            <td><input type="text" class="form-control" value="true" /></td>
+                            <td>
+                                <span class="badge bg-primary">web.config</span>
+                                <span class="badge bg-secondary">appsettings.json</span>
+                            </td>
+                            <td><button class="btn btn-sm btn-danger">Delete</button></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="text-end mt-3">
+                <button class="btn btn-primary">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    // Prototype only — no logic yet
+}
