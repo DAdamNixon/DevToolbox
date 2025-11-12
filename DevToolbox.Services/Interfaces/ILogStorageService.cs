@@ -10,5 +10,6 @@ namespace DevToolbox.Services.Interfaces
         Task InsertLogLinesAsync(string tableName, IEnumerable<Dictionary<string, string>> lines);
         Task<(IEnumerable<Dictionary<string, string>> Results, int TotalCount)> SearchLogsAsync(string tableName, LogQuery query);
         Task<bool> TableExistsAsync(string tableName);
+        Task DropTableAsync(string tableName);
     }
 }

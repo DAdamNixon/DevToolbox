@@ -167,5 +167,14 @@ namespace DevToolbox.Services.Services
 
             return (results, totalCount);
         }
+
+        public async Task DropTableAsync(string tableName)
+        {
+            using var conn = GetConnection();
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"DROP TABLE IF EXISTS [{tableName}];";
+            await cmd.ExecuteNonQueryAsync();
+        }
     }
 }
