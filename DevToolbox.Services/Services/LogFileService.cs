@@ -58,7 +58,7 @@ namespace DevToolbox.Services.Services
 
             var columns = await ResolveColumnsAsync(template);
 
-            var files = await Task.Run(() => Directory.GetFiles(location, $"{logFile}*.txt"));
+            var files = await Task.Run(() => Directory.GetFiles(location, $"{logFile}*{template.Extension}"));
             foreach (var file in files)
             {
                 var fileInfo = new System.IO.FileInfo(file);
