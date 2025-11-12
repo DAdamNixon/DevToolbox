@@ -17,5 +17,29 @@ namespace DevToolbox.Services.Interfaces
             DateTime endDate,
             string templateName
         );
+        IAsyncEnumerable<Dictionary<string, string>> SearchLogFilesAsync_v2(
+            string logFile,
+            string location,
+            DateTime startDate,
+            DateTime endDate,
+            string templateName
+        );
+        Task<List<Dictionary<string, string>>> SearchLogFilesPageAsync(
+            string logFile,
+            string location,
+            DateTime startDate,
+            DateTime endDate,
+            string templateName,
+            string searchTerm,
+            int pageNumber,
+            int pageSize);
+
+        Task<int> CountLogEntriesAsync(
+            string logFile,
+            string location,
+            DateTime startDate,
+            DateTime endDate,
+            string templateName,
+            string searchTerm);
     }
 }
