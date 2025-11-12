@@ -11,6 +11,8 @@ namespace DevToolbox.Services.Services
     public class LogFileService : ILogFileService
     {
         private readonly IYamlStorageService _yamlStorage;
+        private static readonly Dictionary<(string logFile, string location, DateTime startDate, DateTime endDate, string templateName, string searchTerm), (int count, DateTime timestamp)> _countCache = new();
+        private static readonly TimeSpan _cacheDuration = TimeSpan.FromMinutes(5);
 
         public LogFileService(IYamlStorageService yamlStorage)
         {
@@ -89,22 +91,40 @@ namespace DevToolbox.Services.Services
 
         public async Task<int> CountLogEntriesAsync(string logFile, string location, DateTime startDate, DateTime endDate, string templateName, string searchTerm)
         {
-            int count = 0;
+            var key = (logFile, location, startDate, endDate, templateName, searchTerm ?? string.Empty);
 
+            lock (_countCache)
+            {
+                var expiredKeys = _countCache
+                    .Where(kvp => DateTime.UtcNow - kvp.Value.timestamp > _cacheDuration)
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+                foreach (var expiredKey in expiredKeys)
+                    _countCache.Remove(expiredKey);
+
+                if (_countCache.TryGetValue(key, out var cached) && DateTime.UtcNow - cached.timestamp <= _cacheDuration)
+                    return cached.count;
+            }
+
+            int count = 0;
             await foreach (var entry in ((ILogFileService)this).SearchLogFilesAsync_v2(logFile, location, startDate, endDate, templateName))
             {
-                // Apply filter if searchTerm is provided
                 if (!string.IsNullOrWhiteSpace(searchTerm))
                 {
                     if (!entry.Values.Any(v => v.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)))
                         continue;
                 }
-
                 count++;
+            }
+
+            lock (_countCache)
+            {
+                _countCache[key] = (count, DateTime.UtcNow);
             }
 
             return count;
         }
+
         public async IAsyncEnumerable<Dictionary<string, string>> SearchLogFilesAsync_v2(string logFile, string location, DateTime startDate, DateTime endDate, string templateName)
         {
             if (!Directory.Exists(location))

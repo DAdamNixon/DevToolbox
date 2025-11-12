@@ -1,12 +1,14 @@
-@page "/logs"
+﻿@page "/logs"
 @using DevToolbox.Services.Interfaces
 @using DevToolbox.Services.Models
+@using Microsoft.AspNetCore.Components.Web.Virtualization
 @inject ILogFileService LogFileService
 
 <div class="container my-4">
     <h1 class="mb-3">Log Viewer</h1>
     <p class="lead mb-4">View and analyze application logs.</p>
 
+    <!-- Search / Filters -->
     <div class="card mb-4">
         <div class="card-body">
             <div class="row g-3">
@@ -42,12 +44,12 @@
                     </datalist>
                 </div>
                 <div class="col-md-1">
-                    <button class="btn btn-primary w-100" @onclick="SearchLogFiles" disabled="@isLoading">Search</button>
+                    <button class="btn btn-primary w-100" @onclick="Search" disabled="@isLoading">Search</button>
                 </div>
             </div>
             <div class="row mt-3">
                 <div class="col-md-6">
-                    <input type="text" class="form-control" @bind="tableSearch" @bind:event="oninput" @onkeyup="ApplyFilters" placeholder="Search table..." />
+                    <input type="text" class="form-control" @bind="tableSearch" @bind:event="oninput" placeholder="Search table..." />
                 </div>
             </div>
         </div>
@@ -77,27 +79,54 @@
                             <tr>
                                 @foreach (var col in tableColumns)
                                 {
-                                    <th style="position: sticky; top: 0; background: #212529; z-index: 2; white-space: nowrap; border: 1px solid black; padding: 5px;">@col</th>
+                                    <th style="position: sticky; top: 0; background: #212529; z-index: 2; white-space: nowrap; border: 1px solid black; padding: 5px;">
+                                        @col
+                                    </th>
                                 }
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var logLine in filteredLogLines)
-                            {
-                                <tr class="table-light">
-                                    @foreach (var col in tableColumns)
-                                    {
-                                        <td style="white-space: nowrap; border: 1px solid black; padding: 5px;">@logLine.GetValueOrDefault(col, "")</td>
-                                    }
-                                </tr>
-                            }
+                            <Virtualize Items="@filteredLogLines" ItemSize="30">
+                                <ItemContent Context="logLine">
+                                    <tr class="table-light">
+                                        @foreach (var col in tableColumns)
+                                        {
+                                            <td style="white-space: nowrap; border: 1px solid black; padding: 5px;">
+                                                @logLine.GetValueOrDefault(col, "")
+                                            </td>
+                                        }
+                                    </tr>
+                                </ItemContent>
+                            </Virtualize>
                         </tbody>
                     </table>
                 </div>
+
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <button class="btn btn-secondary" @onclick="PrevPage" disabled="@(isLoading || currentPage == 0)">
+                        ◀ Previous
+                    </button>
+
+                    <div class="d-flex align-items-center">
+                        <input type="number"
+                               class="form-control text-center fw-bold"
+                               style="width: 80px;"
+                               @bind="pageInput"
+                               @bind:event="oninput" />
+                        <button class="btn btn-secondary ms-2" @onclick="JumpToPage">Go</button>
+                        <span class="ms-3 fw-bold">of @totalPages</span>
+                    </div>
+
+                    <button class="btn btn-secondary" @onclick="NextPage" disabled="@(isLoading || !hasMorePages)">
+                        Next ▶
+                    </button>
+                </div>
+
             </div>
         </div>
     }
 </div>
+
 
 @code {
     private string logLocationPath = string.Empty;
@@ -114,6 +143,15 @@
     private List<string> tableColumns = new();
     private bool isLoading = false;
 
+    // Pagination state
+    private int currentPage = 0;
+    private int pageSize = 500;
+    private bool hasMorePages = true;
+
+    private int pageInput { get; set; } = 1;  // what the input shows
+
+    private int totalPages = 0;
+
     protected override async Task OnInitializedAsync()
     {
         logLocations = await LogFileService.GetLogLocationsAsync();
@@ -123,45 +161,74 @@
         await UpdateTableColumns();
     }
 
-    private async Task SearchLogFiles()
+    private async Task Search()
+    {
+        pageInput = 1;
+        currentPage = pageInput - 1;
+        await LoadPage();
+    }
+
+    private async Task LoadPage()
     {
         isLoading = true;
         StateHasChanged();
-        // You need to load the template file to get columns
+
         var templateEntry = availableTemplates.FirstOrDefault(t => t.Name == selectedTemplateName);
-        if (templateEntry == null)
-        {
-            originalLogLines = new();
-            filteredLogLines = new();
-            tableColumns = new();
-            isLoading = false;
-            StateHasChanged();
-            return;
-        }
-        var template = await LogFileService.LoadTemplateAsync(templateEntry.File);
-        //tableColumns = template?.Columns ?? new();
-        originalLogLines = await LogFileService.SearchLogFilesAsync(logFile, logLocationPath, startDate, endDate, templateEntry.Name);
-        tableColumns = originalLogLines?
-             .OrderByDescending(l => l.Count)
-             .FirstOrDefault()?.Keys.ToList() ?? new List<string>();
-        ApplyFilters();
+        if (templateEntry == null) return;
+
+        var totalEntries = await LogFileService.CountLogEntriesAsync(logFile, logLocationPath, startDate, endDate, templateEntry.Name, tableSearch);
+
+        totalPages = (int)Math.Ceiling(totalEntries / (double)pageSize);
+
+        var pageData = await LogFileService.SearchLogFilesPageAsync(
+            logFile,
+            logLocationPath,
+            startDate,
+            endDate,
+            templateEntry.Name,
+            tableSearch,
+            currentPage,
+            pageSize);
+
+        originalLogLines = pageData;
+        filteredLogLines = pageData;
+
+        tableColumns = pageData
+            .OrderByDescending(l => l.Count)
+            .FirstOrDefault()?.Keys.ToList() ?? new List<string>();
+
+        hasMorePages = pageData.Count == pageSize;
+        pageInput = currentPage + 1;
+
         isLoading = false;
         StateHasChanged();
     }
 
-    private void ApplyFilters()
+    private async Task JumpToPage()
     {
-        if (string.IsNullOrWhiteSpace(tableSearch))
+        if (pageInput < 1) pageInput = 1;
+
+        // convert from 1-based input to 0-based currentPage
+        currentPage = pageInput - 1;
+        await LoadPage();
+    }
+
+    private async Task NextPage()
+    {
+        if (hasMorePages)
         {
-            filteredLogLines = new List<Dictionary<string, string>>(originalLogLines);
+            currentPage++;
+            await LoadPage();
         }
-        else
+    }
+
+    private async Task PrevPage()
+    {
+        if (currentPage > 0)
         {
-            filteredLogLines = originalLogLines.Where(l =>
-                tableColumns.Any(col => l.GetValueOrDefault(col, "").Contains(tableSearch, StringComparison.OrdinalIgnoreCase))
-            ).ToList();
+            currentPage--;
+            await LoadPage();
         }
-        StateHasChanged();
     }
 
     private async Task UpdateTableColumns()
