@@ -12,5 +12,8 @@ namespace DevToolbox.Services.Models
         public string? SearchTerm { get; set; }
         public int? Page { get; set; }
         public int? PageSize { get; set; }
+
+        // Add this property for sorting
+        public List<SortColumn>? Sort { get; set; }
     }
 }

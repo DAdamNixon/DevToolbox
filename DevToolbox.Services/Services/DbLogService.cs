@@ -146,7 +146,8 @@ namespace DevToolbox.Services.Services
             var tableName = $"Log_{logFile}";
             var query = new LogQuery
             {
-                SearchTerm = searchTerm
+                SearchTerm = searchTerm,
+                Sort = await ResolveSortColumnsAsync(await LoadTemplateAsync(templateName))
             };
             var (_, totalCount) = await _logStorage.SearchLogsAsync(tableName, query);
             return totalCount;
@@ -161,7 +162,10 @@ namespace DevToolbox.Services.Services
         {
             await LoadAndStoreLogsAsync(logFile, location, startDate, endDate, templateName);
             var tableName = $"Log_{logFile}";
-            var query = new LogQuery();
+            var query = new LogQuery
+            {
+                Sort = await ResolveSortColumnsAsync(await LoadTemplateAsync(templateName))
+            };
             var (results, _) = await _logStorage.SearchLogsAsync(tableName, query);
             foreach (var dict in results)
                 yield return dict;
@@ -183,7 +187,8 @@ namespace DevToolbox.Services.Services
             {
                 SearchTerm = searchTerm,
                 Page = pageNumber,
-                PageSize = pageSize
+                PageSize = pageSize,
+                Sort = await ResolveSortColumnsAsync(await LoadTemplateAsync(templateName))
             };
             var (results, _) = await _logStorage.SearchLogsAsync(tableName, query);
             return results.ToList();
@@ -202,6 +207,21 @@ namespace DevToolbox.Services.Services
                 }
             }
             return template.Columns;
+        }
+
+        private async Task<List<SortColumn>> ResolveSortColumnsAsync(LogTemplate template)
+        {
+            if (!string.IsNullOrWhiteSpace(template.Inherits))
+            {
+                var baseTemplate = await _yamlStorage.LoadAsync<LogTemplate>(template.Inherits);
+                if (baseTemplate != null)
+                {
+                    var merged = new List<SortColumn>(baseTemplate.Sort);
+                    merged.AddRange(template.Sort);
+                    return merged;
+                }
+            }
+            return template.Sort;
         }
     }
 }

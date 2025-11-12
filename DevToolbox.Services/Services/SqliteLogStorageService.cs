@@ -119,13 +119,27 @@ namespace DevToolbox.Services.Services
 
             var whereSql = where.Any() ? "WHERE " + string.Join(" AND ", where) : "";
 
+            // Build ORDER BY clause
+            string orderBySql;
+            if (query.Sort != null && query.Sort.Any())
+            {
+                var orderClauses = query.Sort
+                    .Where(s => !string.IsNullOrWhiteSpace(s.Column) && columns.Contains(s.Column))
+                    .Select(s => $"[{s.Column}] {(s.Direction?.ToLower() == "desc" ? "DESC" : "ASC")}");
+                orderBySql = "ORDER BY " + string.Join(", ", orderClauses);
+            }
+            else
+            {
+                orderBySql = "ORDER BY rowid DESC";
+            }
+
             // Count query
             var countSql = $"SELECT COUNT(*) FROM [{tableName}] {whereSql};";
 
             // Data query
             var dataSql = new StringBuilder();
             dataSql.Append($"SELECT * FROM [{tableName}] {whereSql} ");
-            dataSql.Append("ORDER BY rowid DESC ");
+            dataSql.Append($"{orderBySql} ");
             dataSql.Append("LIMIT @limit OFFSET @offset;");
 
             parameters.Add(new SqliteParameter("@limit", pageSize));

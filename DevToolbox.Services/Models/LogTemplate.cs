@@ -9,5 +9,13 @@ namespace DevToolbox.Services.Models
         public string? Inherits { get; set; }
         public string Delimiter { get; set; } = "|";
         public List<string> Columns { get; set; } = new();
+        // New property for multi-column sorting
+        public List<SortColumn>? Sort { get; set; }
+    }
+
+    public class SortColumn
+    {
+        public string Column { get; set; } = "";
+        public string Direction { get; set; } = "asc";
     }
 }
