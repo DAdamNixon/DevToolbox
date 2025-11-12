@@ -42,6 +42,7 @@ namespace DevToolbox.UI
             services.AddScoped<IScriptExecutionService, ScriptExecutionService>();
             services.AddScoped<IYamlStorageService, YamlStorageService>();
             services.AddScoped<ILogFileService, LogFileService>();
+            services.AddScoped<ILogStorageService, SqliteLogStorageService>();
 
             // Register UI-specific services
             services.AddScoped<ViewModelFactory>();
