@@ -184,7 +184,8 @@
     private async Task LoadPage()
     {
         isLoading = true;
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
+        await Task.Yield();
 
         var templateEntry = availableTemplates.FirstOrDefault(t => t.Name == selectedTemplateName);
         if (templateEntry == null) return;
@@ -214,7 +215,8 @@
         pageInput = currentPage + 1;
 
         isLoading = false;
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
+        await Task.Yield();
     }
 
     private async Task JumpToPage()
@@ -247,7 +249,8 @@
     private async Task SortByColumn(string column)
     {
         isLoading = true;
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
+        await Task.Yield();
 
         // Toggle sort direction if the same column, otherwise default to ascending
         if (sortColumn == column)
@@ -262,7 +265,8 @@
         if (templateEntry == null)
         {
             isLoading = false;
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged);
+            await Task.Yield();
             return;
         }
 
@@ -300,7 +304,8 @@
         pageInput = currentPage + 1;
 
         isLoading = false;
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
+        await Task.Yield();
     }
 
     private async Task UpdateTableColumns()

@@ -103,7 +103,7 @@ namespace DevToolbox.Services.Services
             // 2. Stream insert each file
             foreach (var file in files)
             {
-                const int BatchSize = 1000;
+                const int BatchSize = 1111;
                 var batch = new List<Dictionary<string, string>>(BatchSize);
 
                 using var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
