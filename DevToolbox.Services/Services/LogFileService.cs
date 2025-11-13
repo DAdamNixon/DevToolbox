@@ -155,5 +155,10 @@ namespace DevToolbox.Services.Services
             }
             return template.Columns;
         }
+
+        public Task<List<Dictionary<string, string>>> SearchLogFilesPageAsync(string logFile, string location, DateTime startDate, DateTime endDate, string templateName, string searchTerm, int pageNumber, int pageSize, SortColumn sortColumn)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

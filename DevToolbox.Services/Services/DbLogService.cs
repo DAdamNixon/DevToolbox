@@ -140,6 +140,21 @@ namespace DevToolbox.Services.Services
             _loadedArchives.Add(archiveKey);
         }
 
+        public async Task<List<Dictionary<string, string>>> SearchLogFilesPageAsync(string logFile, string location, DateTime startDate, DateTime endDate, string templateName, string searchTerm, int pageNumber, int pageSize, SortColumn sortColumn)
+        {
+            await LoadAndStoreLogsAsync(logFile, location, startDate, endDate, templateName);
+            var tableName = $"Log_{logFile}";
+            var query = new LogQuery
+            {
+                SearchTerm = searchTerm,
+                Page = pageNumber,
+                PageSize = pageSize,
+                Sort = new List<SortColumn> { sortColumn }
+            };
+            var (results, _) = await _logStorage.SearchLogsAsync(tableName, query);
+            return results.ToList();
+        }
+
         public async Task<int> CountLogEntriesAsync(string logFile, string location, DateTime startDate, DateTime endDate, string templateName, string searchTerm)
         {
             await LoadAndStoreLogsAsync(logFile, location, startDate, endDate, templateName);

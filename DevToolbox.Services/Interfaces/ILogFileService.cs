@@ -26,7 +26,16 @@ namespace DevToolbox.Services.Interfaces
             string searchTerm,
             int pageNumber,
             int pageSize);
-
+        Task<List<Dictionary<string, string>>> SearchLogFilesPageAsync(
+            string logFile,
+            string location,
+            DateTime startDate,
+            DateTime endDate,
+            string templateName,
+            string searchTerm,
+            int pageNumber,
+            int pageSize,
+            SortColumn sortColumn);
         Task<int> CountLogEntriesAsync(
             string logFile,
             string location,

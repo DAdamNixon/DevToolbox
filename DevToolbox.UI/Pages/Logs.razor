@@ -79,8 +79,19 @@
                             <tr>
                                 @foreach (var col in tableColumns)
                                 {
-                                    <th style="position: sticky; top: 0; background: #212529; z-index: 2; white-space: nowrap; border: 1px solid black; padding: 5px;">
+                                    <th style="position: sticky; top: 0; background: #212529; z-index: 2; white-space: nowrap; border: 1px solid black; padding: 5px; cursor: pointer;"
+                                        @onclick="() => SortByColumn(col)">
                                         @col
+                                        <span style="display: inline-block; width: 1.2em; text-align: center;">
+                                            @if (sortColumn == col)
+                                            {
+                                                @(sortAscending ? "▲" : "▼")
+                                            }
+                                            else
+                                            {
+                                                <span style="visibility: hidden;">▲</span>
+                                            }
+                                        </span>
                                     </th>
                                 }
                             </tr>
@@ -142,6 +153,8 @@
     private List<Dictionary<string, string>> filteredLogLines = new();
     private List<string> tableColumns = new();
     private bool isLoading = false;
+    private string sortColumn = "";
+    private bool sortAscending = true;
 
     // Pagination state
     private int currentPage = 0;
@@ -229,6 +242,65 @@
             currentPage--;
             await LoadPage();
         }
+    }
+
+    private async Task SortByColumn(string column)
+    {
+        isLoading = true;
+        StateHasChanged();
+
+        // Toggle sort direction if the same column, otherwise default to ascending
+        if (sortColumn == column)
+            sortAscending = !sortAscending;
+        else
+        {
+            sortColumn = column;
+            sortAscending = true;
+        }
+
+        var templateEntry = availableTemplates.FirstOrDefault(t => t.Name == selectedTemplateName);
+        if (templateEntry == null)
+        {
+            isLoading = false;
+            StateHasChanged();
+            return;
+        }
+
+        // Create SortColumn object
+        var sort =
+        new SortColumn
+            {
+                Column = sortColumn,
+                Direction = sortAscending ? "asc" : "desc"
+            };
+
+        var totalEntries = await LogFileService.CountLogEntriesAsync(logFile, logLocationPath, startDate, endDate, templateEntry.Name, tableSearch);
+
+        totalPages = (int)Math.Ceiling(totalEntries / (double)pageSize);
+
+        var pageData = await LogFileService.SearchLogFilesPageAsync(
+            logFile,
+            logLocationPath,
+            startDate,
+            endDate,
+            templateEntry.Name,
+            tableSearch,
+            currentPage,
+            pageSize,
+            sort);
+
+        originalLogLines = pageData;
+        filteredLogLines = pageData;
+
+        tableColumns = pageData
+            .OrderByDescending(l => l.Count)
+            .FirstOrDefault()?.Keys.ToList() ?? new List<string>();
+
+        hasMorePages = pageData.Count == pageSize;
+        pageInput = currentPage + 1;
+
+        isLoading = false;
+        StateHasChanged();
     }
 
     private async Task UpdateTableColumns()
