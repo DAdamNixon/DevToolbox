@@ -43,5 +43,15 @@ namespace DevToolbox.Services.Interfaces
             DateTime endDate,
             string templateName,
             string searchTerm);
+        Task<string> DownloadLogCsvAsync(
+            string logFile,
+            string location,
+            DateTime startDate,
+            DateTime endDate,
+            string templateName,
+            string searchTerm,
+            SortColumn sortColumn,
+            string? outputPath = null
+        );
     }
 }

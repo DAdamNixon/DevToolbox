@@ -43,8 +43,11 @@
                         }
                     </datalist>
                 </div>
-                <div class="col-md-1">
+                <div class="col-md-1 d-flex flex-column gap-2">
                     <button class="btn btn-primary w-100" @onclick="Search" disabled="@isLoading">Search</button>
+                    <button class="btn btn-outline-secondary w-100" @onclick="DownloadCsv" disabled="@isLoading">
+                        <i class="bi bi-download me-1"></i>CSV
+                    </button>
                 </div>
             </div>
             <div class="row mt-3">
@@ -273,10 +276,10 @@
         // Create SortColumn object
         var sort =
         new SortColumn
-            {
-                Column = sortColumn,
-                Direction = sortAscending ? "asc" : "desc"
-            };
+        {
+            Column = sortColumn,
+            Direction = sortAscending ? "asc" : "desc"
+        };
 
         var totalEntries = await LogFileService.CountLogEntriesAsync(logFile, logLocationPath, startDate, endDate, templateEntry.Name, tableSearch);
 
@@ -315,6 +318,58 @@
         {
             var template = await LogFileService.LoadTemplateAsync(templateEntry.File);
             tableColumns = template?.Columns ?? new();
+        }
+    }
+
+    private async Task DownloadCsv()
+    {
+        if (isLoading) return;
+
+        var templateEntry = availableTemplates.FirstOrDefault(t => t.Name == selectedTemplateName);
+        if (templateEntry == null)
+            return;
+
+        var sort = new SortColumn
+        {
+            Column = sortColumn,
+            Direction = sortAscending ? "asc" : "desc"
+        };
+
+        isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            var filePath = await LogFileService.DownloadLogCsvAsync(
+                logFile,
+                logLocationPath,
+                startDate,
+                endDate,
+                templateEntry.Name,
+                tableSearch,
+                sort);
+
+            // Open the file location in Explorer (for Blazor Hybrid/WinForms)
+            if (!string.IsNullOrWhiteSpace(filePath) && File.Exists(filePath))
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    Arguments = $"/select,\"{filePath}\"",
+                    UseShellExecute = true
+                };
+                System.Diagnostics.Process.Start(psi);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Optionally, show an error message or toast
+            Console.WriteLine($"CSV download failed: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
         }
     }
 }

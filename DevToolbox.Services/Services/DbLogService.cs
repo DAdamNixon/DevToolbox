@@ -2,6 +2,7 @@
 using DevToolbox.Services.Models;
 using System;
 using System.Collections.Generic;
+using System.Drawing.Printing;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -237,6 +238,59 @@ namespace DevToolbox.Services.Services
                 }
             }
             return template.Sort;
+        }
+
+        public async Task<string> DownloadLogCsvAsync(
+            string logFile,
+            string location,
+            DateTime startDate,
+            DateTime endDate,
+            string templateName,
+            string searchTerm,
+            SortColumn sortColumn,
+            string? outputPath = null)
+        {
+            await LoadAndStoreLogsAsync(logFile, location, startDate, endDate, templateName);
+            var tableName = $"Log_{logFile}";
+            var query = new LogQuery
+            {
+                SearchTerm = searchTerm,
+                Sort = new List<SortColumn> { sortColumn }
+            };
+            var (results, _) = await _logStorage.SearchLogsAsync(tableName, query);
+
+            // Use a temp file if outputPath is not provided
+            if (string.IsNullOrWhiteSpace(outputPath))
+            {
+                var safeName = Path.GetFileNameWithoutExtension(logFile);
+                outputPath = Path.Combine(Path.GetTempPath(), $"{safeName}_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+            }
+
+            // Get columns from the first result, or empty if no results
+            var columns = results.FirstOrDefault()?.Keys.ToList() ?? new List<string>();
+
+            using (var writer = new StreamWriter(outputPath, false, System.Text.Encoding.UTF8))
+            {
+                // Write header
+                await writer.WriteLineAsync(string.Join(",", columns.Select(EscapeCsv)));
+
+                // Write each row
+                foreach (var line in results)
+                {
+                    var csvLine = string.Join(",", columns.Select(col => EscapeCsv(line.TryGetValue(col, out var v) ? v : "")));
+                    await writer.WriteLineAsync(csvLine);
+                }
+            }
+
+            return outputPath;
+
+            static string EscapeCsv(string? value)
+            {
+                if (value == null) return "";
+                if (value.Contains('"') || value.Contains(',') || value.Contains('\n') || value.Contains('\r'))
+                    return $"\"{value.Replace("\"", "\"\"")}\"";
+                return value;
+            }
         }
     }
 }

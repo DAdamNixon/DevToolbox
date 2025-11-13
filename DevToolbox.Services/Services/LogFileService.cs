@@ -160,5 +160,10 @@ namespace DevToolbox.Services.Services
         {
             throw new NotImplementedException();
         }
+
+        public Task<string> DownloadLogCsvAsync(string logFile, string location, DateTime startDate, DateTime endDate, string templateName, string searchTerm, SortColumn sortColumn, string? outputPath = null)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

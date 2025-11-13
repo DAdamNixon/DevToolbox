@@ -4,6 +4,7 @@ using Microsoft.Data.Sqlite;
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -84,7 +85,7 @@ namespace DevToolbox.Services.Services
         {
             var filters = query.Filters ?? new();
             var page = query.Page ?? 0;
-            var pageSize = query.PageSize ?? 100;
+            var pageSize = query.PageSize;
             var searchTerm = query.SearchTerm;
 
             // Get columns dynamically
@@ -121,7 +122,7 @@ namespace DevToolbox.Services.Services
 
             // Build ORDER BY clause
             string orderBySql;
-            if (query.Sort != null && query.Sort.Any())
+            if (query.Sort != null && query.Sort.Any(s => !string.IsNullOrWhiteSpace(s.Column) && columns.Contains(s.Column)))
             {
                 var orderClauses = query.Sort
                     .Where(s => !string.IsNullOrWhiteSpace(s.Column) && columns.Contains(s.Column))
@@ -140,10 +141,13 @@ namespace DevToolbox.Services.Services
             var dataSql = new StringBuilder();
             dataSql.Append($"SELECT * FROM [{tableName}] {whereSql} ");
             dataSql.Append($"{orderBySql} ");
-            dataSql.Append("LIMIT @limit OFFSET @offset;");
-
-            parameters.Add(new SqliteParameter("@limit", pageSize));
-            parameters.Add(new SqliteParameter("@offset", page * pageSize));
+            bool usePaging = pageSize.HasValue && pageSize.Value > 0;
+            if (usePaging)
+            {
+                dataSql.Append("LIMIT @limit OFFSET @offset;");
+                parameters.Add(new SqliteParameter("@limit", pageSize.Value));
+                parameters.Add(new SqliteParameter("@offset", page * pageSize.Value));
+            }
 
             int totalCount;
             var results = new List<Dictionary<string, string>>();
