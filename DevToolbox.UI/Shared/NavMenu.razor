@@ -1,20 +1,42 @@
 @inject NavigationManager NavigationManager
 @implements IDisposable
 
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-    <div class="container-fluid">
-        <div class="navbar-nav d-flex flex-row gap-3">
-            <div class="nav-item">
-                <a class="nav-link @GetActiveClass("/")" href="/">Dashboard</a>
+<nav class="bg-dark-surface/80 backdrop-blur-md border-b border-dark-border sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between h-16">
+            <!-- Logo/Brand -->
+            <div class="flex items-center">
+                <div class="text-xl font-bold text-gradient">
+                    DevToolbox
+                </div>
             </div>
-            <div class="nav-item">
-                <a class="nav-link @GetActiveClass("/logs")" href="/logs">Log Viewer</a>
+            
+            <!-- Navigation Links -->
+            <div class="flex items-center space-x-1">
+                <a class="nav-item @GetActiveClass("/")" href="/">
+                    <i class="bi bi-house me-2"></i>
+                    Dashboard
+                </a>
+                <a class="nav-item @GetActiveClass("/logs")" href="/logs">
+                    <i class="bi bi-journal-text me-2"></i>
+                    Log Viewer
+                </a>
+                <a class="nav-item @GetActiveClass("/powershell")" href="/powershell">
+                    <i class="bi bi-terminal me-2"></i>
+                    PowerShell
+                </a>
+                <a class="nav-item @GetActiveClass("/settings")" href="/settings">
+                    <i class="bi bi-gear me-2"></i>
+                    Settings
+                </a>
             </div>
-            <div class="nav-item">
-                <a class="nav-link @GetActiveClass("/powershell")" href="/powershell">PowerShell</a>
-            </div>
-            <div class="nav-item">
-                <a class="nav-link @GetActiveClass("/settings")" href="/settings">Settings</a>
+            
+            <!-- Status indicator -->
+            <div class="flex items-center space-x-3">
+                <div class="flex items-center space-x-2">
+                    <div class="status-indicator status-online"></div>
+                    <span class="text-sm text-dark-text-muted">Online</span>
+                </div>
             </div>
         </div>
     </div>

@@ -1,0 +1,210 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom base styles for modern dark theme */
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+  
+  body {
+    @apply bg-dark-bg text-dark-text font-sans antialiased;
+    @apply min-h-screen;
+  }
+  
+  /* Custom scrollbar for webkit browsers */
+  ::-webkit-scrollbar {
+    @apply w-2;
+  }
+  
+  ::-webkit-scrollbar-track {
+    @apply bg-dark-surface;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    @apply bg-dark-border rounded-full;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-dark-text-muted;
+  }
+}
+
+/* Custom component styles */
+@layer components {
+  /* Modern card component */
+  .modern-card {
+    @apply bg-dark-surface border border-dark-border rounded-xl p-6;
+    @apply shadow-dark-lg transition-all duration-300 ease-out;
+    @apply hover:shadow-dark-xl hover:border-accent-blue/50;
+    @apply hover:-translate-y-1;
+  }
+  
+  /* Glowing card variant */
+  .glow-card {
+    @apply modern-card;
+    @apply hover:shadow-glow-md hover:border-accent-blue;
+  }
+  
+  /* Modern button styles */
+  .btn-modern {
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200;
+    @apply focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-bg;
+  }
+  
+  .btn-primary {
+    @apply btn-modern bg-accent-blue text-white;
+    @apply hover:bg-accent-blue-hover focus:ring-accent-blue;
+    @apply hover:shadow-glow-sm;
+  }
+  
+  .btn-secondary {
+    @apply btn-modern bg-dark-surface text-dark-text border border-dark-border;
+    @apply hover:bg-dark-surface-hover hover:border-accent-blue/50;
+    @apply focus:ring-accent-blue;
+  }
+  
+  .btn-danger {
+    @apply btn-modern bg-danger text-white;
+    @apply hover:bg-red-600 focus:ring-danger;
+  }
+  
+  .btn-ghost {
+    @apply btn-modern bg-transparent text-dark-text-muted;
+    @apply hover:bg-dark-surface hover:text-dark-text;
+    @apply focus:ring-accent-blue;
+  }
+  
+  /* Modern input styles */
+  .input-modern {
+    @apply bg-dark-surface border border-dark-border rounded-lg px-3 py-2;
+    @apply text-dark-text placeholder-dark-text-muted;
+    @apply focus:outline-none focus:ring-2 focus:ring-accent-blue focus:border-accent-blue;
+    @apply transition-all duration-200;
+  }
+  
+  /* Navigation styles */
+  .nav-item {
+    @apply relative px-4 py-2 rounded-lg transition-all duration-200;
+    @apply text-dark-text-muted hover:text-dark-text;
+    @apply hover:bg-dark-surface-hover;
+  }
+  
+  .nav-item.active {
+    @apply text-accent-blue bg-dark-surface;
+    @apply shadow-glow-sm;
+  }
+  
+  .nav-item.active::before {
+    content: '';
+    @apply absolute left-0 top-1/2 transform -translate-y-1/2;
+    @apply w-1 h-6 bg-accent-blue rounded-r-full;
+  }
+  
+  /* Modal styles */
+  .modal-backdrop {
+    @apply fixed inset-0 bg-black/50 backdrop-blur-sm z-40;
+    @apply animate-fade-in;
+  }
+  
+  .modal-container {
+    @apply fixed inset-0 z-50 flex items-center justify-center p-4;
+  }
+  
+  .modal-content {
+    @apply bg-dark-surface border border-dark-border rounded-2xl;
+    @apply shadow-dark-xl max-w-md w-full;
+    @apply animate-scale-in;
+  }
+  
+  /* Dropdown styles */
+  .dropdown-menu {
+    @apply bg-dark-surface border border-dark-border rounded-xl shadow-dark-lg;
+    @apply py-2 min-w-48;
+  }
+  
+  .dropdown-item {
+    @apply px-4 py-2 text-dark-text hover:bg-dark-surface-hover;
+    @apply transition-colors duration-150 cursor-pointer;
+    @apply flex items-center gap-3;
+  }
+  
+  .dropdown-item.danger {
+    @apply text-danger hover:bg-red-500/10;
+  }
+  
+  /* Status indicator */
+  .status-indicator {
+    @apply w-2 h-2 rounded-full;
+  }
+  
+  .status-online {
+    @apply bg-success shadow-glow-sm;
+  }
+  
+  .status-offline {
+    @apply bg-gray-500;
+  }
+  
+  /* Search input */
+  .search-input {
+    @apply input-modern w-full;
+    @apply bg-dark-surface/50 backdrop-blur-sm;
+    @apply placeholder:text-dark-text-muted;
+  }
+  
+  /* Workspace card specific styles */
+  .workspace-card {
+    @apply modern-card cursor-pointer;
+    @apply hover:scale-[1.02] hover:shadow-glow-md;
+  }
+  
+  .workspace-card-header {
+    @apply flex items-center justify-between mb-4;
+  }
+  
+  .workspace-card-title {
+    @apply text-lg font-semibold text-dark-text;
+    @apply transition-colors duration-200;
+  }
+  
+  .workspace-card:hover .workspace-card-title {
+    @apply text-accent-blue;
+  }
+  
+  .workspace-actions {
+    @apply opacity-0 transition-opacity duration-200;
+    @apply flex items-center gap-2;
+  }
+  
+  .workspace-card:hover .workspace-actions {
+    @apply opacity-100;
+  }
+}
+
+/* Utility classes */
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-accent-blue to-accent-purple;
+    @apply bg-clip-text text-transparent;
+  }
+  
+  .bg-gradient-primary {
+    @apply bg-gradient-to-br from-accent-blue to-accent-purple;
+  }
+  
+  .border-gradient {
+    background: linear-gradient(90deg, theme('colors.accent-blue'), theme('colors.accent-purple')) border-box;
+    border: 2px solid transparent;
+    background-clip: padding-box, border-box;
+  }
+  
+  .glass-effect {
+    @apply bg-dark-surface/50 backdrop-blur-lg border border-dark-border/50;
+  }
+  
+  .animate-pulse-glow {
+    @apply animate-glow-pulse;
+  }
+}
