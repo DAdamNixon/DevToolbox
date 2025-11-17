@@ -1,0 +1,349 @@
+@page "/service-pulse"
+@using DevToolbox.Services.Interfaces
+@using DevToolbox.Services.Models
+@using DevToolbox.UI.Components.Dialogs
+@using System.Timers
+@inject IHealthMonitoringService HealthMonitoring
+@implements IDisposable
+
+<!-- Page Header -->
+<div class="mb-8">
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-4xl font-bold text-gradient">🚀 Service Pulse</h1>
+            <p class="text-dark-text-muted mt-2">Real-time monitoring dashboard for all your services and endpoints.</p>
+        </div>
+        <div class="flex items-center space-x-4">
+            <button class="btn-primary" @onclick="AddNewService">
+                <i class="bi bi-plus-circle me-2"></i>Add Service
+            </button>
+            <button class="@(isMonitoring ? "btn-danger" : "btn-success")" @onclick="ToggleMonitoring">
+                <i class="bi bi-@(isMonitoring ? "pause" : "play")-fill me-2"></i>
+                @(isMonitoring ? "Pause" : "Start") Monitoring
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Overall Stats Cards -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+    <div class="modern-card bg-gradient-to-br from-green-500/10 to-green-600/20 border-green-500/30">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm font-medium text-green-400 uppercase tracking-wide">Online Services</p>
+                <p class="text-3xl font-bold text-green-300">@onlineServices</p>
+                <p class="text-xs text-green-400 mt-1">of @totalServices total</p>
+            </div>
+            <div class="h-12 w-12 bg-green-500/20 rounded-lg flex items-center justify-center">
+                <i class="bi bi-check-circle-fill text-2xl text-green-400"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="modern-card bg-gradient-to-br from-red-500/10 to-red-600/20 border-red-500/30">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm font-medium text-red-400 uppercase tracking-wide">Offline Services</p>
+                <p class="text-3xl font-bold text-red-300">@offlineServices</p>
+                <p class="text-xs text-red-400 mt-1">Issues detected</p>
+            </div>
+            <div class="h-12 w-12 bg-red-500/20 rounded-lg flex items-center justify-center">
+                <i class="bi bi-exclamation-triangle-fill text-2xl text-red-400"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="modern-card bg-gradient-to-br from-blue-500/10 to-blue-600/20 border-blue-500/30">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm font-medium text-blue-400 uppercase tracking-wide">Avg Response Time</p>
+                <p class="text-3xl font-bold text-blue-300">@averageResponseTime<span class="text-lg">ms</span></p>
+                <p class="text-xs text-blue-400 mt-1">Across all services</p>
+            </div>
+            <div class="h-12 w-12 bg-blue-500/20 rounded-lg flex items-center justify-center">
+                <i class="bi bi-speedometer text-2xl text-blue-400"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="modern-card bg-gradient-to-br from-purple-500/10 to-purple-600/20 border-purple-500/30">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm font-medium text-purple-400 uppercase tracking-wide">Overall Uptime</p>
+                <p class="text-3xl font-bold text-purple-300">@overallUptime<span class="text-lg">%</span></p>
+                <p class="text-xs text-purple-400 mt-1">Last 24 hours</p>
+            </div>
+            <div class="h-12 w-12 bg-purple-500/20 rounded-lg flex items-center justify-center">
+                <i class="bi bi-graph-up text-2xl text-purple-400"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Services Grid -->
+@if (serviceHealthList.Any())
+{
+    <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+        @foreach (var health in serviceHealthList)
+        {
+            var statusColor = GetStatusColor(health.Status);
+            var statusIcon = GetStatusIcon(health.Status);
+            var endpoint = serviceEndpoints.FirstOrDefault(e => e.Id == health.ServiceId);
+            
+            <div class="modern-card hover:scale-105 transition-all duration-300 @($"border-{statusColor}-500/30")">
+                <!-- Service Header -->
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center space-x-3">
+                        <div class="@($"h-3 w-3 rounded-full bg-{statusColor}-400 animate-pulse")"></div>
+                        <div>
+                            <h3 class="text-lg font-semibold text-dark-text">@health.ServiceName</h3>
+                            <p class="text-xs text-dark-text-muted">@endpoint?.Environment</p>
+                        </div>
+                    </div>
+                    <div class="@($"px-2 py-1 rounded-full text-xs font-medium bg-{statusColor}-500/20 text-{statusColor}-300")">
+                        <i class="bi bi-@statusIcon me-1"></i>@health.Status
+                    </div>
+                </div>
+
+                <!-- Endpoint Info -->
+                <div class="mb-4 p-3 bg-dark-surface rounded-lg">
+                    <p class="text-sm font-mono text-dark-text-muted break-all">@endpoint?.Endpoint</p>
+                    <p class="text-xs text-dark-text-muted mt-1">
+                        Ping interval: @endpoint?.PingIntervalSeconds seconds
+                    </p>
+                </div>
+
+                <!-- Metrics -->
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div class="text-center">
+                        <p class="text-2xl font-bold @($"text-{statusColor}-300")">@health.Metrics.SuccessRate.ToString("F1")%</p>
+                        <p class="text-xs text-dark-text-muted">Success Rate</p>
+                    </div>
+                    <div class="text-center">
+                        <p class="text-2xl font-bold text-blue-300">@health.Metrics.AverageResponseTime<span class="text-sm">ms</span></p>
+                        <p class="text-xs text-dark-text-muted">Avg Response</p>
+                    </div>
+                </div>
+
+                <!-- Response Time Range -->
+                @if (health.Metrics.MinResponseTime > 0)
+                {
+                    <div class="mb-4">
+                        <div class="flex justify-between text-xs text-dark-text-muted mb-2">
+                            <span>Min: @health.Metrics.MinResponseTime ms</span>
+                            <span>Max: @health.Metrics.MaxResponseTime ms</span>
+                        </div>
+                        <div class="w-full bg-dark-surface rounded-full h-2">
+                            <div class="@($"bg-{statusColor}-500") h-2 rounded-full" style="width: @(Math.Min(100, (double)health.Metrics.AverageResponseTime / Math.Max(1, health.Metrics.MaxResponseTime) * 100))%"></div>
+                        </div>
+                    </div>
+                }
+
+                <!-- Last Ping Info -->
+                <div class="flex justify-between items-center text-xs text-dark-text-muted mb-4">
+                    <span>Last ping: @health.LastPing.ToString("HH:mm:ss")</span>
+                    <span>@health.Metrics.TotalPings total pings</span>
+                </div>
+
+                <!-- Mini Chart (Last 10 pings) -->
+                @if (health.PingHistory.Any())
+                {
+                    <div class="mb-4">
+                        <p class="text-xs text-dark-text-muted mb-2">Recent ping history</p>
+                        <div class="flex space-x-1">
+                            @foreach (var ping in health.PingHistory.TakeLast(15))
+                            {
+                                <div class="@(ping.IsSuccess ? $"bg-{statusColor}-500" : "bg-red-500") h-6 flex-1 rounded-sm opacity-80 hover:opacity-100 transition-opacity"
+                                     title="@($"{ping.Timestamp:HH:mm:ss} - {(ping.IsSuccess ? $"{ping.ResponseTimeMs}ms" : ping.ErrorMessage)}")">
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                <!-- Action Buttons -->
+                <div class="flex space-x-2">
+                    <button class="btn-secondary flex-1" @onclick="() => ManualPing(health.ServiceId)">
+                        <i class="bi bi-arrow-clockwise me-1"></i>Ping Now
+                    </button>
+                    <button class="btn-ghost" @onclick="() => EditService(health.ServiceId)">
+                        <i class="bi bi-gear"></i>
+                    </button>
+                    <button class="btn-ghost text-red-400 hover:text-red-300" @onclick="() => RemoveService(health.ServiceId)">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <!-- Empty State -->
+    <div class="modern-card text-center py-16">
+        <div class="max-w-md mx-auto">
+            <div class="h-24 w-24 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                <i class="bi bi-heart-pulse text-4xl text-blue-400"></i>
+            </div>
+            <h3 class="text-xl font-semibold text-dark-text mb-2">No Services Configured</h3>
+            <p class="text-dark-text-muted mb-6">Get started by adding your first service endpoint to monitor.</p>
+            <button class="btn-primary" @onclick="AddNewService">
+                <i class="bi bi-plus-circle me-2"></i>Add Your First Service
+            </button>
+        </div>
+    </div>
+}
+
+<!-- Service Management Modal -->
+<AddServiceDialog IsVisible="showAddServiceModal" 
+                  IsEditMode="isEditMode"
+                  ExistingService="serviceBeingEdited"
+                  OnSave="HandleServiceSave" 
+                  OnCancel="HandleServiceCancel" />
+
+@code {
+    private List<ServiceHealth> serviceHealthList = new();
+    private List<ServiceEndpoint> serviceEndpoints = new();
+    private Timer? refreshTimer;
+    private bool isMonitoring = false;
+    
+    // Modal state
+    private bool showAddServiceModal = false;
+    private bool isEditMode = false;
+    private ServiceEndpoint? serviceBeingEdited;
+
+    // Dashboard stats
+    private int onlineServices => serviceHealthList.Count(s => s.Status == ServiceStatus.Online);
+    private int offlineServices => serviceHealthList.Count(s => s.Status == ServiceStatus.Offline);
+    private int totalServices => serviceHealthList.Count;
+    private int averageResponseTime => serviceHealthList.Any() ? 
+        (int)serviceHealthList.Where(s => s.Metrics.AverageResponseTime > 0).DefaultIfEmpty().Average(s => s?.Metrics.AverageResponseTime ?? 0) : 0;
+    private double overallUptime => serviceHealthList.Any() ?
+        serviceHealthList.Average(s => s.Metrics.SuccessRate) : 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+        
+        // Subscribe to health changes
+        HealthMonitoring.ServiceHealthChanged += OnServiceHealthChanged;
+        
+        // Start refresh timer
+        refreshTimer = new Timer(5000); // Refresh every 5 seconds
+        refreshTimer.Elapsed += async (sender, args) => await InvokeAsync(async () => {
+            await LoadData();
+            StateHasChanged();
+        });
+        refreshTimer.Start();
+    }
+
+    private async Task LoadData()
+    {
+        serviceEndpoints = await HealthMonitoring.GetServiceEndpointsAsync();
+        serviceHealthList = await HealthMonitoring.GetServiceHealthAsync();
+        
+        // Check if monitoring is active (simplified check)
+        isMonitoring = serviceHealthList.Any(s => s.LastPing > DateTime.UtcNow.AddMinutes(-5));
+    }
+
+    private void OnServiceHealthChanged(object? sender, ServiceHealthChangedEventArgs e)
+    {
+        InvokeAsync(() => {
+            LoadData();
+            StateHasChanged();
+        });
+    }
+
+    private async Task ToggleMonitoring()
+    {
+        if (isMonitoring)
+        {
+            await HealthMonitoring.StopMonitoringAsync();
+        }
+        else
+        {
+            await HealthMonitoring.StartMonitoringAsync();
+        }
+        isMonitoring = !isMonitoring;
+    }
+
+    private async Task ManualPing(string serviceId)
+    {
+        var result = await HealthMonitoring.PingServiceAsync(serviceId);
+        await LoadData();
+    }
+
+    private async Task AddNewService()
+    {
+        isEditMode = false;
+        serviceBeingEdited = null;
+        showAddServiceModal = true;
+    }
+
+    private async Task EditService(string serviceId)
+    {
+        serviceBeingEdited = serviceEndpoints.FirstOrDefault(s => s.Id == serviceId);
+        if (serviceBeingEdited != null)
+        {
+            isEditMode = true;
+            showAddServiceModal = true;
+        }
+    }
+
+    private async Task HandleServiceSave(ServiceEndpoint service)
+    {
+        if (isEditMode)
+        {
+            await HealthMonitoring.UpdateServiceEndpointAsync(service);
+        }
+        else
+        {
+            await HealthMonitoring.AddServiceEndpointAsync(service);
+        }
+        
+        showAddServiceModal = false;
+        await LoadData();
+    }
+
+    private async Task HandleServiceCancel()
+    {
+        showAddServiceModal = false;
+        serviceBeingEdited = null;
+    }
+
+    private async Task RemoveService(string serviceId)
+    {
+        await HealthMonitoring.RemoveServiceEndpointAsync(serviceId);
+        await LoadData();
+    }
+
+    private string GetStatusColor(ServiceStatus status)
+    {
+        return status switch
+        {
+            ServiceStatus.Online => "green",
+            ServiceStatus.Offline => "red",
+            ServiceStatus.Degraded => "yellow",
+            ServiceStatus.Maintenance => "blue",
+            _ => "gray"
+        };
+    }
+
+    private string GetStatusIcon(ServiceStatus status)
+    {
+        return status switch
+        {
+            ServiceStatus.Online => "check-circle-fill",
+            ServiceStatus.Offline => "x-circle-fill",
+            ServiceStatus.Degraded => "exclamation-triangle-fill",
+            ServiceStatus.Maintenance => "tools",
+            _ => "question-circle-fill"
+        };
+    }
+
+    public void Dispose()
+    {
+        refreshTimer?.Dispose();
+        HealthMonitoring.ServiceHealthChanged -= OnServiceHealthChanged;
+    }
+}

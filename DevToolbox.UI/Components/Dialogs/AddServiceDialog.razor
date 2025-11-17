@@ -1,0 +1,155 @@
+@using DevToolbox.Services.Models
+
+<div class="@(IsVisible ? "fixed inset-0 z-50 flex items-center justify-center" : "hidden")">
+    <!-- Backdrop -->
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @onclick="Cancel"></div>
+    
+    <!-- Modal -->
+    <div class="relative bg-dark-card border border-dark-border rounded-xl shadow-2xl w-full max-w-md mx-4 max-h-[80vh] overflow-y-auto">
+        <!-- Header -->
+        <div class="flex items-center justify-between p-6 border-b border-dark-border">
+            <h3 class="text-xl font-semibold text-dark-text">
+                @(IsEditMode ? "Edit Service" : "Add New Service")
+            </h3>
+            <button type="button" class="btn-ghost p-2" @onclick="Cancel">
+                <i class="bi bi-x text-xl"></i>
+            </button>
+        </div>
+        
+        <!-- Body -->
+        <div class="p-6 space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-dark-text mb-2">Service Name</label>
+                <input type="text" class="input-modern w-full" @bind="ServiceName" placeholder="My API Service" />
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-dark-text mb-2">Endpoint URL</label>
+                <input type="url" class="input-modern w-full" @bind="Endpoint" placeholder="https://api.example.com/health" />
+            </div>
+            
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-dark-text mb-2">Ping Interval (seconds)</label>
+                    <input type="number" class="input-modern w-full" @bind="PingIntervalSeconds" min="10" max="3600" />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-dark-text mb-2">Timeout (seconds)</label>
+                    <input type="number" class="input-modern w-full" @bind="TimeoutSeconds" min="5" max="120" />
+                </div>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-dark-text mb-2">Environment</label>
+                <select class="input-modern w-full" @bind="Environment">
+                    <option value="">Select Environment</option>
+                    <option value="Development">Development</option>
+                    <option value="Testing">Testing</option>
+                    <option value="Staging">Staging</option>
+                    <option value="Production">Production</option>
+                </select>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-dark-text mb-2">Description (optional)</label>
+                <textarea class="input-modern w-full resize-none" rows="2" @bind="Description" 
+                         placeholder="Brief description of this service"></textarea>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-dark-text mb-2">Tags (comma-separated)</label>
+                <input type="text" class="input-modern w-full" @bind="TagsText" 
+                       placeholder="api, web, critical" />
+            </div>
+            
+            <div class="flex items-center space-x-3">
+                <input type="checkbox" id="isEnabled" @bind="IsEnabled" class="w-4 h-4 text-accent-blue bg-dark-surface border-dark-border rounded focus:ring-accent-blue focus:ring-2" />
+                <label for="isEnabled" class="text-sm text-dark-text">Enable monitoring for this service</label>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="flex items-center justify-end space-x-3 p-6 border-t border-dark-border">
+            <button type="button" class="btn-secondary" @onclick="Cancel">Cancel</button>
+            <button type="button" class="btn-primary" @onclick="Save" disabled="@(!IsValid)">
+                @(IsEditMode ? "Update" : "Add") Service
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public bool IsVisible { get; set; }
+    [Parameter] public bool IsEditMode { get; set; }
+    [Parameter] public ServiceEndpoint? ExistingService { get; set; }
+    [Parameter] public EventCallback<ServiceEndpoint> OnSave { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private string ServiceName = "";
+    private string Endpoint = "";
+    private int PingIntervalSeconds = 30;
+    private int TimeoutSeconds = 10;
+    private string Environment = "";
+    private string Description = "";
+    private string TagsText = "";
+    private bool IsEnabled = true;
+
+    private bool IsValid => !string.IsNullOrWhiteSpace(ServiceName) && 
+                           !string.IsNullOrWhiteSpace(Endpoint) &&
+                           Uri.TryCreate(Endpoint, UriKind.Absolute, out _);
+
+    protected override void OnParametersSet()
+    {
+        if (IsEditMode && ExistingService != null)
+        {
+            ServiceName = ExistingService.Name;
+            Endpoint = ExistingService.Endpoint;
+            PingIntervalSeconds = ExistingService.PingIntervalSeconds;
+            TimeoutSeconds = ExistingService.TimeoutSeconds;
+            Environment = ExistingService.Environment ?? "";
+            Description = ExistingService.Description ?? "";
+            TagsText = string.Join(", ", ExistingService.Tags);
+            IsEnabled = ExistingService.IsEnabled;
+        }
+        else if (!IsEditMode)
+        {
+            // Reset for new service
+            ServiceName = "";
+            Endpoint = "";
+            PingIntervalSeconds = 30;
+            TimeoutSeconds = 10;
+            Environment = "";
+            Description = "";
+            TagsText = "";
+            IsEnabled = true;
+        }
+    }
+
+    private async Task Save()
+    {
+        if (!IsValid) return;
+
+        var service = new ServiceEndpoint
+        {
+            Id = IsEditMode ? ExistingService!.Id : Guid.NewGuid().ToString(),
+            Name = ServiceName.Trim(),
+            Endpoint = Endpoint.Trim(),
+            PingIntervalSeconds = PingIntervalSeconds,
+            TimeoutSeconds = TimeoutSeconds,
+            Environment = Environment,
+            Description = string.IsNullOrWhiteSpace(Description) ? null : Description.Trim(),
+            Tags = TagsText.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                          .Select(t => t.Trim())
+                          .Where(t => !string.IsNullOrEmpty(t))
+                          .ToList(),
+            IsEnabled = IsEnabled
+        };
+
+        await OnSave.InvokeAsync(service);
+    }
+
+    private async Task Cancel()
+    {
+        await OnCancel.InvokeAsync();
+    }
+}
