@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html data-bs-theme="dark">
+<html class="dark">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
@@ -8,9 +8,12 @@
     <meta name="format-detection" content="telephone=no" />
     <title>DevToolbox</title>
     <base href="/" />
-    <link href="css/bootstrap.min.css" rel="stylesheet" />
+    <!-- Google Fonts for modern typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS -->
+    <link href="css/output.css" rel="stylesheet" />
+    <!-- Keep Bootstrap Icons for now -->
     <link href="css/bootstrap-icons.min.css" rel="stylesheet" />
-    <link href="css/app.css" rel="stylesheet" />
     <script src="js/search.js"></script>
     <script>
         // Fix for Windows scaling issues
@@ -65,13 +68,16 @@
         };
     </script>
 </head>
-<body>
+<body class="bg-dark-bg text-dark-text">
     <div id="app">
-        <div id="loading-message">
-            Loading DevToolbox...
+        <div id="loading-message" class="flex items-center justify-center min-h-screen">
+            <div class="text-center">
+                <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-accent-blue mb-4"></div>
+                <div class="text-lg text-dark-text-muted">Loading DevToolbox...</div>
+            </div>
         </div>
     </div>
-    <div id="blazor-error-ui" class="error-message" style="display:none;">
+    <div id="blazor-error-ui" class="fixed bottom-4 right-4 bg-danger text-white px-4 py-3 rounded-lg shadow-lg" style="display:none;">
         An error has occurred. The application may no longer respond.
     </div>
 
@@ -83,7 +89,6 @@
         };
     </script>
     <script src="_framework/blazor.webview.js"></script>
-    <script src="js/bootstrap.bundle.min.js"></script>
     <script>
         // Check if Blazor object exists
         setTimeout(function() {

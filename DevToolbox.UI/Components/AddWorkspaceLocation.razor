@@ -2,65 +2,38 @@
 @using DevToolbox.UI.Components
 @using System.IO
 
-<div class="col-12 mb-4">
-    <label class="form-label">Location Name</label>
-    <div class="input-group">
-        <span class="input-group-text"><i class="bi bi-tag"></i></span>
-        <input type="text" class="form-control" @bind="NewLocationName" 
-            placeholder="Enter location name" />
+<div class="space-y-4">
+    <div>
+        <label class="block text-sm font-medium text-dark-text mb-2">Location Name</label>
+        <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <i class="bi bi-tag text-dark-text-muted"></i>
+            </div>
+            <input type="text" class="input-modern pl-10 w-full" @bind="NewLocationName" 
+                placeholder="Enter location name" />
+        </div>
     </div>
-</div>
 
-<div class="col-12 mb-4">
-    <label class="form-label">Location Root</label>
-    <PathBrowser SelectedPath="@NewLocationRoot"
-                OnPathSelected="OnRootSelected"
-                isFileSelector="false" />
-</div>
+    <div>
+        <label class="block text-sm font-medium text-dark-text mb-2">Location Root</label>
+        <PathBrowser SelectedPath="@NewLocationRoot"
+                    OnPathSelected="OnRootSelected"
+                    isFileSelector="false" />
+    </div>
 
-<div class="col-12 mb-4">
-    <label class="form-label">Location Path (Optional)</label>
-    <PathBrowser SelectedPath="@NewLocationPath"
-                OnPathSelected="OnPathSelected"
-                Filter="All Files (*.*)|*.*|Project Files (*.csproj,*.sln)|*.csproj;*.sln|Solution Files (*.sln)|*.sln|Project Files (*.csproj)|*.csproj" />
-    <div class="form-text">Leave empty to use the root directory</div>
-</div>
+    <div>
+        <label class="block text-sm font-medium text-dark-text mb-2">Location Path (Optional)</label>
+        <PathBrowser SelectedPath="@NewLocationPath"
+                    OnPathSelected="OnPathSelected"
+                    Filter="All Files (*.*)|*.*|Project Files (*.csproj,*.sln)|*.csproj;*.sln|Solution Files (*.sln)|*.sln|Project Files (*.csproj)|*.csproj" />
+        <p class="text-xs text-dark-text-muted mt-1">Leave empty to use the root directory</p>
+    </div>
 
-<div class="col-12">
-    <button class="btn btn-primary w-100" @onclick="SubmitLocation">
-        <i class="bi bi-plus-circle me-2"></i>@ButtonText
+    <button class="btn-primary w-full flex items-center justify-center space-x-2" @onclick="SubmitLocation">
+        <i class="bi bi-plus-circle"></i>
+        <span>@ButtonText</span>
     </button>
 </div>
-
-<style>
-    .input-group-text {
-        background-color: rgba(13, 110, 253, 0.1);
-        border-width: 2px;
-        border-color: var(--bs-secondary);
-        color: var(--bs-light);
-    }
-
-
-    .form-label {
-        color: var(--bs-light);
-        font-weight: 500;
-    }
-
-    .form-text {
-        color: rgba(255, 255, 255, 0.5);
-        font-size: 0.875rem;
-    }
-
-    .btn-primary {
-        border-width: 2px;
-        transition: all 0.2s ease-in-out;
-    }
-
-    .btn-primary:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-    }
-</style>
 
 @code {
 

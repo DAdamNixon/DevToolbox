@@ -23,49 +23,56 @@
 
 <PageTitle>DevToolbox</PageTitle>
 
-<div class="container-fluid">
-    <div class="row">
-        <div class="col-7 offset-1">
-            <h1 class="display-4 mb-4">Projects</h1>
+<!-- Dashboard Header -->
+<div class="mb-8">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+            <h1 class="text-4xl font-bold text-gradient">Projects</h1>
+            <p class="text-dark-text-muted mt-2">Manage your development workspaces and projects</p>
         </div>
-        <div class="col-3 search-container mt-3">
-            <input type="text" 
-                class="form-control"
-                placeholder="Search across all workspaces..."
-                @ref="searchInput"
-                value="@searchText"
-                @oninput="HandleSearchInput" />
-        </div>
-    </div>
-
-    <div class="row">
-        <div class="col-10 offset-1">
-            <div class="d-flex flex-column gap-4">
-                @foreach (var groupViewModel in FilteredGroupViewModels)
-                {
-                    <WorkspaceGroupCard 
-                        GroupViewModel="groupViewModel"
-                        GlobalOptions="GlobalOptions"
-                        AvailableScripts="AvailableScripts"
-                        AllWorkspaces="AllWorkspaces"
-                        AllGroups="WorkspaceService.WorkspaceGroups"
-                        OnDeleteGroup="DeleteGroup"
-                        OnOpenWorkspaceLocation="OpenWorkspaceLocation"
-                        OnOpenInExplorer="OpenLocationInExplorer"
-                        OnOpenInTerminal="OpenLocationInTerminal"
-                        OnOpenWithCustomApp="OpenLocationWithCustomApp"
-                        OnRunScriptOnLocation="RunScriptOnLocation"
-                        OnAddWorkspace="SaveWorkspaces"
-                        OnMoveToGroup="HandleMoveToGroup"/>
-                }
-                
-                <div class="text-center mb-4">
-                    <button class="btn btn-dark-theme" @onclick="ShowAddGroupModal">
-                        <i class="bi bi-folder-plus me-2"></i>Add New Group
-                    </button>
+        <div class="flex items-center space-x-4">
+            <!-- Search -->
+            <div class="relative">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <i class="bi bi-search text-dark-text-muted"></i>
                 </div>
+                <input type="text" 
+                    class="search-input pl-10 w-80"
+                    placeholder="Search across all workspaces..."
+                    @ref="searchInput"
+                    value="@searchText"
+                    @oninput="HandleSearchInput" />
             </div>
         </div>
+    </div>
+</div>
+
+<!-- Workspace Groups -->
+<div class="space-y-6">
+    @foreach (var groupViewModel in FilteredGroupViewModels)
+    {
+        <WorkspaceGroupCard 
+            GroupViewModel="groupViewModel"
+            GlobalOptions="GlobalOptions"
+            AvailableScripts="AvailableScripts"
+            AllWorkspaces="AllWorkspaces"
+            AllGroups="WorkspaceService.WorkspaceGroups"
+            OnDeleteGroup="DeleteGroup"
+            OnOpenWorkspaceLocation="OpenWorkspaceLocation"
+            OnOpenInExplorer="OpenLocationInExplorer"
+            OnOpenInTerminal="OpenLocationInTerminal"
+            OnOpenWithCustomApp="OpenLocationWithCustomApp"
+            OnRunScriptOnLocation="RunScriptOnLocation"
+            OnAddWorkspace="SaveWorkspaces"
+            OnMoveToGroup="HandleMoveToGroup"/>
+    }
+    
+    <!-- Add New Group Button -->
+    <div class="flex justify-center mt-8">
+        <button class="btn-primary flex items-center space-x-2 px-6 py-3 text-lg" @onclick="ShowAddGroupModal">
+            <i class="bi bi-folder-plus"></i>
+            <span>Add New Group</span>
+        </button>
     </div>
 </div>
 
@@ -79,40 +86,6 @@
         ExistingGroups="WorkspaceService.WorkspaceGroups"
         OnGroupCreated="HandleGroupCreated" />
 </Modal>
-
-<style>
-    /* Match the background and styling from the PowerShell page */
-    ::deep .card {
-        background-color: #333;
-        border-color: #444;
-    }
-    
-    ::deep .card-header {
-        background-color: #2d2d2d;
-        border-color: #444;
-    }
-    
-    body {
-        background-color: #333;
-    }
-    
-    /* Make text more visible on dark background */
-    h1, h2, h3, h4, h5, h6 {
-        color: #f8f9fa;
-    }
-    
-    /* Adjust form controls */
-    .form-control {
-        background-color: #2d2d2d;
-        color: #f8f9fa;
-        border-color: #444;
-    }
-    
-    .form-control:focus {
-        background-color: #2d2d2d;
-        color: #f8f9fa;
-    }
-</style>
 
 @code {
     private DotNetObjectReference<Index>? objRef;

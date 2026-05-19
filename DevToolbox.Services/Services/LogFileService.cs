@@ -11,6 +11,8 @@ namespace DevToolbox.Services.Services
     public class LogFileService : ILogFileService
     {
         private readonly IYamlStorageService _yamlStorage;
+        private static readonly Dictionary<(string logFile, string location, DateTime startDate, DateTime endDate, string templateName, string searchTerm), (int count, DateTime timestamp)> _countCache = new();
+        private static readonly TimeSpan _cacheDuration = TimeSpan.FromMinutes(5);
 
         public LogFileService(IYamlStorageService yamlStorage)
         {
@@ -34,19 +36,47 @@ namespace DevToolbox.Services.Services
             return await _yamlStorage.LoadAsync<LogTemplate>(Path.GetFileNameWithoutExtension(fileName));
         }
 
-        public async Task<List<Dictionary<string, string>>> SearchLogFilesAsync(
-            string logFile,
-            string location,
-            DateTime startDate,
-            DateTime endDate,
-            string templateName
-        )
+        public async Task<int> CountLogEntriesAsync(string logFile, string location, DateTime startDate, DateTime endDate, string templateName, string searchTerm)
         {
-            var results = new List<Dictionary<string, string>>();
-            if (!Directory.Exists(location))
-                return results;
+            var key = (logFile, location, startDate, endDate, templateName, searchTerm ?? string.Empty);
 
-            // Find the template entry by name
+            lock (_countCache)
+            {
+                var expiredKeys = _countCache
+                    .Where(kvp => DateTime.UtcNow - kvp.Value.timestamp > _cacheDuration)
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+                foreach (var expiredKey in expiredKeys)
+                    _countCache.Remove(expiredKey);
+
+                if (_countCache.TryGetValue(key, out var cached) && DateTime.UtcNow - cached.timestamp <= _cacheDuration)
+                    return cached.count;
+            }
+
+            int count = 0;
+            await foreach (var entry in ((ILogFileService)this).SearchLogFilesAsync_v2(logFile, location, startDate, endDate, templateName))
+            {
+                if (!string.IsNullOrWhiteSpace(searchTerm))
+                {
+                    if (!entry.Values.Any(v => v.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)))
+                        continue;
+                }
+                count++;
+            }
+
+            lock (_countCache)
+            {
+                _countCache[key] = (count, DateTime.UtcNow);
+            }
+
+            return count;
+        }
+
+        public async IAsyncEnumerable<Dictionary<string, string>> SearchLogFilesAsync_v2(string logFile, string location, DateTime startDate, DateTime endDate, string templateName)
+        {
+            if (!Directory.Exists(location))
+                yield break;
+
             var templateEntries = await GetAvailableLogFileTemplatesAsync();
             var templateEntry = templateEntries.FirstOrDefault(t => t.Name == templateName);
             if (templateEntry == null)
@@ -58,32 +88,56 @@ namespace DevToolbox.Services.Services
 
             var columns = await ResolveColumnsAsync(template);
 
-            var files = await Task.Run(() => Directory.GetFiles(location, $"{logFile}*.txt"));
+            var files = Directory.GetFiles(location, $"{logFile}*{template.Extension}");
             foreach (var file in files)
             {
                 var fileInfo = new System.IO.FileInfo(file);
                 var fileDate = fileInfo.LastWriteTime;
-                if (fileDate.Date >= startDate.Date && fileDate.Date <= endDate.Date)
-                {
-                    var lines = await File.ReadAllLinesAsync(file);
-                    foreach (var line in lines)
-                    {
-                        var parts = line.Split(template.Delimiter);
+                if (fileDate.Date < startDate.Date || fileDate.Date > endDate.Date)
+                    continue;
 
-                        var dict = new Dictionary<string, string>();
-                        for (int i = 0; i < columns.Count; i++)
-                        {
-                            dict[columns[i]] = parts.Length > i ? parts[i] : "";
-                        }
-                        // If there are extra columns, add them as Message N
-                        for (int i = columns.Count; i < parts.Length; i++)
-                        {
-                            dict[$"Message {i - columns.Count + 1}"] = parts[i];
-                        }
-                        results.Add(dict);
-                    }
+                using var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                using var reader = new StreamReader(fs);
+
+                string? line;
+                while ((line = await reader.ReadLineAsync()) != null)
+                {
+                    var parts = line.Split(template.Delimiter);
+                    var dict = new Dictionary<string, string>();
+
+                    for (int i = 0; i < columns.Count; i++)
+                        dict[columns[i]] = parts.Length > i ? parts[i] : "";
+
+                    for (int i = columns.Count; i < parts.Length; i++)
+                        dict[$"Message {i - columns.Count + 1}"] = parts[i];
+
+                    yield return dict;
                 }
             }
+        }
+
+        public async Task<List<Dictionary<string, string>>> SearchLogFilesPageAsync(string logFile, string location, DateTime startDate, DateTime endDate, string templateName, string searchTerm, int pageNumber, int pageSize)
+        {
+            var results = new List<Dictionary<string, string>>();
+            int skip = pageNumber * pageSize;
+            int taken = 0;
+
+            await foreach (var entry in ((ILogFileService)this).SearchLogFilesAsync_v2(logFile, location, startDate, endDate, templateName))
+            {
+                // Apply filter at the service level
+                if (!string.IsNullOrWhiteSpace(searchTerm))
+                {
+                    if (!entry.Values.Any(v => v.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)))
+                        continue;
+                }
+
+                if (skip > 0) { skip--; continue; }
+                if (taken >= pageSize) break;
+
+                results.Add(entry);
+                taken++;
+            }
+
             return results;
         }
 
@@ -100,6 +154,16 @@ namespace DevToolbox.Services.Services
                 }
             }
             return template.Columns;
+        }
+
+        public Task<List<Dictionary<string, string>>> SearchLogFilesPageAsync(string logFile, string location, DateTime startDate, DateTime endDate, string templateName, string searchTerm, int pageNumber, int pageSize, SortColumn sortColumn)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<string> DownloadLogCsvAsync(string logFile, string location, DateTime startDate, DateTime endDate, string templateName, string searchTerm, SortColumn sortColumn, string? outputPath = null)
+        {
+            throw new NotImplementedException();
         }
     }
 }

@@ -1,0 +1,15 @@
+{
+  "name": "devtoolbox-ui",
+  "version": "1.0.0",
+  "description": "Modern DevToolbox UI with Tailwind CSS",
+  "scripts": {
+    "build-css": "npx tailwindcss -i ./wwwroot/css/input.css -o ./wwwroot/css/output.css --watch",
+    "build-css-prod": "npx tailwindcss -i ./wwwroot/css/input.css -o ./wwwroot/css/output.css --minify"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.17",
+    "@tailwindcss/forms": "^0.5.9",
+    "@tailwindcss/aspect-ratio": "^0.4.2",
+    "autoprefixer": "^10.4.20"
+  }
+}

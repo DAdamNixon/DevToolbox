@@ -1,212 +1,194 @@
 @page "/powershell"
 @namespace DevToolbox.UI.Pages
-<div class="grid-container">
+
+<!-- Page Header -->
+<div class="mb-8">
+    <h1 class="text-4xl font-bold text-gradient">PowerShell Scripts</h1>
+    <p class="text-dark-text-muted mt-2">Create, edit, and execute PowerShell scripts with built-in validation.</p>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-200px)]">
     <!-- Left Sidebar -->
-    <div class="sidebar row">
-        <div class="search-box col-12">
-            <input type="text" 
-                @bind-value="searchText" 
-                @bind-value:event="oninput" 
-                placeholder="Search scripts..." 
-                class="form-control" />
-        </div>
-        <div class="script-list d-flex gap-3 mb-4">
-            @foreach (var script in FilteredScripts)
-            {
-                <div class="btn btn-secondary mt-2 btn-block script-item @(script.Name == selectedScript ? "selected" : "")"
-                    @onclick="() => LoadScript(script.Name)">
-                    @script.Name
+    <div class="lg:col-span-1">
+        <div class="modern-card h-full flex flex-col">
+            <div class="p-6 border-b border-dark-border">
+                <div class="relative">
+                    <input type="text" 
+                        @bind-value="searchText" 
+                        @bind-value:event="oninput" 
+                        placeholder="Search scripts..." 
+                        class="input-modern w-full pl-10" />
+                    <i class="bi bi-search absolute left-3 top-1/2 transform -translate-y-1/2 text-dark-text-muted"></i>
                 </div>
-            }
-        </div>
-        <div class="col-12">
-            <button class="btn btn-success btn-block mb-3" @onclick="CreateNewScript">
-                <i class="bi bi-plus-circle"></i> New Script
-            </button>
+            </div>
+            
+            <div class="flex-1 p-4 overflow-y-auto">
+                <div class="space-y-2 mb-4">
+                    @foreach (var script in FilteredScripts)
+                    {
+                        <button class="w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-colors @(script.Name == selectedScript ? "bg-accent-blue text-white" : "text-dark-text hover:bg-dark-surface")"
+                            @onclick="() => LoadScript(script.Name)">
+                            <i class="bi bi-file-earmark-code mr-2"></i>
+                            @script.Name
+                        </button>
+                    }
+                </div>
+                
+                <button class="btn-primary w-full flex items-center justify-center space-x-2" @onclick="CreateNewScript">
+                    <i class="bi bi-plus-circle"></i>
+                    <span>New Script</span>
+                </button>
+            </div>
         </div>
     </div>
 
     <!-- Main Content -->
-    <div class="main-content">
-        @if (!string.IsNullOrEmpty(selectedScript))
-        {
-            <div class="script-details">
-                <h2>@selectedScript</h2>
-                
-                <div class="validation-options mb-2">
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="enableValidation" @bind="enableScriptValidation">
-                        <label class="form-check-label" for="enableValidation">
-                            Enable Script Validation
-                        </label>
+    <div class="lg:col-span-3">
+        <div class="modern-card h-full">
+            @if (!string.IsNullOrEmpty(selectedScript))
+            {
+                <div class="p-6 h-full flex flex-col">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-2xl font-semibold text-dark-text flex items-center space-x-2">
+                            <i class="bi bi-file-earmark-code text-accent-blue"></i>
+                            <span>@selectedScript</span>
+                        </h2>
+                        
+                        <div class="flex items-center space-x-4">
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input type="checkbox" id="enableValidation" @bind="enableScriptValidation" class="checkbox-modern">
+                                <span class="text-sm text-dark-text">Enable Script Validation</span>
+                            </label>
+                            <button class="btn-secondary flex items-center space-x-2" @onclick="ValidateCurrentScript">
+                                <i class="bi bi-shield-check"></i>
+                                <span>Validate Script</span>
+                            </button>
+                        </div>
                     </div>
-                    <button class="btn btn-sm btn-outline-info" @onclick="ValidateCurrentScript">
-                        Validate Script
-                    </button>
-                </div>
-                
-                @if (showValidationResults)
-                {
-                    <div class="validation-results mb-3">
-                        @if (validationErrors.Any())
+                    
+                    @if (showValidationResults)
+                    {
+                        <div class="mb-4 space-y-3">
+                            @if (validationErrors.Any())
+                            {
+                                <div class="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+                                    <div class="flex items-start space-x-3">
+                                        <i class="bi bi-exclamation-triangle text-red-400 text-lg"></i>
+                                        <div>
+                                            <h5 class="font-medium text-red-400 mb-2">Validation Errors:</h5>
+                                            <ul class="text-red-300 text-sm space-y-1 list-disc list-inside">
+                                                @foreach (var error in validationErrors)
+                                                {
+                                                    <li>@error</li>
+                                                }
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                            
+                            @if (validationWarnings.Any())
+                            {
+                                <div class="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
+                                    <div class="flex items-start space-x-3">
+                                        <i class="bi bi-exclamation-triangle text-yellow-400 text-lg"></i>
+                                        <div>
+                                            <h5 class="font-medium text-yellow-400 mb-2">Validation Warnings:</h5>
+                                            <ul class="text-yellow-300 text-sm space-y-1 list-disc list-inside">
+                                                @foreach (var warning in validationWarnings)
+                                                {
+                                                    <li>@warning</li>
+                                                }
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    <div class="flex-1 flex flex-col space-y-4">
+                        <div class="flex-1">
+                            <label class="block text-sm font-medium text-dark-text mb-2">Script Editor</label>
+                            <textarea @bind="scriptText" 
+                                rows="15" 
+                                class="input-modern w-full h-full font-mono text-sm resize-none"
+                                style="min-height: 300px;"
+                                placeholder="Enter your PowerShell script here...">
+                            </textarea>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-dark-text mb-2">Test Path Parameters</label>
+                            <input type="text" @bind="projectPath" 
+                                   class="input-modern w-full" 
+                                   placeholder="Enter a path to use when testing the script" />
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(error))
                         {
-                            <div class="alert alert-danger">
-                                <h5>Validation Errors:</h5>
-                                <ul>
-                                    @foreach (var error in validationErrors)
-                                    {
-                                        <li>@error</li>
-                                    }
-                                </ul>
+                            <div class="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+                                <div class="flex items-start space-x-3">
+                                    <i class="bi bi-exclamation-circle text-red-400 text-lg"></i>
+                                    <div>
+                                        <h5 class="font-medium text-red-400 mb-2">Error:</h5>
+                                        <div class="text-red-300 text-sm font-mono whitespace-pre-wrap">@error</div>
+                                    </div>
+                                </div>
                             </div>
                         }
                         
-                        @if (validationWarnings.Any())
+                        @if (!string.IsNullOrEmpty(output))
                         {
-                            <div class="alert alert-warning">
-                                <h5>Validation Warnings:</h5>
-                                <ul>
-                                    @foreach (var warning in validationWarnings)
-                                    {
-                                        <li>@warning</li>
-                                    }
-                                </ul>
+                            <div class="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
+                                <div class="flex items-start space-x-3">
+                                    <i class="bi bi-check-circle text-green-400 text-lg"></i>
+                                    <div class="flex-1">
+                                        <h5 class="font-medium text-green-400 mb-2">Output:</h5>
+                                        <pre class="text-green-300 text-sm font-mono whitespace-pre-wrap bg-dark-surface rounded-lg p-3 max-h-48 overflow-y-auto">@output</pre>
+                                    </div>
+                                </div>
                             </div>
                         }
-                    </div>
-                }
-                
-                <div class="script-editor">
-                    <textarea @bind="scriptText" 
-                        rows="15" 
-                        class="form-control code-editor">
-                    </textarea>
-                </div>
 
-                <div class="parameters-section mt-3">
-                    <div class="form-group">
-                        <label>Test Path Parameters:</label>
-                        <input type="text" @bind="projectPath" class="form-control" 
-                               placeholder="Enter a path to use when testing the script" />
-                    </div>
-                </div>
-
-                <div class="output-section mt-3">
-                    @if (!string.IsNullOrEmpty(error))
-                    {
-                        <div class="alert alert-danger">
-                            <h5>Error:</h5>
-                            <div class="error-message">
-                                @error
-                            </div>
+                        <div class="flex flex-wrap gap-2 pt-4 border-t border-dark-border">
+                            <button class="btn-primary flex items-center space-x-2" @onclick="SaveScript" disabled="@isExecuting">
+                                <i class="bi bi-save"></i>
+                                <span>Save</span>
+                            </button>
+                            <button class="btn-secondary flex items-center space-x-2" @onclick="ExecuteScript" disabled="@isExecuting">
+                                <i class="bi bi-play"></i>
+                                <span>@(isExecuting ? "Running..." : "Run Script")</span>
+                            </button>
+                            <button class="btn-accent flex items-center space-x-2" @onclick="ExecuteScriptWithParams" disabled="@isExecuting">
+                                <i class="bi bi-play-fill"></i>
+                                <span>Run With Parameters</span>
+                            </button>
+                            <button class="btn-danger flex items-center space-x-2" @onclick="DeleteScript" disabled="@isExecuting">
+                                <i class="bi bi-trash"></i>
+                                <span>Delete</span>
+                            </button>
+                            <button class="btn-ghost flex items-center space-x-2" @onclick="ClearOutput" disabled="@isExecuting">
+                                <i class="bi bi-eraser"></i>
+                                <span>Clear Output</span>
+                            </button>
                         </div>
-                    }
-                    @if (!string.IsNullOrEmpty(output))
-                    {
-                        <div class="alert alert-success">
-                            <h5>Output:</h5>
-                            <pre class="output-text">@output</pre>
-                        </div>
-                    }
+                    </div>
                 </div>
-
-                <div class="action-buttons mt-3">
-                    <button class="btn btn-primary" @onclick="SaveScript" disabled="@isExecuting">
-                        <i class="bi bi-save"></i> Save
-                    </button>
-                    <button class="btn btn-success" @onclick="ExecuteScript" disabled="@isExecuting">
-                        <i class="bi bi-play"></i> @(isExecuting ? "Running..." : "Run Script")
-                    </button>
-                    <button class="btn btn-warning" @onclick="ExecuteScriptWithParams" disabled="@isExecuting">
-                        <i class="bi bi-play-fill"></i> Run With Parameters
-                    </button>
-                    <button class="btn btn-danger" @onclick="DeleteScript" disabled="@isExecuting">
-                        <i class="bi bi-trash"></i> Delete
-                    </button>
-                    <button class="btn btn-secondary" @onclick="ClearOutput" disabled="@isExecuting">
-                        <i class="bi bi-eraser"></i> Clear Output
+            }
+            else
+            {
+                <div class="flex flex-col items-center justify-center h-full text-center p-8">
+                    <div class="w-20 h-20 bg-dark-surface rounded-full flex items-center justify-center mb-4">
+                        <i class="bi bi-file-earmark-code text-3xl text-dark-text-muted"></i>
+                    </div>
+                    <h3 class="text-xl font-semibold text-dark-text mb-2">No Script Selected</h3>
+                    <p class="text-dark-text-muted mb-6">Select a script from the sidebar or create a new one to get started.</p>
+                    <button class="btn-primary flex items-center space-x-2" @onclick="CreateNewScript">
+                        <i class="bi bi-plus-circle"></i>
+                        <span>Create New Script</span>
                     </button>
                 </div>
-            </div>
-        }
-        else
-        {
-            <div class="text-center mt-5">
-                <h3>Select a script from the sidebar or create a new one</h3>
-                <button class="btn btn-success mt-3" @onclick="CreateNewScript">
-                    <i class="bi bi-plus-circle"></i> Create New Script
-                </button>
-            </div>
-        }
+            }
+        </div>
     </div>
 </div>
-
-<style>
-    .grid-container {
-        display: grid;
-        grid-template-columns: 250px 1fr;
-        gap: 20px;
-        height: calc(100vh - 140px);
-    }
-    
-    .sidebar {
-        padding: 15px;
-        background-color: #2d2d2d;
-        border-radius: 5px;
-        height: 100%;
-        overflow-y: auto;
-    }
-    
-    .script-item {
-        text-align: left;
-        margin-bottom: 5px;
-    }
-    
-    .script-item.selected {
-        background-color: #007bff;
-    }
-    
-    .main-content {
-        padding: 15px;
-        background-color: #333;
-        border-radius: 5px;
-        height: 100%;
-        overflow-y: auto;
-    }
-    
-    .script-editor {
-        margin-bottom: 15px;
-    }
-    
-    .code-editor {
-        font-family: 'Consolas', 'Courier New', monospace;
-        resize: vertical;
-        background-color: #2d2d2d;
-        color: #f8f9fa;
-        border: 1px solid #444;
-    }
-    
-    .output-text {
-        background-color: #2d2d2d;
-        padding: 10px;
-        border-radius: 5px;
-        max-height: 200px;
-        overflow-y: auto;
-        white-space: pre-wrap;
-    }
-    
-    .action-buttons {
-        display: flex;
-        gap: 10px;
-    }
-    
-    .error-message {
-        color: #dc3545;
-    }
-    
-    .validation-options {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-</style>

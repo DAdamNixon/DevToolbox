@@ -96,4 +96,23 @@ project.fragment.lock.json
 artifacts/
 
 # ASP.NET Scaffolding
-ScaffoldingReadMe.txt 
+ScaffoldingReadMe.txt
+
+# Node.js dependencies and build artifacts
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Tailwind CSS output
+wwwroot/css/output.css
+
+# Package lock files (optional - some teams commit these)
+package-lock.json
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local 

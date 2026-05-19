@@ -1,99 +1,12 @@
-.folder-browser, .file-browser {
-    margin-bottom: 1rem;
-}
+/* Legacy styles - will be migrated to Tailwind components */
+/* This file is kept minimal during migration */
 
-.folder-browser .input-group, .file-browser .input-group {
-    display: flex;
-    gap: 0.5rem;
-}
+/* Any remaining custom animations or complex styles that don't map directly to Tailwind */
+/* These will be gradually moved to Tailwind utilities */
 
-.folder-browser input, .file-browser input {
-    cursor: pointer;
-}
-
-.workspace-list {
-    margin-top: 2rem;
-}
-
-.workspace-empty {
-    text-align: center;
-    padding: 2rem;
-    background-color: #f8f9fa;
-    border-radius: 0.5rem;
-}
-
-.text-muted {
-    color: rgba(255, 255, 255, 0.5) !important;
-}
-
-/* Custom transitions for cards */
-.card {
-    border-width: 2px !important;
-    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
-}
-
-.card:hover {
-    box-shadow: 0 4px 12px rgba(13, 110, 253, 0.15);
-    border-color: var(--bs-primary) !important;
-}
-
-.card.expanded {
-    box-shadow: 0 0 15px rgba(13, 110, 253, 0.15) !important;
-    border-color: var(--bs-primary) !important;
-}
-
-.card-header {
-    background-color: rgba(13, 110, 253, 0.1) !important;
-}
-
-/* Card body styles */
-.card-body {
-    transition: all 0.3s ease-out;
-}
-
-/* Button styles */
-.card .btn-link {
-    color: var(--bs-primary);
-    transition: all 0.2s ease-in-out;
-}
-
-.card .btn-link:hover {
-    color: var(--bs-primary);
-    opacity: 0.8;
-    box-shadow: 0 0 10px rgba(13, 110, 253, 0.2);
-}
-
-.card .btn-outline-light {
-    border-width: 2px;
-    transition: all 0.2s ease-in-out;
-}
-
-.card .btn-outline-light:hover {
-    background-color: var(--bs-primary);
-    border-color: var(--bs-primary);
-    box-shadow: 0 0 10px rgba(13, 110, 253, 0.3);
-}
-
-/* Fix dropdown toggle button */
-.dropdown-toggle::after {
-    display: none;
-}
-
-/* Ensure consistent dropdown z-index */
-.dropdown {
-    position: relative;
-}
-
-.dropdown-menu {
-    z-index: 1050 !important;
-}
-
-/* Prevent interaction with collapsed or hidden elements */
-.collapse:not(.show),
-.card-body.collapsed,
-[style*="display: none"],
-[hidden] {
-    pointer-events: none;
+/* Placeholder to prevent empty file */
+body {
+    /* Styles now handled by Tailwind */
 }
 
 .card .btn-outline-light:hover {

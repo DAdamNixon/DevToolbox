@@ -17,7 +17,6 @@ namespace DevToolbox.UI.Pages
         private string error = "";
         private bool isExecuting = false;
         private string projectPath = "";
-        private string newScriptName = "";
         
         // Validation related properties
         private bool enableScriptValidation = true;
@@ -25,7 +24,7 @@ namespace DevToolbox.UI.Pages
         private List<string> validationWarnings = new();
         private bool showValidationResults = false;
 
-        [Inject] PowerShellService powerShellService {get; set;}
+        [Inject] PowerShellService powerShellService { get; set; } = null!;
         private string searchText = "";
         
         protected override async Task OnInitializedAsync()
@@ -238,10 +237,10 @@ $null = $Host.UI.RawUI.ReadKey(""NoEcho,IncludeKeyDown"")";
             enableScriptValidation = !enableScriptValidation;
         }
         
-        private async Task ValidateCurrentScript()
+        private Task ValidateCurrentScript()
         {
             if (string.IsNullOrEmpty(scriptText))
-                return;
+                return Task.CompletedTask;
                 
             ClearValidation();
             
@@ -257,6 +256,8 @@ $null = $Host.UI.RawUI.ReadKey(""NoEcho,IncludeKeyDown"")";
                 output = "Script validation passed successfully!";
                 error = "";
             }
+            
+            return Task.CompletedTask;
         }
         
         private async Task RunCleanArtifacts()

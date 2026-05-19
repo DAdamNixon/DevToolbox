@@ -11,41 +11,55 @@
 @inject ViewModelFactory ViewModelFactory
 @inject ModalStateService ModalStateService
 
-<div class="card bg-dark text-light border-secondary mb-3 @(GroupViewModel.IsExpanded ? "expanded" : "")">
-    <div class="card-header border-secondary d-flex align-items-center p-0">
-        <div class="flex-grow-1 h-100 px-3 py-2" @onclick="ToggleExpand" style="cursor: pointer;">
-            <h5 class="card-title mb-0">@GroupViewModel.Name</h5>
+<div class="glow-card @(GroupViewModel.IsExpanded ? "ring-2 ring-accent-blue/50" : "")">
+    <!-- Card Header -->
+    <div class="workspace-card-header">
+        <div class="flex-1 cursor-pointer" @onclick="ToggleExpand">
+            <h3 class="workspace-card-title flex items-center space-x-3">
+                <i class="bi bi-folder2 text-accent-blue"></i>
+                <span>@GroupViewModel.Name</span>
+                <span class="text-sm text-dark-text-muted font-normal">(@GroupViewModel.Workspaces.Count workspaces)</span>
+            </h3>
         </div>
-        <div class="dropdown h-100 border-start border-secondary">
-            <button class="btn btn-link text-light dropdown-toggle h-100 px-3" data-bs-toggle="dropdown" aria-expanded="false">
-                <i class="bi bi-three-dots-vertical"></i>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
-                <li>
-                    <button class="dropdown-item" @onclick="ShowAddWorkspaceModal">
-                        <i class="bi bi-plus-circle me-2"></i>Add Workspace
-                    </button>
-                </li>
-                <li>
-                    <button class="dropdown-item" @onclick="ShowRenameModal">
-                        <i class="bi bi-pencil me-2"></i>Rename
-                    </button>
-                </li>
-                <li><hr class="dropdown-divider"></li>
-                <li>
-                    <button class="dropdown-item text-danger" @onclick="OnDelete">
-                        <i class="bi bi-trash me-2"></i>Delete Group
-                    </button>
-                </li>
-            </ul>
+        
+        <!-- Actions Menu -->
+        <div class="workspace-actions">
+            <div class="relative inline-block text-left" @onclick:stopPropagation="true">
+                <button type="button" 
+                    class="btn-ghost p-2 rounded-lg" 
+                    @onclick="ToggleDropdown">
+                    <i class="bi bi-three-dots-vertical"></i>
+                </button>
+                
+                @if (showDropdown)
+                {
+                    <div class="dropdown-menu absolute right-0 mt-2 origin-top-right">
+                        <button class="dropdown-item" @onclick="ShowAddWorkspaceModal">
+                            <i class="bi bi-plus-circle"></i>
+                            <span>Add Workspace</span>
+                        </button>
+                        <button class="dropdown-item" @onclick="ShowRenameModal">
+                            <i class="bi bi-pencil"></i>
+                            <span>Rename</span>
+                        </button>
+                        <div class="border-t border-dark-border my-2"></div>
+                        <button class="dropdown-item danger" @onclick="OnDelete">
+                            <i class="bi bi-trash"></i>
+                            <span>Delete Group</span>
+                        </button>
+                    </div>
+                }
+            </div>
         </div>
     </div>
     
-    <div class="card-body @(GroupViewModel.IsExpanded ? "expanded" : "collapsed")">
-        <div class="row g-3">
-            @foreach (var workspaceViewModel in GroupViewModel.Workspaces)
-            {
-                <div class="col-md-6 col-lg-4">
+    <!-- Card Body - Workspace Grid -->
+    @if (GroupViewModel.IsExpanded)
+    {
+        <div class="mt-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                @foreach (var workspaceViewModel in GroupViewModel.Workspaces)
+                {
                     <WorkspaceCard 
                         WorkspaceViewModel="workspaceViewModel"
                         GlobalOptions="GlobalOptions"
@@ -61,10 +75,19 @@
                         OnAddLocation="SaveWorkspaces"
                         OnMoveToGroup="HandleMoveToGroup"
                         OnRename="OnAddWorkspace" />
+                }
+                
+                <!-- Add Workspace Card -->
+                <div class="modern-card border-2 border-dashed border-dark-border hover:border-accent-blue/50 transition-colors cursor-pointer group"
+                     @onclick="ShowAddWorkspaceModal">
+                    <div class="flex flex-col items-center justify-center py-8 space-y-3">
+                        <i class="bi bi-plus-circle text-2xl text-dark-text-muted group-hover:text-accent-blue transition-colors"></i>
+                        <span class="text-dark-text-muted group-hover:text-accent-blue transition-colors">Add Workspace</span>
+                    </div>
                 </div>
-            }
+            </div>
         </div>
-    </div>
+    }
 </div>
 
 <Modal @bind-IsVisible="IsAddWorkspaceModalVisible" Title="@AddWorkspaceModalTitle">
@@ -90,20 +113,6 @@
         OnRenameCompleted="HandleRenameCompleted" />
 </Modal>
 
-<style>
-    .card-body.expanded {
-        max-height: 2000px;
-        opacity: 1;
-    }
-
-    .card-body.collapsed {
-        max-height: 0;
-        opacity: 0;
-        padding: 0;
-        margin: 0;
-    }
-</style>
-
 @code {
     [Parameter] public WorkspaceGroupViewModel GroupViewModel { get; set; } = null!;
     [Parameter] public GlobalCustomOpenOptions GlobalOptions { get; set; } = null!;
@@ -122,6 +131,7 @@
 
     private string NewWorkspaceName = string.Empty;
     private string NewGroupName = string.Empty;
+    private bool showDropdown = false;
 
     // Modal keys for ModalStateService
     private string AddWorkspaceModalKey => ModalStateService.GetModalKey("addWorkspace", GroupViewModel.Group.Name);
@@ -164,18 +174,26 @@
     {
         CardStateService.ToggleExpand("group", GroupViewModel.Group.Name);
         GroupViewModel.IsExpanded = !GroupViewModel.IsExpanded;
+        showDropdown = false; // Close dropdown when expanding/collapsing
+    }
+
+    private void ToggleDropdown()
+    {
+        showDropdown = !showDropdown;
     }
 
     private void ShowAddWorkspaceModal()
     {
         NewWorkspaceName = string.Empty;
         IsAddWorkspaceModalVisible = true;
+        showDropdown = false;
     }
 
     private void ShowRenameModal()
     {
         NewGroupName = GroupViewModel.Name;
         IsRenameModalVisible = true;
+        showDropdown = false;
     }
 
     private async Task HandleWorkspaceCreated(Workspace workspace)
@@ -238,6 +256,7 @@
     private async Task OnDelete()
     {
         await OnDeleteGroup.InvokeAsync(GroupViewModel.Group);
+        showDropdown = false;
     }
 
     private async Task SaveWorkspaces()

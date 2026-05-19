@@ -10,12 +10,48 @@ namespace DevToolbox.Services.Interfaces
         Task<List<LogTemplateIndexEntry>> GetAvailableLogFileTemplatesAsync();
         Task<List<LogLocation>> GetLogLocationsAsync();
         Task<LogTemplate?> LoadTemplateAsync(string fileName);
-        Task<List<Dictionary<string, string>>> SearchLogFilesAsync(
+        IAsyncEnumerable<Dictionary<string, string>> SearchLogFilesAsync_v2(
             string logFile,
             string location,
             DateTime startDate,
             DateTime endDate,
             string templateName
+        );
+        Task<List<Dictionary<string, string>>> SearchLogFilesPageAsync(
+            string logFile,
+            string location,
+            DateTime startDate,
+            DateTime endDate,
+            string templateName,
+            string searchTerm,
+            int pageNumber,
+            int pageSize);
+        Task<List<Dictionary<string, string>>> SearchLogFilesPageAsync(
+            string logFile,
+            string location,
+            DateTime startDate,
+            DateTime endDate,
+            string templateName,
+            string searchTerm,
+            int pageNumber,
+            int pageSize,
+            SortColumn sortColumn);
+        Task<int> CountLogEntriesAsync(
+            string logFile,
+            string location,
+            DateTime startDate,
+            DateTime endDate,
+            string templateName,
+            string searchTerm);
+        Task<string> DownloadLogCsvAsync(
+            string logFile,
+            string location,
+            DateTime startDate,
+            DateTime endDate,
+            string templateName,
+            string searchTerm,
+            SortColumn sortColumn,
+            string? outputPath = null
         );
     }
 }

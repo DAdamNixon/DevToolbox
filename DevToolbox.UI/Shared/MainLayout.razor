@@ -1,18 +1,23 @@
 @using Microsoft.AspNetCore.Components
 @inherits LayoutComponentBase
 
-<div>
-    <header class="sticky-top">
+<div class="min-h-screen bg-dark-bg flex flex-col">
+    <!-- Navigation -->
+    <header class="flex-shrink-0">
         <NavMenu />
     </header>
 
-    <main class="main-content">
-        <div class="container-fluid py-3">
-            @Body
+    <!-- Main Content -->
+    <main class="flex-1">
+        <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+            <div class="px-4 py-6 sm:px-0">
+                @Body
+            </div>
         </div>
     </main>
 
-    <footer>
+    <!-- Footer - Always at bottom -->
+    <footer class="flex-shrink-0 border-t border-dark-border">
         <StatusBar />
     </footer>
 </div>

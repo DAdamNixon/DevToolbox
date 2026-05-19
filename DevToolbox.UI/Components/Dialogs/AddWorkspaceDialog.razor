@@ -1,22 +1,29 @@
 @using DevToolbox.Services.Models
 @using DevToolbox.UI.Components
 
-<div class="mb-4">
-    <label class="form-label mb-2">Workspace Name</label>
-    <input type="text" 
-        class="form-control" 
-        @bind="WorkspaceName" 
-        placeholder="Enter workspace name" />
-    @if (!string.IsNullOrEmpty(ErrorMessage))
-    {
-        <div class="invalid-feedback d-block mt-2">
-            @ErrorMessage
-        </div>
-    }
+@using DevToolbox.Services.Models
+@using DevToolbox.UI.Components
+
+<div class="space-y-4">
+    <div>
+        <label class="block text-sm font-medium text-dark-text mb-2">Workspace Name</label>
+        <input type="text" 
+            class="input-modern w-full" 
+            @bind="WorkspaceName" 
+            placeholder="Enter workspace name" />
+        @if (!string.IsNullOrEmpty(ErrorMessage))
+        {
+            <div class="mt-2 text-sm text-red-400 flex items-center space-x-1">
+                <i class="bi bi-exclamation-circle"></i>
+                <span>@ErrorMessage</span>
+            </div>
+        }
+    </div>
+    
+    <AddWorkspaceLocation @ref="locationForm" 
+        OnLocationSubmitted="HandleLocationSubmitted" 
+        ButtonText="Create Workspace"/>
 </div>
-<AddWorkspaceLocation @ref="locationForm" 
-    OnLocationSubmitted="HandleLocationSubmitted" 
-    ButtonText="Create Workspace"/>
 
 @code {
     [Parameter] public string WorkspaceName { get; set; } = string.Empty;
