@@ -43,6 +43,7 @@ namespace DevToolbox.UI
             services.AddScoped<IYamlStorageService, YamlStorageService>();
             services.AddScoped<ILogFileService, DbLogService>();
             services.AddScoped<ILogStorageService, SqliteLogStorageService>();
+            services.AddScoped<IHealthMonitoringService, HealthMonitoringService>();
 
             // Register UI-specific services
             services.AddScoped<ViewModelFactory>();
