@@ -11,8 +11,6 @@ namespace DevToolbox.Services.Services
     public class LogFileService : ILogFileService
     {
         private readonly IYamlStorageService _yamlStorage;
-        private static readonly Dictionary<(string logFile, string location, DateTime startDate, DateTime endDate, string templateName, string searchTerm), (int count, DateTime timestamp)> _countCache = new();
-        private static readonly TimeSpan _cacheDuration = TimeSpan.FromMinutes(5);
 
         public LogFileService(IYamlStorageService yamlStorage)
         {
@@ -36,39 +34,19 @@ namespace DevToolbox.Services.Services
             return await _yamlStorage.LoadAsync<LogTemplate>(Path.GetFileNameWithoutExtension(fileName));
         }
 
-        public async Task<int> CountLogEntriesAsync(string logFile, string location, DateTime startDate, DateTime endDate, string templateName, string searchTerm)
+        public async Task<int> CountLogEntriesAsync(string logFile, IReadOnlyList<LogLocation> locations, DateTime startDate, DateTime endDate, string templateName, string searchTerm, LogSearchCriteria? criteria = null)
         {
-            var key = (logFile, location, startDate, endDate, templateName, searchTerm ?? string.Empty);
-
-            lock (_countCache)
-            {
-                var expiredKeys = _countCache
-                    .Where(kvp => DateTime.UtcNow - kvp.Value.timestamp > _cacheDuration)
-                    .Select(kvp => kvp.Key)
-                    .ToList();
-                foreach (var expiredKey in expiredKeys)
-                    _countCache.Remove(expiredKey);
-
-                if (_countCache.TryGetValue(key, out var cached) && DateTime.UtcNow - cached.timestamp <= _cacheDuration)
-                    return cached.count;
-            }
-
             int count = 0;
-            await foreach (var entry in ((ILogFileService)this).SearchLogFilesAsync_v2(logFile, location, startDate, endDate, templateName))
+            foreach (var loc in locations)
             {
-                if (!string.IsNullOrWhiteSpace(searchTerm))
+                await foreach (var entry in SearchLogFilesAsync_v2(logFile, loc.Path, startDate, endDate, templateName))
                 {
-                    if (!entry.Values.Any(v => v.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)))
+                    if (!string.IsNullOrWhiteSpace(searchTerm) &&
+                        !entry.Values.Any(v => v.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)))
                         continue;
+                    count++;
                 }
-                count++;
             }
-
-            lock (_countCache)
-            {
-                _countCache[key] = (count, DateTime.UtcNow);
-            }
-
             return count;
         }
 
@@ -116,26 +94,24 @@ namespace DevToolbox.Services.Services
             }
         }
 
-        public async Task<List<Dictionary<string, string>>> SearchLogFilesPageAsync(string logFile, string location, DateTime startDate, DateTime endDate, string templateName, string searchTerm, int pageNumber, int pageSize)
+        public async Task<List<Dictionary<string, string>>> SearchLogFilesPageAsync(string logFile, IReadOnlyList<LogLocation> locations, DateTime startDate, DateTime endDate, string templateName, string searchTerm, int pageNumber, int pageSize, List<SortColumn>? sortColumns, LogSearchCriteria? criteria = null)
         {
             var results = new List<Dictionary<string, string>>();
             int skip = pageNumber * pageSize;
-            int taken = 0;
 
-            await foreach (var entry in ((ILogFileService)this).SearchLogFilesAsync_v2(logFile, location, startDate, endDate, templateName))
+            foreach (var loc in locations)
             {
-                // Apply filter at the service level
-                if (!string.IsNullOrWhiteSpace(searchTerm))
+                await foreach (var entry in SearchLogFilesAsync_v2(logFile, loc.Path, startDate, endDate, templateName))
                 {
-                    if (!entry.Values.Any(v => v.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)))
+                    if (!string.IsNullOrWhiteSpace(searchTerm) &&
+                        !entry.Values.Any(v => v.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)))
                         continue;
+
+                    if (skip > 0) { skip--; continue; }
+                    if (results.Count >= pageSize) return results;
+
+                    results.Add(entry);
                 }
-
-                if (skip > 0) { skip--; continue; }
-                if (taken >= pageSize) break;
-
-                results.Add(entry);
-                taken++;
             }
 
             return results;
@@ -156,14 +132,9 @@ namespace DevToolbox.Services.Services
             return template.Columns;
         }
 
-        public Task<List<Dictionary<string, string>>> SearchLogFilesPageAsync(string logFile, string location, DateTime startDate, DateTime endDate, string templateName, string searchTerm, int pageNumber, int pageSize, SortColumn sortColumn)
+        public Task<string> DownloadLogCsvAsync(string logFile, IReadOnlyList<LogLocation> locations, DateTime startDate, DateTime endDate, string templateName, string searchTerm, List<SortColumn>? sortColumns, string? outputPath = null, LogSearchCriteria? criteria = null)
         {
-            throw new NotImplementedException();
-        }
-
-        public Task<string> DownloadLogCsvAsync(string logFile, string location, DateTime startDate, DateTime endDate, string templateName, string searchTerm, SortColumn sortColumn, string? outputPath = null)
-        {
-            throw new NotImplementedException();
+            throw new NotSupportedException("CSV export is provided by DbLogService.");
         }
     }
 }

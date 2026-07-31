@@ -10,48 +10,35 @@ namespace DevToolbox.Services.Interfaces
         Task<List<LogTemplateIndexEntry>> GetAvailableLogFileTemplatesAsync();
         Task<List<LogLocation>> GetLogLocationsAsync();
         Task<LogTemplate?> LoadTemplateAsync(string fileName);
-        IAsyncEnumerable<Dictionary<string, string>> SearchLogFilesAsync_v2(
-            string logFile,
-            string location,
-            DateTime startDate,
-            DateTime endDate,
-            string templateName
-        );
         Task<List<Dictionary<string, string>>> SearchLogFilesPageAsync(
             string logFile,
-            string location,
-            DateTime startDate,
-            DateTime endDate,
-            string templateName,
-            string searchTerm,
-            int pageNumber,
-            int pageSize);
-        Task<List<Dictionary<string, string>>> SearchLogFilesPageAsync(
-            string logFile,
-            string location,
+            IReadOnlyList<LogLocation> locations,
             DateTime startDate,
             DateTime endDate,
             string templateName,
             string searchTerm,
             int pageNumber,
             int pageSize,
-            SortColumn sortColumn);
+            List<SortColumn>? sortColumns,
+            LogSearchCriteria? criteria = null);
         Task<int> CountLogEntriesAsync(
             string logFile,
-            string location,
-            DateTime startDate,
-            DateTime endDate,
-            string templateName,
-            string searchTerm);
-        Task<string> DownloadLogCsvAsync(
-            string logFile,
-            string location,
+            IReadOnlyList<LogLocation> locations,
             DateTime startDate,
             DateTime endDate,
             string templateName,
             string searchTerm,
-            SortColumn sortColumn,
-            string? outputPath = null
+            LogSearchCriteria? criteria = null);
+        Task<string> DownloadLogCsvAsync(
+            string logFile,
+            IReadOnlyList<LogLocation> locations,
+            DateTime startDate,
+            DateTime endDate,
+            string templateName,
+            string searchTerm,
+            List<SortColumn>? sortColumns,
+            string? outputPath = null,
+            LogSearchCriteria? criteria = null
         );
     }
 }

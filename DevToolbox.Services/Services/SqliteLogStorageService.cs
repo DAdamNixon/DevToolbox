@@ -39,6 +39,11 @@ namespace DevToolbox.Services.Services
 
             using var conn = GetConnection();
             await conn.OpenAsync();
+            using (var walCmd = conn.CreateCommand())
+            {
+                walCmd.CommandText = "PRAGMA journal_mode=WAL;";
+                await walCmd.ExecuteNonQueryAsync();
+            }
             using var cmd = conn.CreateCommand();
             cmd.CommandText = sb.ToString();
             await cmd.ExecuteNonQueryAsync();
@@ -57,24 +62,42 @@ namespace DevToolbox.Services.Services
 
         public async Task InsertLogLinesAsync(string tableName, IEnumerable<Dictionary<string, string>> lines)
         {
-            var logLines = lines.ToList();
-            if (!logLines.Any()) return;
+            var logLines = lines as IList<Dictionary<string, string>> ?? lines.ToList();
+            if (logLines.Count == 0) return;
 
-            // Get all unique columns from all lines
+            // Union of keys across the batch keeps the prepared command stable.
             var columns = logLines.SelectMany(d => d.Keys).Distinct().ToList();
 
             using var conn = GetConnection();
             await conn.OpenAsync();
-            using var tx = await conn.BeginTransactionAsync();
 
+            using (var pragma = conn.CreateCommand())
+            {
+                pragma.CommandText = "PRAGMA synchronous=NORMAL;";
+                await pragma.ExecuteNonQueryAsync();
+            }
+
+            using var tx = conn.BeginTransaction();
+
+            var colList = string.Join(", ", columns.Select(c => $"[{c}]"));
+            var paramList = string.Join(", ", columns.Select((c, i) => $"@p{i}"));
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = $"INSERT INTO [{tableName}] ({colList}) VALUES ({paramList});";
+
+            var parameters = new SqliteParameter[columns.Count];
+            for (int i = 0; i < columns.Count; i++)
+            {
+                parameters[i] = cmd.CreateParameter();
+                parameters[i].ParameterName = $"@p{i}";
+                cmd.Parameters.Add(parameters[i]);
+            }
+
+            // Reuse one prepared command for every row in the batch.
             foreach (var line in logLines)
             {
-                var colList = string.Join(", ", columns.Select(c => $"[{c}]"));
-                var paramList = string.Join(", ", columns.Select((c, i) => $"@p{i}"));
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = $"INSERT INTO [{tableName}] ({colList}) VALUES ({paramList});";
                 for (int i = 0; i < columns.Count; i++)
-                    cmd.Parameters.AddWithValue($"@p{i}", line.TryGetValue(columns[i], out var val) ? val ?? "" : "");
+                    parameters[i].Value = line.TryGetValue(columns[i], out var val) ? (val ?? "") : "";
                 await cmd.ExecuteNonQueryAsync();
             }
 
@@ -118,6 +141,13 @@ namespace DevToolbox.Services.Services
                 parameters.Add(new SqliteParameter("@searchTerm", $"%{searchTerm}%"));
             }
 
+            if (query.Criteria != null)
+            {
+                var criteriaSql = LogCriteriaTranslator.Build(query.Criteria, columns, parameters);
+                if (!string.IsNullOrEmpty(criteriaSql))
+                    where.Add(criteriaSql);
+            }
+
             var whereSql = where.Any() ? "WHERE " + string.Join(" AND ", where) : "";
 
             // Build ORDER BY clause
@@ -126,7 +156,15 @@ namespace DevToolbox.Services.Services
             {
                 var orderClauses = query.Sort
                     .Where(s => !string.IsNullOrWhiteSpace(s.Column) && columns.Contains(s.Column))
-                    .Select(s => $"[{s.Column}] {(s.Direction?.ToLower() == "desc" ? "DESC" : "ASC")}");
+                    .Select(s =>
+                    {
+                        var dir = s.Direction?.ToLower() == "desc" ? "DESC" : "ASC";
+                        // Sequence stores a line number; sort it numerically, not lexically ("10" vs "2").
+                        var expr = string.Equals(s.Column, "Sequence", StringComparison.OrdinalIgnoreCase)
+                            ? $"CAST([{s.Column}] AS INTEGER)"
+                            : $"[{s.Column}]";
+                        return $"{expr} {dir}";
+                    });
                 orderBySql = "ORDER BY " + string.Join(", ", orderClauses);
             }
             else

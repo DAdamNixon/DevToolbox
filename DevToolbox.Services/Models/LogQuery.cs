@@ -10,6 +10,7 @@ namespace DevToolbox.Services.Models
     {
         public Dictionary<string, object>? Filters { get; set; }
         public string? SearchTerm { get; set; }
+        public LogSearchCriteria? Criteria { get; set; }
         public int? Page { get; set; }
         public int? PageSize { get; set; }
 
