@@ -1,12 +1,9 @@
 ﻿using DevToolbox.Services.Interfaces;
 using DevToolbox.Services.Models;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -17,8 +14,10 @@ namespace DevToolbox.Services.Services
     {
         private readonly IYamlStorageService _yamlStorage;
         private readonly ILogStorageService _logStorage;
-        private static readonly ConcurrentDictionary<string, bool> _loadedArchives = new();
         private static readonly SemaphoreSlim _loadSemaphore = new(1, 1);
+
+        // Single active search table; dropped and recreated on every Search.
+        private const string TableName = "logs";
 
         public DbLogService(IYamlStorageService yamlStorage, ILogStorageService logStorage)
         {
@@ -66,49 +65,6 @@ namespace DevToolbox.Services.Services
             {
                 throw new InvalidOperationException($"Failed to load template '{fileName}'", ex);
             }
-        }
-
-        /// <summary>
-        /// Checks if a log archive has been completely loaded into the database.
-        /// </summary>
-        public Task<bool> IsFileCompletelyLoadedAsync(string tableName, string filePath)
-        {
-            var archiveKey = GenerateArchiveKey(tableName, filePath);
-            return Task.FromResult(_loadedArchives.ContainsKey(archiveKey));
-        }
-
-        private static string GenerateArchiveKey(params string[] parts)
-        {
-            return string.Join("|", parts.Where(p => !string.IsNullOrWhiteSpace(p)));
-        }
-
-        // A combined table spans every selected location; the location set is hashed into the name
-        // so distinct selections don't collide.
-        private static string BuildTableName(string logFile, IReadOnlyList<LogLocation> locations, DateTime startDate, DateTime endDate)
-        {
-            var safeFile = SanitizeIdentifier(logFile);
-            var locationKey = string.Join("|", locations
-                .Select(l => l.Name)
-                .Where(n => !string.IsNullOrWhiteSpace(n))
-                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase));
-            return $"Log_{safeFile}_{startDate:yyyyMMdd}_{endDate:yyyyMMdd}_{ShortHash(locationKey)}";
-        }
-
-        private static string SanitizeIdentifier(string value)
-        {
-            if (string.IsNullOrEmpty(value))
-                return "all";
-            return new string(value.Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray());
-        }
-
-        private static string ShortHash(string value)
-        {
-            using var sha = SHA256.Create();
-            var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(value ?? string.Empty));
-            var sb = new StringBuilder(8);
-            for (int i = 0; i < 4; i++)
-                sb.Append(bytes[i].ToString("x2"));
-            return sb.ToString();
         }
 
         private async Task<List<string>> GetAllColumnsFromFilesAsync(
@@ -162,7 +118,7 @@ namespace DevToolbox.Services.Services
             return columns;
         }
 
-        private async Task<string> LoadAndStoreLogsAsync(
+        public async Task<string> PrepareLogTableAsync(
             string logFile,
             IReadOnlyList<LogLocation> locations,
             DateTime startDate,
@@ -170,19 +126,9 @@ namespace DevToolbox.Services.Services
             string templateName,
             CancellationToken cancellationToken = default)
         {
-            var tableName = BuildTableName(logFile, locations, startDate, endDate);
-            string archiveKey = GenerateArchiveKey(tableName, templateName);
-
-            if (_loadedArchives.ContainsKey(archiveKey))
-                return tableName;
-
             await _loadSemaphore.WaitAsync(cancellationToken);
             try
             {
-                // Double-check after acquiring lock
-                if (_loadedArchives.ContainsKey(archiveKey))
-                    return tableName;
-
                 var templateEntries = await GetAvailableLogFileTemplatesAsync();
                 var templateEntry = templateEntries.FirstOrDefault(t => t.Name == templateName);
                 if (templateEntry == null)
@@ -222,15 +168,14 @@ namespace DevToolbox.Services.Services
                 // Determine columns (works with an empty file set: template + provenance columns).
                 var columns = await GetAllColumnsFromFilesAsync(taggedFiles.Select(t => t.FilePath), template, cancellationToken);
 
-                // Recreate the combined table so a repeated selection reflects the current files.
-                if (await _logStorage.TableExistsAsync(tableName))
-                    await _logStorage.DropTableAsync(tableName);
-                await _logStorage.EnsureTableAsync(tableName, columns);
+                // Always recreate so each Search reflects the current selection.
+                if (await _logStorage.TableExistsAsync(TableName))
+                    await _logStorage.DropTableAsync(TableName);
+                await _logStorage.EnsureTableAsync(TableName, columns);
 
-                await IngestFilesAsync(taggedFiles, template, tableName, columns, cancellationToken);
+                await IngestFilesAsync(taggedFiles, template, TableName, columns, cancellationToken);
 
-                _loadedArchives.TryAdd(archiveKey, true);
-                return tableName;
+                return TableName;
             }
             finally
             {
@@ -351,61 +296,45 @@ namespace DevToolbox.Services.Services
             }
         }
 
-        public async Task<List<Dictionary<string, string>>> SearchLogFilesPageAsync(
-            string logFile, IReadOnlyList<LogLocation> locations, DateTime startDate, DateTime endDate, 
-            string templateName, string searchTerm, int pageNumber, int pageSize, 
-            List<SortColumn>? sortColumns, LogSearchCriteria? criteria = null)
+        public async Task<List<Dictionary<string, string>>> QueryLogPageAsync(
+            string tableName, string templateName, int pageNumber, int pageSize,
+            List<SortColumn>? sortColumns, LogSearchCriteria? criteria,
+            CancellationToken cancellationToken = default)
         {
+            var query = new LogQuery
+            {
+                Page = pageNumber,
+                PageSize = pageSize
+            };
+            ApplyCriteria(query, criteria);
+            if (query.RawQuery == null)
+                query.Sort = await ResolveEffectiveSortAsync(sortColumns, templateName);
+
             try
             {
-                var tableName = await LoadAndStoreLogsAsync(logFile, locations, startDate, endDate, templateName);
-                
-                var query = new LogQuery
-                {
-                    SearchTerm = searchTerm,
-                    Criteria = criteria,
-                    Page = pageNumber,
-                    PageSize = pageSize,
-                    Sort = await ResolveEffectiveSortAsync(sortColumns, templateName)
-                };
-                
                 var (results, _) = await _logStorage.SearchLogsAsync(tableName, query);
                 return results.ToList();
             }
-            catch (ArgumentException)
-            {
-                throw; // Surface criteria/advanced-query validation errors verbatim.
-            }
             catch (Exception ex)
             {
-                throw new InvalidOperationException("Failed to search log files", ex);
+                throw ToUserFacing(ex, query, "Failed to search log files");
             }
         }
 
         public async Task<int> CountLogEntriesAsync(
-            string logFile, IReadOnlyList<LogLocation> locations, DateTime startDate, DateTime endDate, 
-            string templateName, string searchTerm, LogSearchCriteria? criteria = null)
+            string tableName, LogSearchCriteria? criteria, CancellationToken cancellationToken = default)
         {
+            var query = new LogQuery();
+            ApplyCriteria(query, criteria);
+
             try
             {
-                var tableName = await LoadAndStoreLogsAsync(logFile, locations, startDate, endDate, templateName);
-                
-                var query = new LogQuery
-                {
-                    SearchTerm = searchTerm,
-                    Criteria = criteria
-                };
-                
                 var (_, totalCount) = await _logStorage.SearchLogsAsync(tableName, query);
                 return totalCount;
             }
-            catch (ArgumentException)
-            {
-                throw;
-            }
             catch (Exception ex)
             {
-                throw new InvalidOperationException("Failed to count log entries", ex);
+                throw ToUserFacing(ex, query, "Failed to count log entries");
             }
         }
 
@@ -457,35 +386,50 @@ namespace DevToolbox.Services.Services
             return await ResolveSortColumnsAsync(template);
         }
 
+        private static void ApplyCriteria(LogQuery query, LogSearchCriteria? criteria)
+        {
+            if (criteria == null)
+                return;
+            if (criteria.UseAdvanced)
+            {
+                if (!string.IsNullOrWhiteSpace(criteria.AdvancedExpression))
+                    query.RawQuery = criteria.AdvancedExpression;
+            }
+            else
+            {
+                query.Criteria = criteria;
+            }
+        }
+
+        // Raw SQL errors are shown verbatim; other failures get a generic message.
+        private static Exception ToUserFacing(Exception ex, LogQuery query, string genericMessage)
+        {
+            if (!string.IsNullOrWhiteSpace(query.RawQuery))
+                return new InvalidOperationException(ex.Message, ex);
+            return new InvalidOperationException(genericMessage, ex);
+        }
+
         public async Task<string> DownloadLogCsvAsync(
-            string logFile,
-            IReadOnlyList<LogLocation> locations,
-            DateTime startDate,
-            DateTime endDate,
+            string tableName,
             string templateName,
-            string searchTerm,
             List<SortColumn>? sortColumns,
+            LogSearchCriteria? criteria,
             string? outputPath = null,
-            LogSearchCriteria? criteria = null)
+            CancellationToken cancellationToken = default)
         {
             try
             {
-                var tableName = await LoadAndStoreLogsAsync(logFile, locations, startDate, endDate, templateName);
-                
-                var query = new LogQuery
-                {
-                    SearchTerm = searchTerm,
-                    Criteria = criteria,
-                    Sort = await ResolveEffectiveSortAsync(sortColumns, templateName)
-                };
-                
+                var query = new LogQuery();
+                ApplyCriteria(query, criteria);
+                if (query.RawQuery == null)
+                    query.Sort = await ResolveEffectiveSortAsync(sortColumns, templateName);
+
                 var (results, _) = await _logStorage.SearchLogsAsync(tableName, query);
 
                 // Use a temp file if outputPath is not provided
                 if (string.IsNullOrWhiteSpace(outputPath))
                 {
-                    var safeName = SanitizeFileName(logFile);
-                    outputPath = Path.Combine(Path.GetTempPath(), $"{safeName}_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+                    outputPath = Path.Combine(Path.GetTempPath(), $"LogSearch_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
                 }
 
                 // Ensure directory exists
@@ -524,12 +468,6 @@ namespace DevToolbox.Services.Services
                 if (value.Contains('"') || value.Contains(',') || value.Contains('\n') || value.Contains('\r'))
                     return $"\"{value.Replace("\"", "\"\"")}\"";
                 return value;
-            }
-
-            static string SanitizeFileName(string fileName)
-            {
-                var invalidChars = Path.GetInvalidFileNameChars();
-                return new string(fileName.Where(ch => !invalidChars.Contains(ch)).ToArray());
             }
         }
     }

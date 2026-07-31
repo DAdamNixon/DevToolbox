@@ -106,3 +106,15 @@ input.form-control:focus {
     width: fit-content;
     min-width: 300px;
 }
+
+/* Log Viewer results: allow highlighting/copying cell text and show a text cursor. */
+#logResultsTable,
+#logResultsTable td,
+#logResultsTable th span {
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+#logResultsTable td {
+    cursor: text;
+}

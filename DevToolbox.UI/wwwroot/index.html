@@ -14,6 +14,16 @@
     <link href="css/output.css" rel="stylesheet" />
     <!-- Keep Bootstrap Icons for now -->
     <link href="css/bootstrap-icons.min.css" rel="stylesheet" />
+    <style>
+        /* Allow highlighting/copying text in the Log Viewer results (independent of Tailwind build). */
+        #logResultsTable,
+        #logResultsTable td,
+        #logResultsTable th span {
+            -webkit-user-select: text;
+            user-select: text;
+        }
+        #logResultsTable td { cursor: text; }
+    </style>
     <script src="js/search.js"></script>
     <script src="js/logTools.js"></script>
     <script>

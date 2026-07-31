@@ -104,47 +104,32 @@
         </button>
     </div>
     
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-        <div>
-            <label for="tableSearch" class="block text-sm font-medium text-dark-text mb-2">Search in results</label>
-            <input id="tableSearch" type="text" class="input-modern w-full" @bind="tableSearch" @bind:event="oninput" @onkeypress="OnSearchKeyPress" placeholder="Search table..." />
-            <div class="text-xs text-dark-text-muted mt-1">Press Enter or wait 500ms to search</div>
+    @if (isLoading)
+    {
+        <div class="flex items-center space-x-2 text-dark-text-muted mt-4">
+            <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-accent-blue"></div>
+            <span>Loading logs...</span>
         </div>
-        <div class="flex items-end">
-            @if (isLoading)
-            {
-                <div class="flex items-center space-x-2 text-dark-text-muted">
-                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-accent-blue"></div>
-                    <span>Loading logs...</span>
-                </div>
-            }
-            else if (filteredLogLines.Count > 0)
-            {
-                <div class="text-dark-text-muted">
-                    Showing <span class="text-accent-blue font-medium">@filteredLogLines.Count</span> of <span class="text-accent-blue font-medium">@totalRecords</span> records
-                </div>
-            }
-        </div>
-    </div>
+    }
 
     <!-- Advanced / keyword-group search -->
     <div class="mt-6 border-t border-dark-border pt-4">
         <div class="flex items-center justify-between mb-3">
             <label class="flex items-center space-x-2 cursor-pointer">
-                <input type="checkbox" @bind="advancedRawMode" />
-                <span class="text-sm font-medium text-dark-text">Advanced query mode</span>
+                <input type="checkbox" @bind="advancedRawMode" @bind:after="OnAdvancedToggled" />
+                <span class="text-sm font-medium text-dark-text">Advanced query mode (SQL)</span>
             </label>
-            <span class="text-xs text-dark-text-muted">Contains-based. Rows combine with AND / OR / NOT.</span>
+            <span class="text-xs text-dark-text-muted">@(advancedRawMode ? "Full SQL against the table named logs." : "Type to filter as you go (Enter or 500ms). Rows combine with AND / OR / NOT.")</span>
         </div>
 
         @if (advancedRawMode)
         {
             <div>
-                <label for="advExpr" class="block text-sm font-medium text-dark-text mb-2">Advanced expression</label>
-                <textarea id="advExpr" rows="2" class="input-modern w-full font-mono text-sm"
-                          placeholder='"error" AND ("timeout" OR "retry") AND NOT "debug"'
-                          @bind="advancedExpression"></textarea>
-                <div class="text-xs text-dark-text-muted mt-1">Quoted terms with AND, OR, NOT and parentheses. Each term is matched as "contains" across all columns.</div>
+                <label for="advExpr" class="block text-sm font-medium text-dark-text mb-2">Custom SQL query</label>
+                <textarea id="advExpr" rows="3" class="input-modern w-full font-mono text-sm"
+                          placeholder="SELECT LEFT(DateTime,4) AS Year, COUNT(*) AS Hits FROM logs GROUP BY Year"
+                          @bind="advancedExpression" @bind:event="oninput" @bind:after="OnCriteriaInput"></textarea>
+                <div class="text-xs text-dark-text-muted mt-1">Full SQL against the table <code>logs</code>. Sorting and keyword groups are ignored in this mode. Run with Search or as you type (500ms).</div>
             </div>
         }
         else
@@ -161,13 +146,14 @@
                         }
                         else
                         {
-                            <select class="input-modern w-20" @bind="row.Gate">
+                            <select class="input-modern w-20" @bind="row.Gate" @bind:after="RunLiveQueryAsync">
                                 <option value="AND">AND</option>
                                 <option value="OR">OR</option>
                                 <option value="NOT">NOT</option>
                             </select>
                         }
-                        <input class="input-modern flex-1" placeholder="Interchangeable terms (any match), comma-separated" @bind="row.Text" />
+                        <input class="input-modern flex-1" placeholder="Interchangeable terms (any match), comma-separated"
+                               @bind="row.Text" @bind:event="oninput" @bind:after="OnCriteriaInput" @onkeypress="OnCriteriaKeyPress" />
                         <button type="button" class="btn-ghost p-2" title="Remove group" @onclick="() => RemoveKeywordRow(index)" disabled="@(keywordRows.Count == 1)">
                             <i class="bi bi-x-lg text-dark-text-muted"></i>
                         </button>
@@ -212,10 +198,6 @@ else
                 <span>Log Results</span>
             </h2>
             <div class="flex items-center space-x-2">
-                <button class="btn-secondary flex items-center space-x-2" @onclick="CopyResults" title="Copy visible rows as tab-separated text">
-                    <i class="bi bi-clipboard"></i>
-                    <span>Copy</span>
-                </button>
                 <label class="text-sm text-dark-text-muted">Page size:</label>
                 <select class="input-modern w-auto" @bind="pageSize" @bind:after="OnPageSizeChanged">
                     <option value="100">100</option>
@@ -344,7 +326,7 @@ else
     private DateTime startDate = DateTime.Today.AddDays(-7);
     private DateTime endDate = DateTime.Today;
     private string logFile = string.Empty;
-    private string tableSearch = string.Empty;
+    private string currentTableName = string.Empty;
     private List<string> availableLogFiles = new();
     private List<LogTemplateIndexEntry> availableTemplates = new();
     private string selectedTemplateName = "";
@@ -463,20 +445,7 @@ else
         
         if (hasSearched)
         {
-            await LoadPageAsync();
-        }
-    }
-
-    private async Task OnSearchKeyPress(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter")
-        {
-            CancelSearch();
-            await PerformTableSearch();
-        }
-        else
-        {
-            DebounceTableSearch();
+            await QueryCurrentPageAsync();
         }
     }
 
@@ -488,24 +457,43 @@ else
         }
     }
 
-    private void DebounceTableSearch()
+    private void DebounceQuery()
     {
         _searchDebounceTimer?.Dispose();
-        _searchDebounceTimer = new Timer(async _ => 
+        _searchDebounceTimer = new Timer(async _ =>
         {
-            await InvokeAsync(PerformTableSearch);
+            await InvokeAsync(RunLiveQueryAsync);
         }, null, TimeSpan.FromMilliseconds(500), Timeout.InfiniteTimeSpan);
     }
 
-    private async Task PerformTableSearch()
+    // Typing in a keyword group or the SQL box re-queries the existing table (no re-ingest).
+    private void OnCriteriaInput()
     {
-        _searchDebounceTimer?.Dispose();
-        ResetPagination();
-        
-        if (hasSearched)
+        if (!hasSearched) return;
+        DebounceQuery();
+    }
+
+    private async Task OnCriteriaKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
         {
-            await LoadPageAsync();
+            _searchDebounceTimer?.Dispose();
+            await RunLiveQueryAsync();
         }
+    }
+
+    private async Task OnAdvancedToggled()
+    {
+        activeSorts.Clear();
+        if (hasSearched)
+            await RunLiveQueryAsync();
+    }
+
+    private async Task RunLiveQueryAsync()
+    {
+        if (!hasSearched || string.IsNullOrEmpty(currentTableName)) return;
+        ResetPagination();
+        await QueryCurrentPageAsync();
     }
 
     private void ResetPagination()
@@ -561,21 +549,21 @@ else
 
         ResetPagination();
         hasSearched = true;
-        await LoadPageAsync();
+        activeSorts.Clear();
+        await PrepareAndQueryAsync();
     }
 
-    private async Task LoadPageAsync()
+    // Search button: (re)build the table from the selected files, then query page 1.
+    private async Task PrepareAndQueryAsync()
     {
-        if (isLoading || _cancellationTokenSource?.Token.IsCancellationRequested == true) 
-            return;
-
+        if (isLoading) return;
         isLoading = true;
         StateHasChanged();
-
         try
         {
-            var token = _cancellationTokenSource?.Token ?? CancellationToken.None;
-            
+            CancelSearch();
+            var token = _cancellationTokenSource!.Token;
+
             var templateEntry = availableTemplates.FirstOrDefault(t => t.Name == selectedTemplateName);
             if (templateEntry == null)
             {
@@ -583,38 +571,11 @@ else
                 return;
             }
 
-            // Load count and data in parallel
-            var sorts = activeSorts.Count > 0 ? activeSorts : null;
-            var criteria = BuildCriteria();
-            var criteriaArg = criteria.HasContent ? criteria : null;
-            var countTask = LogFileService.CountLogEntriesAsync(logFile, selectedLocations, startDate, endDate, templateEntry.Name, tableSearch, criteriaArg);
-            var dataTask = LogFileService.SearchLogFilesPageAsync(logFile, selectedLocations, startDate, endDate, templateEntry.Name, tableSearch, currentPage, pageSize, sorts, criteriaArg);
-
-            await Task.WhenAll(countTask, dataTask);
-            
+            currentTableName = await LogFileService.PrepareLogTableAsync(logFile, selectedLocations, startDate, endDate, templateEntry.Name, token);
             if (token.IsCancellationRequested) return;
-
-            totalRecords = await countTask;
-            totalPages = (int)Math.Ceiling(totalRecords / (double)pageSize);
-            
-            var pageData = await dataTask;
-            originalLogLines = pageData ?? new List<Dictionary<string, string>>();
-            filteredLogLines = originalLogLines;
-
-            // Update columns from actual data
-            if (pageData?.Any() == true)
-            {
-                tableColumns = pageData.OrderByDescending(l => l.Count).FirstOrDefault()?.Keys.ToList() ?? new List<string>();
-            }
-
-            hasMorePages = pageData?.Count == pageSize && (currentPage + 1) < totalPages;
-            pageInput = currentPage + 1;
+            await QueryPageCoreAsync(token);
         }
-        catch (OperationCanceledException)
-        {
-            // Search was cancelled, ignore
-            return;
-        }
+        catch (OperationCanceledException) { }
         catch (Exception ex)
         {
             SetError($"Search failed: {ex.Message}");
@@ -626,6 +587,64 @@ else
         }
     }
 
+    // Query-only refresh against the already-prepared table (pagination, sort, live typing).
+    private async Task QueryCurrentPageAsync()
+    {
+        if (isLoading || string.IsNullOrEmpty(currentTableName)) return;
+        isLoading = true;
+        StateHasChanged();
+        try
+        {
+            CancelSearch();
+            await QueryPageCoreAsync(_cancellationTokenSource!.Token);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            SetError($"Search failed: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task QueryPageCoreAsync(CancellationToken token)
+    {
+        var templateEntry = availableTemplates.FirstOrDefault(t => t.Name == selectedTemplateName);
+        if (templateEntry == null)
+        {
+            SetError($"Template '{selectedTemplateName}' not found.");
+            return;
+        }
+
+        var criteria = BuildCriteria();
+        var criteriaArg = criteria.HasContent ? criteria : null;
+        var sorts = advancedRawMode ? null : (activeSorts.Count > 0 ? activeSorts : null);
+
+        var countTask = LogFileService.CountLogEntriesAsync(currentTableName, criteriaArg, token);
+        var dataTask = LogFileService.QueryLogPageAsync(currentTableName, templateEntry.Name, currentPage, pageSize, sorts, criteriaArg, token);
+        await Task.WhenAll(countTask, dataTask);
+
+        if (token.IsCancellationRequested) return;
+
+        totalRecords = await countTask;
+        totalPages = (int)Math.Ceiling(totalRecords / (double)pageSize);
+
+        var pageData = await dataTask;
+        originalLogLines = pageData ?? new List<Dictionary<string, string>>();
+        filteredLogLines = originalLogLines;
+
+        if (pageData?.Any() == true)
+        {
+            tableColumns = pageData.OrderByDescending(l => l.Count).FirstOrDefault()?.Keys.ToList() ?? new List<string>();
+        }
+
+        hasMorePages = pageData?.Count == pageSize && (currentPage + 1) < totalPages;
+        pageInput = currentPage + 1;
+    }
+
     private async Task JumpToPage()
     {
         if (pageInput < 1) pageInput = 1;
@@ -635,7 +654,7 @@ else
         if (newPage != currentPage)
         {
             currentPage = newPage;
-            await LoadPageAsync();
+            await QueryCurrentPageAsync();
         }
     }
 
@@ -644,7 +663,7 @@ else
         if (hasMorePages && currentPage < totalPages - 1)
         {
             currentPage++;
-            await LoadPageAsync();
+            await QueryCurrentPageAsync();
         }
     }
 
@@ -653,13 +672,13 @@ else
         if (currentPage > 0)
         {
             currentPage--;
-            await LoadPageAsync();
+            await QueryCurrentPageAsync();
         }
     }
 
     private async Task SortByColumn(string column, bool append)
     {
-        if (isLoading || !hasSearched) return;
+        if (isLoading || !hasSearched || advancedRawMode) return;
 
         var existing = activeSorts.FirstOrDefault(s => s.Column == column);
         if (append)
@@ -681,7 +700,7 @@ else
 
         currentPage = 0;
         pageInput = 1;
-        await LoadPageAsync();
+        await QueryCurrentPageAsync();
     }
 
     private async Task UpdateTableColumnsAsync()
@@ -722,12 +741,19 @@ else
         return criteria;
     }
 
-    private void AddKeywordRow() => keywordRows.Add(new KeywordRow());
+    private async Task AddKeywordRow()
+    {
+        keywordRows.Add(new KeywordRow());
+        await RunLiveQueryAsync();
+    }
 
-    private void RemoveKeywordRow(int index)
+    private async Task RemoveKeywordRow(int index)
     {
         if (keywordRows.Count > 1 && index >= 0 && index < keywordRows.Count)
+        {
             keywordRows.RemoveAt(index);
+            await RunLiveQueryAsync();
+        }
     }
 
     private void ApplyPresetsForTemplate()
@@ -737,29 +763,6 @@ else
         availableLogFiles = group?.Files ?? new List<string>();
         if (!string.IsNullOrWhiteSpace(group?.DefaultFile))
             logFile = group!.DefaultFile!;
-    }
-
-    private async Task CopyResults()
-    {
-        if (filteredLogLines.Count == 0) return;
-
-        var sb = new System.Text.StringBuilder();
-        sb.AppendLine(string.Join("\t", tableColumns));
-        foreach (var line in filteredLogLines)
-        {
-            var cells = tableColumns.Select(c =>
-                (line.GetValueOrDefault(c, "") ?? "").Replace('\t', ' ').Replace('\r', ' ').Replace('\n', ' '));
-            sb.AppendLine(string.Join("\t", cells));
-        }
-
-        try
-        {
-            await JS.InvokeVoidAsync("logTools.copyToClipboard", sb.ToString());
-        }
-        catch (Exception ex)
-        {
-            SetError($"Copy failed: {ex.Message}");
-        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -794,20 +797,16 @@ else
 
         try
         {
-            var sorts = activeSorts.Count > 0 ? activeSorts : null;
+            var sorts = advancedRawMode ? null : (activeSorts.Count > 0 ? activeSorts : null);
             var criteria = BuildCriteria();
             var criteriaArg = criteria.HasContent ? criteria : null;
 
             var filePath = await LogFileService.DownloadLogCsvAsync(
-                logFile,
-                selectedLocations,
-                startDate,
-                endDate,
+                currentTableName,
                 templateEntry.Name,
-                tableSearch,
                 sorts,
-                null,
-                criteriaArg);
+                criteriaArg,
+                null);
 
             // Open the file location in Explorer (for Blazor Hybrid/WinForms)
             if (!string.IsNullOrWhiteSpace(filePath) && File.Exists(filePath))

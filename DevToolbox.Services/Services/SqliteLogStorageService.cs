@@ -106,85 +106,103 @@ namespace DevToolbox.Services.Services
 
         public async Task<(IEnumerable<Dictionary<string, string>> Results, int TotalCount)> SearchLogsAsync(string tableName, LogQuery query)
         {
-            var filters = query.Filters ?? new();
             var page = query.Page ?? 0;
             var pageSize = query.PageSize;
-            var searchTerm = query.SearchTerm;
+            bool usePaging = pageSize.HasValue && pageSize.Value > 0;
 
-            // Get columns dynamically
-            List<string> columns;
-            using (var conn = GetConnection())
-            {
-                await conn.OpenAsync();
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = $"PRAGMA table_info([{tableName}]);";
-                using var reader = await cmd.ExecuteReaderAsync();
-                columns = new();
-                while (await reader.ReadAsync())
-                    columns.Add(reader.GetString(1));
-            }
-
-            // Build WHERE clause
-            var where = new List<string>();
             var parameters = new List<SqliteParameter>();
+            string countSql;
+            string dataSql;
 
-            foreach (var filter in filters)
+            if (!string.IsNullOrWhiteSpace(query.RawQuery))
             {
-                where.Add($"[{filter.Key}] = @{filter.Key}");
-                parameters.Add(new SqliteParameter($"@{filter.Key}", filter.Value ?? DBNull.Value));
-            }
-
-            if (!string.IsNullOrWhiteSpace(searchTerm))
-            {
-                var searchClauses = columns.Select(col => $"[{col}] LIKE @searchTerm").ToList();
-                where.Add("(" + string.Join(" OR ", searchClauses) + ")");
-                parameters.Add(new SqliteParameter("@searchTerm", $"%{searchTerm}%"));
-            }
-
-            if (query.Criteria != null)
-            {
-                var criteriaSql = LogCriteriaTranslator.Build(query.Criteria, columns, parameters);
-                if (!string.IsNullOrEmpty(criteriaSql))
-                    where.Add(criteriaSql);
-            }
-
-            var whereSql = where.Any() ? "WHERE " + string.Join(" AND ", where) : "";
-
-            // Build ORDER BY clause
-            string orderBySql;
-            if (query.Sort != null && query.Sort.Any(s => !string.IsNullOrWhiteSpace(s.Column) && columns.Contains(s.Column)))
-            {
-                var orderClauses = query.Sort
-                    .Where(s => !string.IsNullOrWhiteSpace(s.Column) && columns.Contains(s.Column))
-                    .Select(s =>
-                    {
-                        var dir = s.Direction?.ToLower() == "desc" ? "DESC" : "ASC";
-                        // Sequence stores a line number; sort it numerically, not lexically ("10" vs "2").
-                        var expr = string.Equals(s.Column, "Sequence", StringComparison.OrdinalIgnoreCase)
-                            ? $"CAST([{s.Column}] AS INTEGER)"
-                            : $"[{s.Column}]";
-                        return $"{expr} {dir}";
-                    });
-                orderBySql = "ORDER BY " + string.Join(", ", orderClauses);
+                // Full custom SELECT: run as a subquery so count/paging stay correct; columns come from the reader.
+                var inner = query.RawQuery!.Trim().TrimEnd(';').Trim();
+                countSql = $"SELECT COUNT(*) FROM ({inner})";
+                var sb = new StringBuilder($"SELECT * FROM ({inner})");
+                if (usePaging)
+                {
+                    sb.Append(" LIMIT @limit OFFSET @offset");
+                    parameters.Add(new SqliteParameter("@limit", pageSize!.Value));
+                    parameters.Add(new SqliteParameter("@offset", page * pageSize.Value));
+                }
+                dataSql = sb.ToString();
             }
             else
             {
-                orderBySql = "ORDER BY rowid DESC";
-            }
+                var filters = query.Filters ?? new();
+                var searchTerm = query.SearchTerm;
 
-            // Count query
-            var countSql = $"SELECT COUNT(*) FROM [{tableName}] {whereSql};";
+                // Physical columns (used only to build the WHERE predicate).
+                List<string> columns;
+                using (var conn = GetConnection())
+                {
+                    await conn.OpenAsync();
+                    using var cmd = conn.CreateCommand();
+                    cmd.CommandText = $"PRAGMA table_info([{tableName}]);";
+                    using var reader = await cmd.ExecuteReaderAsync();
+                    columns = new();
+                    while (await reader.ReadAsync())
+                        columns.Add(reader.GetString(1));
+                }
 
-            // Data query
-            var dataSql = new StringBuilder();
-            dataSql.Append($"SELECT * FROM [{tableName}] {whereSql} ");
-            dataSql.Append($"{orderBySql} ");
-            bool usePaging = pageSize.HasValue && pageSize.Value > 0;
-            if (usePaging)
-            {
-                dataSql.Append("LIMIT @limit OFFSET @offset;");
-                parameters.Add(new SqliteParameter("@limit", pageSize.Value));
-                parameters.Add(new SqliteParameter("@offset", page * pageSize.Value));
+                var where = new List<string>();
+
+                foreach (var filter in filters)
+                {
+                    where.Add($"[{filter.Key}] = @{filter.Key}");
+                    parameters.Add(new SqliteParameter($"@{filter.Key}", filter.Value ?? DBNull.Value));
+                }
+
+                if (!string.IsNullOrWhiteSpace(searchTerm))
+                {
+                    var searchClauses = columns.Select(col => $"[{col}] LIKE @searchTerm").ToList();
+                    where.Add("(" + string.Join(" OR ", searchClauses) + ")");
+                    parameters.Add(new SqliteParameter("@searchTerm", $"%{searchTerm}%"));
+                }
+
+                if (query.Criteria != null)
+                {
+                    var criteriaSql = LogCriteriaTranslator.Build(query.Criteria, columns, parameters);
+                    if (!string.IsNullOrEmpty(criteriaSql))
+                        where.Add(criteriaSql);
+                }
+
+                var whereSql = where.Any() ? "WHERE " + string.Join(" AND ", where) : "";
+
+                string orderBySql;
+                if (query.Sort != null && query.Sort.Any(s => !string.IsNullOrWhiteSpace(s.Column) && columns.Contains(s.Column)))
+                {
+                    var orderClauses = query.Sort
+                        .Where(s => !string.IsNullOrWhiteSpace(s.Column) && columns.Contains(s.Column))
+                        .Select(s =>
+                        {
+                            var dir = s.Direction?.ToLower() == "desc" ? "DESC" : "ASC";
+                            // Sequence stores a line number; sort it numerically, not lexically ("10" vs "2").
+                            var expr = string.Equals(s.Column, "Sequence", StringComparison.OrdinalIgnoreCase)
+                                ? $"CAST([{s.Column}] AS INTEGER)"
+                                : $"[{s.Column}]";
+                            return $"{expr} {dir}";
+                        });
+                    orderBySql = "ORDER BY " + string.Join(", ", orderClauses);
+                }
+                else
+                {
+                    orderBySql = "ORDER BY rowid DESC";
+                }
+
+                countSql = $"SELECT COUNT(*) FROM [{tableName}] {whereSql};";
+
+                var dsb = new StringBuilder();
+                dsb.Append($"SELECT * FROM [{tableName}] {whereSql} ");
+                dsb.Append($"{orderBySql} ");
+                if (usePaging)
+                {
+                    dsb.Append("LIMIT @limit OFFSET @offset;");
+                    parameters.Add(new SqliteParameter("@limit", pageSize!.Value));
+                    parameters.Add(new SqliteParameter("@offset", page * pageSize.Value));
+                }
+                dataSql = dsb.ToString();
             }
 
             int totalCount;
@@ -194,7 +212,6 @@ namespace DevToolbox.Services.Services
             {
                 await conn.OpenAsync();
 
-                // Count
                 using (var countCmd = conn.CreateCommand())
                 {
                     countCmd.CommandText = countSql;
@@ -202,19 +219,24 @@ namespace DevToolbox.Services.Services
                     totalCount = Convert.ToInt32(await countCmd.ExecuteScalarAsync());
                 }
 
-                // Data
                 using (var dataCmd = conn.CreateCommand())
                 {
-                    dataCmd.CommandText = dataSql.ToString();
+                    dataCmd.CommandText = dataSql;
                     dataCmd.Parameters.AddRange(parameters.ToArray());
                     using var reader = await dataCmd.ExecuteReaderAsync();
+
+                    // Column names from the actual result set, so custom SELECTs (computed columns) render correctly.
+                    var fieldNames = new List<string>(reader.FieldCount);
+                    for (int i = 0; i < reader.FieldCount; i++)
+                        fieldNames.Add(reader.GetName(i));
+
                     while (await reader.ReadAsync())
                     {
-                        var dict = new Dictionary<string, string>();
-                        foreach (var col in columns)
+                        var dict = new Dictionary<string, string>(fieldNames.Count);
+                        for (int i = 0; i < fieldNames.Count; i++)
                         {
-                            var val = reader[col];
-                            dict[col] = val is DBNull ? "" : val.ToString() ?? "";
+                            var val = reader.GetValue(i);
+                            dict[fieldNames[i]] = val is DBNull ? "" : val.ToString() ?? "";
                         }
                         results.Add(dict);
                     }
