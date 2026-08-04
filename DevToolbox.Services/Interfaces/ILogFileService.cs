@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using DevToolbox.Services.Models;
 
@@ -10,48 +11,37 @@ namespace DevToolbox.Services.Interfaces
         Task<List<LogTemplateIndexEntry>> GetAvailableLogFileTemplatesAsync();
         Task<List<LogLocation>> GetLogLocationsAsync();
         Task<LogTemplate?> LoadTemplateAsync(string fileName);
-        IAsyncEnumerable<Dictionary<string, string>> SearchLogFilesAsync_v2(
+
+        // Ingests the selected files into a fresh table (drop + recreate) and returns the table name.
+        Task<string> PrepareLogTableAsync(
             string logFile,
-            string location,
-            DateTime startDate,
-            DateTime endDate,
-            string templateName
-        );
-        Task<List<Dictionary<string, string>>> SearchLogFilesPageAsync(
-            string logFile,
-            string location,
+            IReadOnlyList<LogLocation> locations,
             DateTime startDate,
             DateTime endDate,
             string templateName,
-            string searchTerm,
-            int pageNumber,
-            int pageSize);
-        Task<List<Dictionary<string, string>>> SearchLogFilesPageAsync(
-            string logFile,
-            string location,
-            DateTime startDate,
-            DateTime endDate,
+            CancellationToken cancellationToken = default);
+
+        // Queries an already-prepared table; no re-ingestion.
+        Task<List<Dictionary<string, string>>> QueryLogPageAsync(
+            string tableName,
             string templateName,
-            string searchTerm,
             int pageNumber,
             int pageSize,
-            SortColumn sortColumn);
+            List<SortColumn>? sortColumns,
+            LogSearchCriteria? criteria,
+            CancellationToken cancellationToken = default);
+
         Task<int> CountLogEntriesAsync(
-            string logFile,
-            string location,
-            DateTime startDate,
-            DateTime endDate,
-            string templateName,
-            string searchTerm);
+            string tableName,
+            LogSearchCriteria? criteria,
+            CancellationToken cancellationToken = default);
+
         Task<string> DownloadLogCsvAsync(
-            string logFile,
-            string location,
-            DateTime startDate,
-            DateTime endDate,
+            string tableName,
             string templateName,
-            string searchTerm,
-            SortColumn sortColumn,
-            string? outputPath = null
-        );
+            List<SortColumn>? sortColumns,
+            LogSearchCriteria? criteria,
+            string? outputPath = null,
+            CancellationToken cancellationToken = default);
     }
 }
