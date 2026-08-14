@@ -32,6 +32,9 @@ public class YamlStorageService : IYamlStorageService
 
         _yamlDeserializer = new DeserializerBuilder()
             .WithNamingConvention(CamelCaseNamingConvention.Instance)
+            // These files are meant to be hand-edited; an unknown key should be ignored
+            // rather than throw and take the whole page down.
+            .IgnoreUnmatchedProperties()
             .Build();
 
         // Migrate any existing files from the old location
@@ -97,27 +100,21 @@ public class YamlStorageService : IYamlStorageService
         try
         {
             var filePath = Path.Combine(_storageDirectory, $"{fileName}.yaml");
-            Console.WriteLine($"Attempting to load YAML from: {filePath}");
-            
+
             if (!File.Exists(filePath))
             {
-                Console.WriteLine("File does not exist");
                 return default;
             }
 
-            // Read YAML file
             var yaml = await File.ReadAllTextAsync(filePath);
-            Console.WriteLine($"Read YAML content: {yaml}");
 
-            // Deserialize directly to target type
-            var result = _yamlDeserializer.Deserialize<T>(yaml);
-            Console.WriteLine($"Successfully deserialized to type {typeof(T).Name}");
-            return result;
+            // Deliberately not logging the content: workspaceGroups.yaml is ~190 KB and
+            // was being dumped to the console on every load, several times per page.
+            return _yamlDeserializer.Deserialize<T>(yaml);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error loading YAML: {ex.Message}");
-            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+            Console.WriteLine($"Error loading {fileName}.yaml: {ex.Message}");
             throw new InvalidOperationException($"Failed to load YAML file: {ex.Message}", ex);
         }
     }

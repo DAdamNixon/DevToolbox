@@ -14,13 +14,14 @@ namespace DevToolbox.Services.Services
         private readonly ISystemService _systemService;
         private readonly string _workspaceGroupsKey = "workspaceGroups";
         private readonly string _customOpenOptionsKey = "customOpenOptions";
+        private readonly SemaphoreSlim _loadGate = new(1, 1);
         private List<WorkspaceGroup> _workspaceGroups = new();
         private int _nextGroupId = 1;
         private int _nextWorkspaceId = 1;
 
         public List<WorkspaceGroup> WorkspaceGroups => _workspaceGroups;
 
-        public WorkspaceService(IYamlStorageService yamlStorage, PowerShellService powerShellService, 
+        public WorkspaceService(IYamlStorageService yamlStorage, PowerShellService powerShellService,
                                ISystemService systemService, IConfiguration configuration)
         {
             _yamlStorage = yamlStorage;
@@ -31,77 +32,116 @@ namespace DevToolbox.Services.Services
 
         private async Task LoadWorkspaceGroupsAsync()
         {
-            Console.WriteLine("Loading workspace groups...");
             _workspaceGroups = await GetWorkspaceGroupsAsync();
-            Console.WriteLine($"Loaded {_workspaceGroups.Count} groups");
-            foreach (var group in _workspaceGroups)
-            {
-                Console.WriteLine($"Group: {group.Name} (ID: {group.Id}) with {group.Workspaces.Count} workspaces");
-                foreach (var workspace in group.Workspaces)
-                {
-                    Console.WriteLine($"  Workspace: {workspace.Name} (ID: {workspace.Id})");
-                }
-            }
-            UpdateNextIds();
         }
 
         private void UpdateNextIds()
         {
-            _nextGroupId = _workspaceGroups.Any() ? 
+            _nextGroupId = _workspaceGroups.Any() ?
                 _workspaceGroups.Max(g => g.Id) + 1 : 1;
-            
-            _nextWorkspaceId = _workspaceGroups.Any() ? 
-                _workspaceGroups.SelectMany(g => g.Workspaces).Max(w => w.Id) + 1 : 1;
+
+            var workspaces = _workspaceGroups.SelectMany(g => g.Workspaces).ToList();
+            _nextWorkspaceId = workspaces.Any() ? workspaces.Max(w => w.Id) + 1 : 1;
         }
 
         public async Task<List<WorkspaceGroup>> GetWorkspaceGroupsAsync()
         {
-            Console.WriteLine("Loading from YAML storage...");
-            var groups = await _yamlStorage.LoadAsync<List<WorkspaceGroup>>(_workspaceGroupsKey) ?? new List<WorkspaceGroup>();
-            Console.WriteLine($"Loaded {groups.Count} groups from storage");
-            
-            // Ensure all groups and workspaces have IDs
+            // The constructor kicks off a load and the dashboard asks for one too;
+            // without this they can interleave and both try to repair ids at once.
+            await _loadGate.WaitAsync();
+            try
+            {
+                var groups = await _yamlStorage.LoadAsync<List<WorkspaceGroup>>(_workspaceGroupsKey) ?? new List<WorkspaceGroup>();
+
+                _workspaceGroups = groups;
+                var repaired = NormalizeIds(groups);
+                UpdateNextIds();
+
+                if (repaired)
+                {
+                    // Persist the repair so it happens once rather than on every load.
+                    await _yamlStorage.SaveAsync(_workspaceGroupsKey, groups);
+                }
+
+                return groups;
+            }
+            finally
+            {
+                _loadGate.Release();
+            }
+        }
+
+        /// <summary>
+        /// Gives every group and workspace a unique positive id, renumbering any that are
+        /// missing or duplicated, and returns whether anything had to change.
+        /// <para>
+        /// Ids in workspaceGroups.yaml drifted into being unique only *within* a group —
+        /// hundreds of workspaces shared ids and three groups all had id 1 — because the
+        /// old loader only filled in ids that were literally 0. Anything keyed on an id
+        /// (expand state, dialogs, Blazor's @key) then aliased between unrelated cards.
+        /// </para>
+        /// </summary>
+        private static bool NormalizeIds(List<WorkspaceGroup> groups)
+        {
+            var changed = false;
+
+            var usedGroupIds = new HashSet<int>();
+            var nextGroupId = 1;
+
+            var usedWorkspaceIds = new HashSet<int>();
+            var nextWorkspaceId = 1;
+
             foreach (var group in groups)
             {
-                if (group.Id == 0)
+                if (group.Id <= 0 || !usedGroupIds.Add(group.Id))
                 {
-                    group.Id = _nextGroupId++;
-                    Console.WriteLine($"Assigned new ID {group.Id} to group {group.Name}");
+                    while (!usedGroupIds.Add(nextGroupId))
+                    {
+                        nextGroupId++;
+                    }
+
+                    group.Id = nextGroupId;
+                    changed = true;
                 }
+
                 foreach (var workspace in group.Workspaces)
                 {
-                    if (workspace.Id == 0)
+                    if (workspace.Id <= 0 || !usedWorkspaceIds.Add(workspace.Id))
                     {
-                        workspace.Id = _nextWorkspaceId++;
-                        Console.WriteLine($"Assigned new ID {workspace.Id} to workspace {workspace.Name}");
+                        while (!usedWorkspaceIds.Add(nextWorkspaceId))
+                        {
+                            nextWorkspaceId++;
+                        }
+
+                        workspace.Id = nextWorkspaceId;
+                        changed = true;
+                    }
+
+                    // GroupName was drifting out of sync with the group the workspace
+                    // actually sits in (Account claimed "Solutions" while living under
+                    // ElliottElectric), which made it useless as an identifier.
+                    if (workspace.GroupName != group.Name)
+                    {
+                        workspace.GroupName = group.Name;
+                        changed = true;
                     }
                 }
             }
-            
-            _workspaceGroups = groups;
-            return groups;
+
+            if (changed)
+            {
+                Console.WriteLine("WorkspaceService: repaired duplicate/missing ids in workspaceGroups.yaml");
+            }
+
+            return changed;
         }
 
         public async Task SaveWorkspaceGroupsAsync(List<WorkspaceGroup> groups)
         {
-            // Ensure all groups and workspaces have IDs
-            foreach (var group in groups)
-            {
-                if (group.Id == 0)
-                {
-                    group.Id = _nextGroupId++;
-                }
-                foreach (var workspace in group.Workspaces)
-                {
-                    if (workspace.Id == 0)
-                    {
-                        workspace.Id = _nextWorkspaceId++;
-                    }
-                }
-            }
-
+            NormalizeIds(groups);
             await _yamlStorage.SaveAsync(_workspaceGroupsKey, groups);
             _workspaceGroups = groups;
+            UpdateNextIds();
         }
 
         public async Task<GlobalCustomOpenOptions> GetGlobalCustomOpenOptionsAsync()
@@ -114,24 +154,24 @@ namespace DevToolbox.Services.Services
             return Task.FromResult(_powerShellService.GetAvailableScripts().ToList());
         }
 
-        public async Task OpenWorkspaceLocationAsync(Workspace workspace, WorkspaceLocation location)
+        public async Task<OpenResult> OpenWorkspaceLocationAsync(Workspace workspace, WorkspaceLocation location)
         {
-            await _systemService.OpenLocationAsync(location.Path);
+            return await _systemService.OpenLocationAsync(location.Path);
         }
 
-        public async Task OpenLocationInExplorerAsync(WorkspaceLocation location)
+        public async Task<OpenResult> OpenLocationInExplorerAsync(WorkspaceLocation location)
         {
-            await _systemService.OpenInExplorerAsync(location.Root);
+            return await _systemService.OpenInExplorerAsync(location.Root);
         }
 
-        public async Task OpenLocationInTerminalAsync(WorkspaceLocation location)
+        public async Task<OpenResult> OpenLocationInTerminalAsync(WorkspaceLocation location)
         {
-            await _systemService.OpenInTerminalAsync(location.Root);
+            return await _systemService.OpenInTerminalAsync(location.Root);
         }
 
-        public async Task OpenLocationWithCustomAppAsync(Workspace workspace, WorkspaceLocation location, CustomOpenOption option)
+        public async Task<OpenResult> OpenLocationWithCustomAppAsync(Workspace workspace, WorkspaceLocation location, CustomOpenOption option)
         {
-            await _systemService.OpenWithCustomAppAsync(location.Root, option);
+            return await _systemService.OpenWithCustomAppAsync(location.Root, option);
         }
 
         public async Task RunScriptOnLocationAsync(ScriptInfo script, Workspace workspace, WorkspaceLocation location)
@@ -141,7 +181,7 @@ namespace DevToolbox.Services.Services
                 try
                 {
                     Console.WriteLine($"Executing script: {script.Name} on location: {location.Path}");
-                    
+
                     var parameters = new Dictionary<string, object>
                     {
                         { "ProjectPath", location.Root }
@@ -195,4 +235,4 @@ namespace DevToolbox.Services.Services
             return workspace;
         }
     }
-} 
+}

@@ -34,6 +34,9 @@ namespace DevToolbox.UI
 
             // Register services
             services.AddScoped<IWorkspaceService, WorkspaceService>();
+            services.AddScoped<IWorkspaceSourceService, WorkspaceSourceService>();
+            services.AddScoped<IOpenHandlerService, OpenHandlerService>();
+            services.AddScoped<IIconService, IconService>();
             services.AddScoped<ISystemService, SystemService>();
             services.AddScoped<DirectoryStructureService>();
             services.AddScoped<DevToolbox.Services.Services.PowerShellService>();

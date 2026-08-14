@@ -1,0 +1,214 @@
+@using DevToolbox.Services.Interfaces
+@using DevToolbox.Services.Models
+@inject IWorkspaceSourceService SourceService
+
+@if (config is null)
+{
+    <div class="ws-empty">Loading sources…</div>
+}
+else
+{
+    @if (config.Sources.Count == 0)
+    {
+        <div class="ws-empty">
+            No scan folders yet. Point one at a directory of project files —
+            <span class="font-mono">*.code-workspace</span>, <span class="font-mono">*.sln</span>,
+            or the repo folders themselves — and they show up as cards.
+        </div>
+    }
+
+    @foreach (var source in config.Sources)
+    {
+        var scan = LastScanFor(source.Name);
+        <div class="modern-card p-4 mb-3">
+            <div class="ws-card-header mb-3">
+                <label class="ws-check">
+                    <input type="checkbox" checked="@source.Enabled"
+                           @onchange="e => source.Enabled = (bool?)e.Value ?? false" />
+                    <span>Enabled</span>
+                </label>
+                <button type="button" class="btn-ghost btn-sm" title="Remove source"
+                        @onclick="() => Remove(source)">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+
+            <div class="ws-field">
+                <label class="ws-label">Name</label>
+                <input type="text" class="ws-input" @bind="source.Name" placeholder="VS Code Workspaces" />
+            </div>
+
+            <div class="ws-field">
+                <label class="ws-label">Folder to scan</label>
+                <input type="text" class="ws-input" @bind="source.Path" placeholder="C:\path\to\workspaces" />
+                <span class="ws-hint">Environment variables such as %USERPROFILE% are expanded.</span>
+            </div>
+
+            <div class="ws-field">
+                <label class="ws-label">Pattern</label>
+                <input type="text" class="ws-input" @bind="source.Pattern" placeholder="*.code-workspace" />
+            </div>
+
+            <div class="ws-field">
+                <label class="ws-label">Collect</label>
+                <select class="ws-input" value="@source.Scan" @onchange="e => SetScan(source, e.Value?.ToString())">
+                    <option value="@nameof(ScanKind.Files)">Files matching the pattern</option>
+                    <option value="@nameof(ScanKind.Directories)">Subfolders matching the pattern</option>
+                </select>
+            </div>
+
+            <label class="ws-check mb-3">
+                <input type="checkbox" checked="@source.Recursive"
+                       @onchange="e => source.Recursive = (bool?)e.Value ?? false" />
+                <span>Search subfolders too</span>
+            </label>
+
+            <div class="ws-field">
+                <label class="ws-label">Group name</label>
+                <input type="text" class="ws-input" @bind="source.Group" placeholder="Leave blank to use the source name" />
+            </div>
+
+            <div class="ws-field">
+                <label class="ws-label">Group icon</label>
+                <input type="text" class="ws-input" @bind="source.Icon" placeholder="bi-window-stack" />
+                <span class="ws-hint">Starting point only — the icon picker on the card overrides it.</span>
+            </div>
+
+            <div class="ws-field">
+                <label class="ws-label">Name pattern (optional regex)</label>
+                <input type="text" class="ws-input" @bind="source.NameRegex"
+                       placeholder="^(?&lt;location&gt;dev|demo)-(?&lt;workspace&gt;.+)$" />
+                <span class="ws-hint">
+                    Named groups <span class="font-mono">workspace</span> and <span class="font-mono">location</span>
+                    merge related files into one card — <span class="font-mono">dev-checkout</span> and
+                    <span class="font-mono">demo-checkout</span> become one "checkout" with two locations.
+                </span>
+            </div>
+
+            @if (scan is not null)
+            {
+                <div class="ws-scan-note @(scan.PathExists && scan.Error is null ? "" : "is-error")">
+                    @if (scan.Error is not null)
+                    {
+                        <span>Last scan failed: @scan.Error</span>
+                    }
+                    else if (!scan.PathExists)
+                    {
+                        <span>Folder not found: @scan.ResolvedPath</span>
+                    }
+                    else
+                    {
+                        <span>Last scan: @scan.EntriesFound matched, @scan.WorkspacesProduced card(s).</span>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    <button type="button" class="btn-secondary" @onclick="Add">
+        <i class="bi bi-plus-circle"></i> Add scan folder
+    </button>
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="ws-error mt-3">@error</div>
+    }
+
+    <div class="ws-dialog-actions">
+        <button type="button" class="btn-primary" @onclick="Save">
+            <i class="bi bi-check-lg"></i> Save and rescan
+        </button>
+    </div>
+}
+
+@code {
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    private WorkspaceSourceConfig? config;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    /// <summary>Re-reads config so the dialog never shows edits abandoned last time it was open.</summary>
+    public async Task LoadAsync()
+    {
+        error = null;
+        var stored = await SourceService.GetConfigAsync();
+
+        // Edit a copy: closing the dialog without saving must leave the live config alone.
+        config = new WorkspaceSourceConfig
+        {
+            Sources = stored.Sources.Select(Clone).ToList()
+        };
+
+        StateHasChanged();
+    }
+
+    private SourceScanResult? LastScanFor(string name) =>
+        SourceService.LastScan.FirstOrDefault(r => r.SourceName == name);
+
+    private void Add()
+    {
+        config?.Sources.Add(new WorkspaceSource
+        {
+            Name = "New source",
+            Pattern = "*.code-workspace",
+            DefaultLocationName = "workspace"
+        });
+    }
+
+    private void Remove(WorkspaceSource source) => config?.Sources.Remove(source);
+
+    private static void SetScan(WorkspaceSource source, string? value)
+    {
+        if (Enum.TryParse<ScanKind>(value, ignoreCase: true, out var kind))
+        {
+            source.Scan = kind;
+        }
+    }
+
+    private async Task Save()
+    {
+        if (config is null)
+        {
+            return;
+        }
+
+        var named = config.Sources.Where(s => !string.IsNullOrWhiteSpace(s.Name)).ToList();
+        if (named.Count != config.Sources.Count)
+        {
+            error = "Every source needs a name.";
+            return;
+        }
+
+        if (named.GroupBy(s => s.Name, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
+        {
+            error = "Source names must be unique.";
+            return;
+        }
+
+        error = null;
+        await SourceService.SaveConfigAsync(config);
+        await OnSaved.InvokeAsync();
+    }
+
+    private static WorkspaceSource Clone(WorkspaceSource s) => new()
+    {
+        Name = s.Name,
+        Enabled = s.Enabled,
+        Path = s.Path,
+        Pattern = s.Pattern,
+        Scan = s.Scan,
+        Recursive = s.Recursive,
+        Group = s.Group,
+        Icon = s.Icon,
+        Color = s.Color,
+        NameRegex = s.NameRegex,
+        DefaultLocationName = s.DefaultLocationName,
+        DescriptionFrom = new List<string>(s.DescriptionFrom),
+        OpenWith = s.OpenWith
+    };
+}

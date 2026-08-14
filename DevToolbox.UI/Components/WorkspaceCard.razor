@@ -11,48 +11,56 @@
 @inject CardStateService CardStateService
 @inject ViewModelFactory ViewModelFactory
 @inject ModalStateService ModalStateService
+@inject IIconService IconService
 @inject ISystemService SystemService
 
 <div class="workspace-card @(WorkspaceViewModel.IsExpanded ? "ring-2 ring-accent-purple/50" : "")">
     <!-- Workspace Header -->
-    <div class="workspace-card-header">
-        <div class="flex-1 cursor-pointer" @onclick="ToggleExpand">
-            <h4 class="workspace-card-title flex items-center space-x-2">
-                <i class="bi bi-code-square text-accent-purple"></i>
-                <span>@WorkspaceViewModel.Name</span>
-            </h4>
+    <div class="ws-card-header">
+        <div class="ws-card-title cursor-pointer" @onclick="ToggleExpand">
+            <i class="bi @icon.Icon ws-icon" style="color: @icon.Color"></i>
+            <h4 class="workspace-card-title ws-card-name" title="@WorkspaceViewModel.Name">@WorkspaceViewModel.Name</h4>
+            <span class="ws-group-meta">@WorkspaceViewModel.Locations.Count</span>
         </div>
-        
+
         <!-- Actions Menu -->
-        <div class="workspace-actions">
+        <div class="ws-actions">
             <div class="relative inline-block text-left" @onclick:stopPropagation="true">
-                <button type="button" 
-                    class="btn-ghost p-2 rounded-lg" 
+                <button type="button"
+                    class="btn-ghost p-2 rounded-lg"
+                    title="Workspace actions"
                     @onclick="ToggleDropdown">
                     <i class="bi bi-three-dots-vertical"></i>
                 </button>
-                
+
                 @if (showDropdown)
                 {
-                    <div class="dropdown-menu absolute right-0 mt-2 origin-top-right">
-                        <button class="dropdown-item" @onclick="ShowAddLocationModal">
-                            <i class="bi bi-plus-circle"></i>
-                            <span>Add Location</span>
+                    <div class="ws-menu">
+                        <button class="dropdown-item" @onclick="ShowIconModal">
+                            <i class="bi bi-palette"></i>
+                            <span>Change Icon</span>
                         </button>
-                        <div class="border-t border-dark-border my-2"></div>
-                        <button class="dropdown-item" @onclick="ShowMoveToGroupModal">
-                            <i class="bi bi-folder2"></i>
-                            <span>Move to Group</span>
-                        </button>
-                        <button class="dropdown-item" @onclick="ShowRenameModal">
-                            <i class="bi bi-pencil"></i>
-                            <span>Rename</span>
-                        </button>
-                        <div class="border-t border-dark-border my-2"></div>
-                        <button class="dropdown-item danger" @onclick="() => OnDeleteWorkspace.InvokeAsync()">
-                            <i class="bi bi-trash"></i>
-                            <span>Delete Workspace</span>
-                        </button>
+                        @if (!IsReadOnly)
+                        {
+                            <div class="ws-menu-sep"></div>
+                            <button class="dropdown-item" @onclick="ShowAddLocationModal">
+                                <i class="bi bi-plus-circle"></i>
+                                <span>Add Location</span>
+                            </button>
+                            <button class="dropdown-item" @onclick="ShowMoveToGroupModal">
+                                <i class="bi bi-folder2"></i>
+                                <span>Move to Group</span>
+                            </button>
+                            <button class="dropdown-item" @onclick="ShowRenameModal">
+                                <i class="bi bi-pencil"></i>
+                                <span>Rename</span>
+                            </button>
+                            <div class="ws-menu-sep"></div>
+                            <button class="dropdown-item danger" @onclick="() => OnDeleteWorkspace.InvokeAsync()">
+                                <i class="bi bi-trash"></i>
+                                <span>Delete Workspace</span>
+                            </button>
+                        }
                     </div>
                 }
             </div>
@@ -62,77 +70,93 @@
     <!-- Workspace Locations -->
     @if (WorkspaceViewModel.IsExpanded)
     {
-        <div class="space-y-3 mt-4">
+        <div class="ws-locations">
             @foreach (var location in WorkspaceViewModel.Locations)
             {
-                <div class="modern-card p-4 bg-dark-surface/50">
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center space-x-3">
-                            <i class="bi bi-folder text-accent-blue"></i>
-                            <div>
-                                <h5 class="text-dark-text font-medium">@location.Name</h5>
-                                <p class="text-dark-text-muted text-sm path-truncate" title="@location.Path">@location.Path</p>
-                            </div>
-                        </div>
-                        <div class="flex items-center space-x-2">
-                            <button class="btn-secondary btn-sm" title="Open Location" @onclick="() => OpenLocation(location)">
-                                <i class="bi bi-folder-check"></i>
+                <div class="ws-loc @(missing.Contains(location.Path) ? "is-missing" : "")">
+                    <i class="bi @LocationIcon(location) ws-icon" style="color: @LocationColor(location)"></i>
+
+                    <div class="ws-loc-body">
+                        <span class="ws-loc-name">
+                            @location.Name
+                            @if (missing.Contains(location.Path))
+                            {
+                                <span title="This path no longer exists on disk"> · missing</span>
+                            }
+                        </span>
+                        @if (!string.IsNullOrWhiteSpace(location.Description))
+                        {
+                            <span class="ws-loc-desc" title="@location.Description">@location.Description</span>
+                        }
+                        <PathLabel Path="@location.Path" />
+                    </div>
+
+                    <div class="ws-loc-actions">
+                        <button class="btn-secondary btn-sm" title="Open @location.Path" @onclick="() => OpenLocation(location)">
+                            <i class="bi bi-box-arrow-up-right"></i>
+                        </button>
+
+                        <!-- More Actions Dropdown for Location -->
+                        <div class="relative inline-block text-left">
+                            <button type="button"
+                                class="btn-ghost btn-sm"
+                                title="More actions"
+                                @onclick="() => ToggleLocationDropdown(location.Path)">
+                                <i class="bi bi-three-dots"></i>
                             </button>
-                            
-                            <!-- More Actions Dropdown for Location -->
-                            <div class="relative inline-block text-left">
-                                <button type="button" 
-                                    class="btn-ghost btn-sm" 
-                                    @onclick="() => ToggleLocationDropdown(location.Path)">
-                                    <i class="bi bi-three-dots"></i>
-                                </button>
-                                
-                                @if (activeLocationDropdown == location.Path)
-                                {
-                                    <div class="dropdown-menu absolute right-0 mt-2 origin-top-right">
-                                        <button class="dropdown-item" @onclick="() => OnOpenInExplorer.InvokeAsync(location)">
-                                            <i class="bi bi-folder2-open"></i>
-                                            <span>Open in Explorer</span>
-                                        </button>
-                                        <button class="dropdown-item" @onclick="() => OnOpenInTerminal.InvokeAsync(location)">
-                                            <i class="bi bi-terminal"></i>
-                                            <span>Open in Terminal</span>
-                                        </button>
-                                        
-                                        @if (GlobalOptions.Options.Any())
+
+                            @if (activeLocationDropdown == location.Path)
+                            {
+                                <div class="ws-menu">
+                                    <button class="dropdown-item" @onclick="() => OnOpenInExplorer.InvokeAsync(location)">
+                                        <i class="bi bi-folder2-open"></i>
+                                        <span>Open in Explorer</span>
+                                    </button>
+                                    <button class="dropdown-item" @onclick="() => OnOpenInTerminal.InvokeAsync(location)">
+                                        <i class="bi bi-terminal"></i>
+                                        <span>Open in Terminal</span>
+                                    </button>
+                                    <button class="dropdown-item" @onclick="() => CopyPath(location)">
+                                        <i class="bi bi-clipboard"></i>
+                                        <span>Copy Path</span>
+                                    </button>
+
+                                    @if (GlobalOptions.Options.Any())
+                                    {
+                                        <div class="ws-menu-sep"></div>
+                                        <div class="ws-menu-heading">Open With</div>
+                                        @foreach (var option in GlobalOptions.Options)
                                         {
-                                            <div class="border-t border-dark-border my-2"></div>
-                                            <div class="px-4 py-2 text-xs font-medium text-dark-text-muted uppercase tracking-wider">Open With</div>
-                                            @foreach (var option in GlobalOptions.Options)
-                                            {
-                                                <button class="dropdown-item" @onclick="() => OnOpenWithCustomApp.InvokeAsync((WorkspaceViewModel.Workspace, location, option.Value))">
-                                                    <i class="bi bi-box-arrow-up-right"></i>
-                                                    <span>@option.Key</span>
-                                                </button>
-                                            }
+                                            <button class="dropdown-item" @onclick="() => OnOpenWithCustomApp.InvokeAsync((WorkspaceViewModel.Workspace, location, option.Value))">
+                                                <i class="bi bi-box-arrow-up-right"></i>
+                                                <span>@option.Key</span>
+                                            </button>
                                         }
-                                        
-                                        @if (AvailableScripts.Any())
+                                    }
+
+                                    @if (AvailableScripts.Any())
+                                    {
+                                        <div class="ws-menu-sep"></div>
+                                        <div class="ws-menu-heading">Run Script</div>
+                                        @foreach (var script in AvailableScripts)
                                         {
-                                            <div class="border-t border-dark-border my-2"></div>
-                                            <div class="px-4 py-2 text-xs font-medium text-dark-text-muted uppercase tracking-wider">Run Script</div>
-                                            @foreach (var script in AvailableScripts)
-                                            {
-                                                <button class="dropdown-item" @onclick="() => OnRunScriptOnLocation.InvokeAsync((script, WorkspaceViewModel.Workspace, location))">
-                                                    <i class="bi bi-play-circle"></i>
-                                                    <span>@script.Name</span>
-                                                </button>
-                                            }
+                                            <button class="dropdown-item" @onclick="() => OnRunScriptOnLocation.InvokeAsync((script, WorkspaceViewModel.Workspace, location))">
+                                                <i class="bi bi-play-circle"></i>
+                                                <span>@script.Name</span>
+                                            </button>
                                         }
-                                        
-                                        <div class="border-t border-dark-border my-2"></div>
+                                    }
+
+                                    @if (!IsReadOnly)
+                                    {
+                                        <div class="ws-menu-sep"></div>
                                         <button class="dropdown-item danger" @onclick="() => DeleteLocation(location)">
                                             <i class="bi bi-trash"></i>
                                             <span>Delete Location</span>
                                         </button>
-                                    </div>
-                                }
-                            </div>
+                                    }
+                                </div>
+                            }
                         </div>
                     </div>
                 </div>
@@ -142,8 +166,8 @@
 </div>
 
 <Modal @bind-IsVisible="IsAddLocationModalVisible" Title="@AddLocationModalTitle">
-    <AddWorkspaceLocation @ref="locationForm" 
-        OnLocationSubmitted="HandleLocationAdded" 
+    <AddWorkspaceLocation @ref="locationForm"
+        OnLocationSubmitted="HandleLocationAdded"
         ButtonText="Add Location" />
 </Modal>
 
@@ -167,24 +191,13 @@
         OnRenameCompleted="HandleRenameCompleted" />
 </Modal>
 
-<style>
-    
-    
-    
-    
-    /* Path truncation styles */
-    .path-truncate {
-        display: block;
-        direction: rtl;
-        text-align: left;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        width: 100%;
-    }
-   
-    
-</style>
+<Modal @bind-IsVisible="IsIconModalVisible" Title="@IconModalTitle">
+    <IconPickerDialog @ref="iconPicker"
+        Scope="IconScope.Workspace"
+        Name="@WorkspaceViewModel.Name"
+        Current="icon"
+        OnSaved="HandleIconSaved" />
+</Modal>
 
 @code {
     [Parameter] public WorkspaceViewModel WorkspaceViewModel { get; set; } = null!;
@@ -192,6 +205,10 @@
     [Parameter] public List<ScriptInfo> AvailableScripts { get; set; } = null!;
     [Parameter] public List<WorkspaceGroup> AvailableGroups { get; set; } = null!;
     [Parameter] public List<WorkspaceGroup> AllGroups { get; set; } = null!;
+
+    /// <summary>Set for workspaces produced by a scan: they are rebuilt from disk, so editing them here would be lost.</summary>
+    [Parameter] public bool IsReadOnly { get; set; }
+
     [Parameter] public EventCallback OnDeleteWorkspace { get; set; }
     [Parameter] public EventCallback<(Workspace, WorkspaceLocation)> OnOpenWorkspaceLocation { get; set; }
     [Parameter] public EventCallback<WorkspaceLocation> OnOpenInExplorer { get; set; }
@@ -201,21 +218,28 @@
     [Parameter] public EventCallback OnAddLocation { get; set; }
     [Parameter] public EventCallback<(Workspace, string)> OnMoveToGroup { get; set; }
     [Parameter] public EventCallback OnRename { get; set; }
+    [Parameter] public EventCallback OnIconChanged { get; set; }
 
     // Component state
     private bool showDropdown = false;
     private string activeLocationDropdown = string.Empty;
+    private IconStyle icon = new();
+    private readonly HashSet<string> missing = new(StringComparer.OrdinalIgnoreCase);
+    private bool missingChecked;
 
     // Component references for forms
     private AddWorkspaceLocation? locationForm;
     private MoveWorkspaceDialog? moveWorkspaceDialog;
     private RenameWorkspaceDialog? renameWorkspaceDialog;
+    private IconPickerDialog? iconPicker;
 
-    // Modal keys for ModalStateService - centralized approach
-    private string AddLocationModalKey => ModalStateService.GetModalKey("addLocation", WorkspaceViewModel.Workspace.Id.ToString());
-    private string MoveGroupModalKey => ModalStateService.GetModalKey("moveGroup", WorkspaceViewModel.Workspace.Id.ToString());
-    private string RenameModalKey => ModalStateService.GetModalKey("rename", WorkspaceViewModel.Workspace.Id.ToString());
-    
+    // Modal keys for ModalStateService - centralized approach.
+    // Keyed off StateKey (group + name) rather than the workspace id, which is not unique.
+    private string AddLocationModalKey => ModalStateService.GetModalKey("addLocation", WorkspaceViewModel.StateKey);
+    private string MoveGroupModalKey => ModalStateService.GetModalKey("moveGroup", WorkspaceViewModel.StateKey);
+    private string RenameModalKey => ModalStateService.GetModalKey("rename", WorkspaceViewModel.StateKey);
+    private string IconModalKey => ModalStateService.GetModalKey("icon", WorkspaceViewModel.StateKey);
+
     // Create a helper method to get/set modal visibility to reduce duplication
     private bool GetModalVisibility(string modalKey) => ModalStateService.IsModalVisible(modalKey);
     private void SetModalVisibility(string modalKey, bool isVisible)
@@ -223,42 +247,96 @@
         if (isVisible) ModalStateService.ShowModal(modalKey);
         else ModalStateService.HideModal(modalKey);
     }
-    
+
     // Properties for binding to Modal components using the helper methods
     private bool IsAddLocationModalVisible
     {
         get => GetModalVisibility(AddLocationModalKey);
         set => SetModalVisibility(AddLocationModalKey, value);
     }
-    
+
     private bool IsMoveToGroupModalVisible
     {
         get => GetModalVisibility(MoveGroupModalKey);
         set => SetModalVisibility(MoveGroupModalKey, value);
     }
-    
+
     private bool IsRenameModalVisible
     {
         get => GetModalVisibility(RenameModalKey);
         set => SetModalVisibility(RenameModalKey, value);
     }
 
+    private bool IsIconModalVisible
+    {
+        get => GetModalVisibility(IconModalKey);
+        set => SetModalVisibility(IconModalKey, value);
+    }
+
     private string? GetModalError(string modalKey) => ModalStateService.GetError(modalKey);
-    
+
     private string AddLocationModalTitle => $"Add Location to {WorkspaceViewModel.Name}";
     private string MoveToGroupModalTitle => $"Move {WorkspaceViewModel.Name} to Group";
+    private string IconModalTitle => $"Icon for {WorkspaceViewModel.Name}";
 
     protected override void OnParametersSet()
     {
         // Ensure the view model's expanded state is updated from CardStateService
         ViewModelFactory.UpdateWorkspaceExpandedState(WorkspaceViewModel);
+
+        icon = IconService.Resolve(IconScope.Workspace, WorkspaceViewModel.Name);
+
+        // Only collapsed-to-expanded transitions need a disk check. OnParametersSet runs
+        // on every parent re-render — a keystroke in the search box re-renders every card —
+        // and there are hundreds of cards, so checking unconditionally would stat the
+        // whole tree on each character typed.
+        if (WorkspaceViewModel.IsExpanded && !missingChecked)
+        {
+            RefreshMissing();
+        }
     }
+
+    /// <summary>Flags locations whose path is gone, so a stale entry is obvious.</summary>
+    private void RefreshMissing()
+    {
+        missingChecked = true;
+        missing.Clear();
+        foreach (var location in WorkspaceViewModel.Locations)
+        {
+            if (string.IsNullOrWhiteSpace(location.Path))
+            {
+                continue;
+            }
+
+            if (!File.Exists(location.Path) && !Directory.Exists(location.Path))
+            {
+                missing.Add(location.Path);
+            }
+        }
+    }
+
+    private string LocationIcon(WorkspaceLocation location) =>
+        IconService.Resolve(IconScope.Location, location.Name, DefaultLocationStyle(location)).Icon!;
+
+    private string LocationColor(WorkspaceLocation location) =>
+        IconService.Resolve(IconScope.Location, location.Name, DefaultLocationStyle(location)).Color!;
+
+    private static IconStyle DefaultLocationStyle(WorkspaceLocation location) => new()
+    {
+        Icon = location.Type == LocationType.Folder ? "bi-folder" : "bi-file-earmark-code"
+    };
 
     private void ToggleExpand()
     {
-        CardStateService.ToggleExpand("workspace", WorkspaceViewModel.Workspace.Id.ToString());
+        CardStateService.ToggleExpand("workspace", WorkspaceViewModel.StateKey);
         WorkspaceViewModel.IsExpanded = !WorkspaceViewModel.IsExpanded;
         showDropdown = false; // Close dropdown when expanding/collapsing
+
+        if (WorkspaceViewModel.IsExpanded)
+        {
+            // Re-check on each expand — a path may have appeared or gone since last time.
+            RefreshMissing();
+        }
     }
 
     private void ToggleDropdown()
@@ -272,7 +350,7 @@
         activeLocationDropdown = activeLocationDropdown == locationPath ? string.Empty : locationPath;
         showDropdown = false; // Close main dropdown
     }
-    
+
     private void ShowAddLocationModal()
     {
         IsAddLocationModalVisible = true;
@@ -291,11 +369,40 @@
         showDropdown = false;
     }
 
+    private void ShowIconModal()
+    {
+        iconPicker?.ResetForm();
+        IsIconModalVisible = true;
+        showDropdown = false;
+    }
+
+    private async Task HandleIconSaved()
+    {
+        IsIconModalVisible = false;
+        icon = IconService.Resolve(IconScope.Workspace, WorkspaceViewModel.Name);
+        await OnIconChanged.InvokeAsync();
+        StateHasChanged();
+    }
+
+    private async Task CopyPath(WorkspaceLocation location)
+    {
+        activeLocationDropdown = string.Empty;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", location.Path);
+        }
+        catch (JSException ex)
+        {
+            Console.WriteLine($"Could not copy path to clipboard: {ex.Message}");
+        }
+    }
+
     private async Task HandleLocationAdded(WorkspaceLocation location)
     {
         IsAddLocationModalVisible = false;
         WorkspaceViewModel.Workspace.Locations.Add(location);
         locationForm?.ResetForm();
+        RefreshMissing();
         await OnAddLocation.InvokeAsync();
         StateHasChanged();
     }

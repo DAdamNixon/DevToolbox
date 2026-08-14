@@ -10,26 +10,26 @@ namespace DevToolbox.Services.Interfaces
         /// <summary>
         /// Opens a file or folder location using the default system application
         /// </summary>
-        Task OpenLocationAsync(string path);
+        Task<OpenResult> OpenLocationAsync(string path);
 
         /// <summary>
         /// Opens a folder in Windows Explorer
         /// </summary>
-        Task OpenInExplorerAsync(string path);
+        Task<OpenResult> OpenInExplorerAsync(string path);
 
         /// <summary>
         /// Opens a folder in Windows Terminal
         /// </summary>
-        Task OpenInTerminalAsync(string path);
+        Task<OpenResult> OpenInTerminalAsync(string path);
 
         /// <summary>
         /// Opens a location with a custom application
         /// </summary>
-        Task OpenWithCustomAppAsync(string path, CustomOpenOption option);
+        Task<OpenResult> OpenWithCustomAppAsync(string path, CustomOpenOption option);
 
         /// <summary>
         /// Executes a PowerShell script with the given parameters
         /// </summary>
         Task ExecuteScriptAsync(string scriptName, Dictionary<string, object> parameters);
     }
-} 
+}

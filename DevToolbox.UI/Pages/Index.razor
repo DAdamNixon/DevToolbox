@@ -17,6 +17,10 @@
 @inject DirectoryStructureService DirectoryService
 @inject PowerShellService PowerShellService
 @inject IWorkspaceService WorkspaceService
+@inject IWorkspaceSourceService WorkspaceSourceService
+@inject IOpenHandlerService OpenHandlers
+@inject IIconService IconService
+@inject ISystemService SystemService
 @inject IConfiguration Configuration
 @inject IJSRuntime JS
 @implements IDisposable
@@ -30,28 +34,64 @@
             <h1 class="text-4xl font-bold text-gradient">Projects</h1>
             <p class="text-dark-text-muted mt-2">Manage your development workspaces and projects</p>
         </div>
-        <div class="flex items-center space-x-4">
+        <div class="ws-toolbar">
             <!-- Search -->
             <div class="relative">
                 <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <i class="bi bi-search text-dark-text-muted"></i>
                 </div>
-                <input type="text" 
+                <input type="text"
                     class="search-input pl-10 w-80"
                     placeholder="Search across all workspaces..."
                     @ref="searchInput"
                     value="@searchText"
                     @oninput="HandleSearchInput" />
             </div>
+
+            <button class="btn-secondary flex items-center gap-2" title="Rescan every workspace source"
+                    @onclick="RescanSources" disabled="@isScanning">
+                <i class="bi @(isScanning ? "bi-hourglass-split" : "bi-arrow-repeat")"></i>
+                <span>Rescan</span>
+            </button>
+
+            <button class="btn-secondary flex items-center gap-2" title="Folders scanned for projects"
+                    @onclick="ShowSourcesModal">
+                <i class="bi bi-folder-symlink"></i>
+                <span>Scan Folders</span>
+            </button>
         </div>
     </div>
+
+    @if (scanProblems.Any())
+    {
+        <div class="ws-scan-note is-error mt-3">
+            @foreach (var problem in scanProblems)
+            {
+                <div>@problem</div>
+            }
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(openError))
+    {
+        <div class="ws-notice mt-3">
+            <i class="bi bi-exclamation-triangle"></i>
+            <span>@openError</span>
+            <button type="button" class="btn-ghost btn-sm" title="Dismiss" @onclick="() => openError = null">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+    }
 </div>
 
 <!-- Workspace Groups -->
 <div class="space-y-6">
     @foreach (var groupViewModel in FilteredGroupViewModels)
     {
-        <WorkspaceGroupCard 
+        @* Keyed by name, not Id: group ids in workspaceGroups.yaml are not actually
+           unique, and Blazor throws when two siblings share a key. *@
+        <WorkspaceGroupCard
+            @key="GroupKey(groupViewModel.Group)"
             GroupViewModel="groupViewModel"
             GlobalOptions="GlobalOptions"
             AvailableScripts="AvailableScripts"
@@ -64,9 +104,11 @@
             OnOpenWithCustomApp="OpenLocationWithCustomApp"
             OnRunScriptOnLocation="RunScriptOnLocation"
             OnAddWorkspace="SaveWorkspaces"
-            OnMoveToGroup="HandleMoveToGroup"/>
+            OnMoveToGroup="HandleMoveToGroup"
+            OnRescan="RescanSources"
+            OnIconChanged="StateHasChanged" />
     }
-    
+
     <!-- Add New Group Button -->
     <div class="flex justify-center mt-8">
         <button class="btn-primary flex items-center space-x-2 px-6 py-3 text-lg" @onclick="ShowAddGroupModal">
@@ -77,7 +119,7 @@
 </div>
 
 <Modal @bind-IsVisible="IsAddGroupModalVisible" Title="Create New Group">
-    <AddWorkspaceGroupDialog 
+    <AddWorkspaceGroupDialog
         @ref="addGroupDialog"
         GroupName="@NewGroupName"
         GroupNameChanged="(name) => NewGroupName = name"
@@ -85,6 +127,10 @@
         ErrorMessageChanged="(msg) => ModalStateService.SetError(AddGroupModalKey, msg)"
         ExistingGroups="WorkspaceService.WorkspaceGroups"
         OnGroupCreated="HandleGroupCreated" />
+</Modal>
+
+<Modal @bind-IsVisible="IsSourcesModalVisible" Title="Scan Folders">
+    <WorkspaceSourcesDialog @ref="sourcesDialog" OnSaved="HandleSourcesSaved" />
 </Modal>
 
 @code {
@@ -96,27 +142,49 @@
     private ElementReference searchInput;
     private string searchText = "";
     private string NewGroupName = string.Empty;
+    private bool isScanning;
+    private List<string> scanProblems = new();
+    private string? openError;
 
-    // Component reference for the dialog
+    // Component references for the dialogs
     private AddWorkspaceGroupDialog? addGroupDialog;
+    private WorkspaceSourcesDialog? sourcesDialog;
 
     // Modal management
     private string AddGroupModalKey => ModalStateService.GetModalKey("addGroup", "main");
-    
+    private string SourcesModalKey => ModalStateService.GetModalKey("workspaceSources", "main");
+
     private bool IsAddGroupModalVisible
     {
         get => ModalStateService.IsModalVisible(AddGroupModalKey);
-        set 
+        set
         {
             if (value) ModalStateService.ShowModal(AddGroupModalKey);
             else ModalStateService.HideModal(AddGroupModalKey);
         }
     }
 
+    private bool IsSourcesModalVisible
+    {
+        get => ModalStateService.IsModalVisible(SourcesModalKey);
+        set
+        {
+            if (value) ModalStateService.ShowModal(SourcesModalKey);
+            else ModalStateService.HideModal(SourcesModalKey);
+        }
+    }
+
     private string? GetModalError(string modalKey) => ModalStateService.GetError(modalKey);
-    
-    private List<WorkspaceGroupViewModel> FilteredGroupViewModels => string.IsNullOrWhiteSpace(searchText) 
-        ? GroupViewModels 
+
+    /// <summary>
+    /// Render key for a group card. A scanned group and a saved group could share a
+    /// name, so the origin is part of the key.
+    /// </summary>
+    private static string GroupKey(WorkspaceGroup group) =>
+        $"{(group.IsFromSource ? "src" : "saved")}:{group.Name}";
+
+    private List<WorkspaceGroupViewModel> FilteredGroupViewModels => string.IsNullOrWhiteSpace(searchText)
+        ? GroupViewModels
         : GroupViewModels
             .Select(g => new WorkspaceGroupViewModel
             {
@@ -133,13 +201,20 @@
             return workspaces;
 
         return workspaces
-            .Where(w => w.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+            .Where(w => w.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase)
+                     || w.Locations.Any(l => l.Path.Contains(searchText, StringComparison.OrdinalIgnoreCase)))
             .ToList();
     }
 
     protected override async Task OnInitializedAsync()
     {
         LoadScripts();
+
+        // Both of these are read synchronously later (icon rules during render, open
+        // handlers on click), so they have to be in memory first.
+        await IconService.GetConfigAsync();
+        await OpenHandlers.GetConfigAsync();
+
         await LoadWorkspacesAsync();
     }
 
@@ -148,17 +223,59 @@
         AvailableScripts = PowerShellService.GetAvailableScripts().ToList();
     }
 
-    private async Task LoadWorkspacesAsync()
+    private async Task LoadWorkspacesAsync(bool forceRescan = false)
     {
         var groups = await WorkspaceService.GetWorkspaceGroupsAsync();
         AllWorkspaces = groups.SelectMany(g => g.Workspaces).ToList();
-        
+
+        // Scanned groups are virtual: they sit alongside the saved ones on screen but are
+        // never part of what SaveWorkspaces writes back to workspaceGroups.yaml.
+        var scanned = await WorkspaceSourceService.GetGroupsAsync(forceRescan);
+        CollectScanProblems();
+
         // Convert domain models to view models
-        GroupViewModels = groups
+        GroupViewModels = groups.Concat(scanned)
             .Select(g => ViewModelFactory.CreateWorkspaceGroupViewModel(g))
             .ToList();
-            
+
         StateHasChanged();
+    }
+
+    private void CollectScanProblems()
+    {
+        scanProblems = WorkspaceSourceService.LastScan
+            .Where(r => r.Error is not null || !r.PathExists)
+            .Select(r => r.Error is not null
+                ? $"Source '{r.SourceName}' failed: {r.Error}"
+                : $"Source '{r.SourceName}': folder not found — {r.ResolvedPath}")
+            .ToList();
+    }
+
+    private async Task RescanSources()
+    {
+        isScanning = true;
+        StateHasChanged();
+
+        try
+        {
+            await LoadWorkspacesAsync(forceRescan: true);
+        }
+        finally
+        {
+            isScanning = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ShowSourcesModal()
+    {
+        IsSourcesModalVisible = true;
+    }
+
+    private async Task HandleSourcesSaved()
+    {
+        IsSourcesModalVisible = false;
+        await RescanSources();
     }
 
     private void ShowAddGroupModal()
@@ -170,15 +287,12 @@
     private async Task HandleGroupCreated(WorkspaceGroup group)
     {
         WorkspaceService.WorkspaceGroups.Add(group);
-        
-        // Add the new group as a view model
-        GroupViewModels.Add(ViewModelFactory.CreateWorkspaceGroupViewModel(group));
-        
+
         // Close modal and clear form
         IsAddGroupModalVisible = false;
         NewGroupName = string.Empty;
         addGroupDialog?.ResetForm();
-        
+
         await SaveWorkspaces();
         StateHasChanged();
     }
@@ -186,14 +300,6 @@
     private async Task DeleteGroup(WorkspaceGroup group)
     {
         WorkspaceService.WorkspaceGroups.Remove(group);
-        
-        // Remove the group view model
-        var viewModel = GroupViewModels.FirstOrDefault(vm => vm.Group.Id == group.Id);
-        if (viewModel != null)
-        {
-            GroupViewModels.Remove(viewModel);
-        }
-        
         await SaveWorkspaces();
         StateHasChanged();
     }
@@ -205,24 +311,41 @@
         StateHasChanged();
     }
 
+    /// <summary>Surfaces a failed open instead of letting it disappear into the console.</summary>
+    private void Report(OpenResult result)
+    {
+        openError = result.Success ? null : result.Error;
+        StateHasChanged();
+    }
+
     private async Task OpenWorkspaceLocation((Workspace workspace, WorkspaceLocation location) args)
     {
-        await WorkspaceService.OpenWorkspaceLocationAsync(args.workspace, args.location);
+        // Most specific first: an app named by the scan source, then the by-extension
+        // handler, then the Windows file association. The association is last because it
+        // is the least trustworthy — it had no entry at all for .code-workspace, and for
+        // .sln it routed through a launcher to an older Visual Studio that could not open
+        // the file. Both failed silently.
+        var openWith = WorkspaceSourceService.GetOpenOptionFor(args.location)
+                       ?? OpenHandlers.HandlerFor(args.location.Path);
+
+        Report(openWith is not null
+            ? await SystemService.OpenWithCustomAppAsync(args.location.Path, openWith)
+            : await WorkspaceService.OpenWorkspaceLocationAsync(args.workspace, args.location));
     }
 
     private async Task OpenLocationInExplorer(WorkspaceLocation location)
     {
-        await WorkspaceService.OpenLocationInExplorerAsync(location);
+        Report(await WorkspaceService.OpenLocationInExplorerAsync(location));
     }
 
     private async Task OpenLocationInTerminal(WorkspaceLocation location)
     {
-        await WorkspaceService.OpenLocationInTerminalAsync(location);
+        Report(await WorkspaceService.OpenLocationInTerminalAsync(location));
     }
 
     private async Task OpenLocationWithCustomApp((Workspace workspace, WorkspaceLocation location, CustomOpenOption option) args)
     {
-        await WorkspaceService.OpenLocationWithCustomAppAsync(args.workspace, args.location, args.option);
+        Report(await WorkspaceService.OpenLocationWithCustomAppAsync(args.workspace, args.location, args.option));
     }
 
     private async Task RunScriptOnLocation((ScriptInfo script, Workspace workspace, WorkspaceLocation location) args)
@@ -250,11 +373,11 @@
     {
         searchText = e.Value?.ToString() ?? string.Empty;
         bool isSearching = !string.IsNullOrWhiteSpace(searchText);
-        
+
         // Update CardStateService before computing filtered groups
-        CardStateService.SetSearchExpanded(isSearching, 
+        CardStateService.SetSearchExpanded(isSearching,
             GroupViewModels.Select(g => g.Group.Name).ToList());
-        
+
         StateHasChanged();
     }
 

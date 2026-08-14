@@ -1,0 +1,476 @@
+/*
+ * Dashboard (Projects tab) layout.
+ *
+ * Written as plain CSS on purpose: the Tailwind build is a separate npm step, so
+ * anything defined here works without regenerating output.css.
+ *
+ * The overflow bug this file fixes: flex and grid children default to
+ * `min-width: auto`, which means they refuse to shrink below the width of their
+ * longest unbreakable string. A full Windows path is exactly that, so every card
+ * holding one was forced wider than its container and the text ran off the card.
+ * The rule is min-width: 0 on every ancestor between the card and the path.
+ */
+
+/*
+ * Utilities the committed output.css does not contain. Tailwind only emits classes
+ * it saw at build time, and these were never used before, so the markup that asks
+ * for them would silently get nothing. Values match Tailwind's, so regenerating
+ * output.css later is a no-op rather than a visual change.
+ * (btn-sm predates this file — it lived in app.css, which index.html never loads.)
+ */
+.btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+}
+
+.mb-3 { margin-bottom: 0.75rem; }
+.mt-3 { margin-top: 0.75rem; }
+
+/* ── Group card ──────────────────────────────────────────────────────────── */
+
+.ws-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.ws-group-title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.ws-group-title > .ws-icon {
+    flex: 0 0 auto;
+}
+
+.ws-group-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.ws-group-meta {
+    flex: 0 0 auto;
+    font-size: 0.8125rem;
+    font-weight: 400;
+    color: #a1a1aa;
+    white-space: nowrap;
+}
+
+.ws-badge {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.1rem 0.45rem;
+    border: 1px solid #3f3f46;
+    border-radius: 9999px;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: #a1a1aa;
+    white-space: nowrap;
+}
+
+/* ── Workspace grid ──────────────────────────────────────────────────────── */
+
+.ws-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+    gap: 1rem;
+    margin-top: 1.5rem;
+    min-width: 0;
+    /* Without this, grid's default stretch makes every collapsed card as tall as the
+       one expanded card in its row — a row of empty boxes with a title floating at
+       the top of each. */
+    align-items: start;
+}
+
+/* Grid items must be allowed to shrink; otherwise one long path widens the column. */
+.ws-grid > * {
+    min-width: 0;
+}
+
+.workspace-card,
+.modern-card {
+    min-width: 0;
+}
+
+.ws-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.ws-card-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.ws-card-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.ws-icon {
+    flex: 0 0 auto;
+    line-height: 1;
+}
+
+/* Actions used to fade in only on hover, which made them undiscoverable and let the
+   header reflow on hover. They stay put now and only brighten. */
+.ws-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex: 0 0 auto;
+    opacity: 0.45;
+    transition: opacity 0.15s ease-out;
+}
+
+.workspace-card:hover .ws-actions,
+.glow-card:hover .ws-actions,
+.ws-actions:focus-within {
+    opacity: 1;
+}
+
+/* ── Location row ────────────────────────────────────────────────────────── */
+
+.ws-locations {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    min-width: 0;
+}
+
+.ws-loc {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    min-width: 0;
+    padding: 0.5rem 0.625rem;
+    border: 1px solid #3f3f46;
+    border-radius: 0.5rem;
+    background-color: rgba(26, 26, 26, 0.55);
+    transition: border-color 0.15s ease-out, background-color 0.15s ease-out;
+}
+
+.ws-loc:hover {
+    border-color: rgba(59, 130, 246, 0.55);
+    background-color: rgba(62, 62, 66, 0.45);
+}
+
+.ws-loc-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.ws-loc-name {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #e4e4e7;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ws-loc-desc {
+    font-size: 0.75rem;
+    color: #a1a1aa;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ws-loc-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex: 0 0 auto;
+}
+
+/*
+ * Middle-truncated path: "C:\tfs\elliottelectric_com\demo\wwwr…Account.Demo.slnf".
+ * The head shrinks and ellipsises, the tail is pinned, so the file name — the part
+ * that actually distinguishes two locations — is always readable.
+ */
+.ws-path {
+    display: flex;
+    min-width: 0;
+    font-family: 'JetBrains Mono', Monaco, Consolas, monospace;
+    font-size: 0.6875rem;
+    line-height: 1.4;
+    color: #a1a1aa;
+    cursor: default;
+}
+
+.ws-path-head {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex: 0 1 auto;
+}
+
+.ws-path-tail {
+    white-space: nowrap;
+    flex: 0 0 auto;
+    color: #d4d4d8;
+}
+
+.ws-loc.is-missing {
+    border-color: rgba(239, 68, 68, 0.45);
+}
+
+.ws-loc.is-missing .ws-loc-name {
+    color: #fca5a5;
+}
+
+/* ── Dropdowns ───────────────────────────────────────────────────────────── */
+
+/* Menus were clipping inside the card and running off the right edge of narrow cards. */
+.ws-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 0.25rem);
+    z-index: 30;
+    min-width: 13rem;
+    max-width: min(20rem, 80vw);
+    max-height: 22rem;
+    overflow-y: auto;
+    background-color: #2d2d30;
+    border: 1px solid #3f3f46;
+    border-radius: 0.75rem;
+    box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.35);
+    padding: 0.375rem;
+}
+
+.ws-menu .dropdown-item {
+    width: 100%;
+    text-align: left;
+    border-radius: 0.5rem;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.875rem;
+    min-width: 0;
+}
+
+.ws-menu .dropdown-item > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ws-menu-heading {
+    padding: 0.4rem 0.6rem 0.2rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #a1a1aa;
+}
+
+.ws-menu-sep {
+    height: 1px;
+    margin: 0.375rem 0.25rem;
+    background-color: #3f3f46;
+}
+
+/* ── Header toolbar ──────────────────────────────────────────────────────── */
+
+.ws-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.ws-scan-note {
+    font-size: 0.75rem;
+    color: #a1a1aa;
+}
+
+.ws-scan-note.is-error {
+    color: #fca5a5;
+}
+
+/* Failed opens used to vanish into Console.WriteLine; this is where they land now. */
+.ws-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.625rem 0.75rem;
+    border: 1px solid rgba(239, 68, 68, 0.45);
+    border-radius: 0.5rem;
+    background-color: rgba(239, 68, 68, 0.08);
+    color: #fca5a5;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+}
+
+.ws-notice > span {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.ws-notice > i {
+    flex: 0 0 auto;
+    margin-top: 0.1rem;
+}
+
+.ws-notice > button {
+    flex: 0 0 auto;
+}
+
+/* ── Icon picker ─────────────────────────────────────────────────────────── */
+
+.icon-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(2.75rem, 1fr));
+    gap: 0.375rem;
+    max-height: 15rem;
+    overflow-y: auto;
+    padding: 0.25rem;
+    border: 1px solid #3f3f46;
+    border-radius: 0.5rem;
+    background-color: rgba(26, 26, 26, 0.5);
+}
+
+.icon-choice {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1;
+    border: 1px solid transparent;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: #e4e4e7;
+    font-size: 1.1rem;
+    cursor: pointer;
+    transition: background-color 0.12s ease-out, border-color 0.12s ease-out;
+}
+
+.icon-choice:hover {
+    background-color: #3e3e42;
+}
+
+.icon-choice.is-selected {
+    border-color: #3b82f6;
+    background-color: rgba(59, 130, 246, 0.15);
+}
+
+.color-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+}
+
+.color-choice {
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    cursor: pointer;
+    padding: 0;
+}
+
+.color-choice.is-selected {
+    border-color: #e4e4e7;
+}
+
+.icon-preview {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid #3f3f46;
+    border-radius: 0.5rem;
+    background-color: rgba(26, 26, 26, 0.5);
+}
+
+.icon-preview i {
+    font-size: 1.5rem;
+}
+
+/* ── Form controls (Bootstrap's stylesheet is not loaded; these stand in) ─── */
+
+.ws-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    margin-bottom: 0.875rem;
+    min-width: 0;
+}
+
+.ws-label {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #e4e4e7;
+}
+
+.ws-hint {
+    font-size: 0.75rem;
+    color: #a1a1aa;
+}
+
+.ws-error {
+    font-size: 0.8125rem;
+    color: #fca5a5;
+}
+
+.ws-input {
+    width: 100%;
+    background-color: #1a1a1a;
+    border: 1px solid #3f3f46;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.625rem;
+    color: #e4e4e7;
+    font-size: 0.875rem;
+}
+
+.ws-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+}
+
+.ws-check {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    color: #e4e4e7;
+}
+
+.ws-dialog-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1.25rem;
+}
+
+.ws-empty {
+    padding: 2rem 1rem;
+    text-align: center;
+    color: #a1a1aa;
+    font-size: 0.875rem;
+}

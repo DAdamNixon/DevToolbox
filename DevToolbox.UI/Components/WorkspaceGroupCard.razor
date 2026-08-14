@@ -10,73 +10,115 @@
 @inject CardStateService CardStateService
 @inject ViewModelFactory ViewModelFactory
 @inject ModalStateService ModalStateService
+@inject IIconService IconService
+@inject ISystemService SystemService
 
 <div class="glow-card @(GroupViewModel.IsExpanded ? "ring-2 ring-accent-blue/50" : "")">
     <!-- Card Header -->
-    <div class="workspace-card-header">
-        <div class="flex-1 cursor-pointer" @onclick="ToggleExpand">
-            <h3 class="workspace-card-title flex items-center space-x-3">
-                <i class="bi bi-folder2 text-accent-blue"></i>
-                <span>@GroupViewModel.Name</span>
-                <span class="text-sm text-dark-text-muted font-normal">(@GroupViewModel.Workspaces.Count workspaces)</span>
-            </h3>
+    <div class="ws-group-header">
+        <div class="ws-group-title cursor-pointer" @onclick="ToggleExpand">
+            <i class="bi @icon.Icon ws-icon text-xl" style="color: @icon.Color"></i>
+            <h3 class="workspace-card-title ws-group-name" title="@GroupViewModel.Name">@GroupViewModel.Name</h3>
+            <span class="ws-group-meta">(@GroupViewModel.Workspaces.Count workspaces)</span>
+            @if (IsFromSource)
+            {
+                <span class="ws-badge" title="Scanned from @(GroupViewModel.Group.SourcePath ?? "a workspace source")">
+                    <i class="bi bi-arrow-repeat"></i> scanned
+                </span>
+            }
         </div>
-        
+
         <!-- Actions Menu -->
-        <div class="workspace-actions">
+        <div class="ws-actions">
             <div class="relative inline-block text-left" @onclick:stopPropagation="true">
-                <button type="button" 
-                    class="btn-ghost p-2 rounded-lg" 
+                <button type="button"
+                    class="btn-ghost p-2 rounded-lg"
+                    title="Group actions"
                     @onclick="ToggleDropdown">
                     <i class="bi bi-three-dots-vertical"></i>
                 </button>
-                
+
                 @if (showDropdown)
                 {
-                    <div class="dropdown-menu absolute right-0 mt-2 origin-top-right">
-                        <button class="dropdown-item" @onclick="ShowAddWorkspaceModal">
-                            <i class="bi bi-plus-circle"></i>
-                            <span>Add Workspace</span>
+                    <div class="ws-menu">
+                        <button class="dropdown-item" @onclick="ShowIconModal">
+                            <i class="bi bi-palette"></i>
+                            <span>Change Icon</span>
                         </button>
-                        <button class="dropdown-item" @onclick="ShowRenameModal">
-                            <i class="bi bi-pencil"></i>
-                            <span>Rename</span>
-                        </button>
-                        <div class="border-t border-dark-border my-2"></div>
-                        <button class="dropdown-item danger" @onclick="OnDelete">
-                            <i class="bi bi-trash"></i>
-                            <span>Delete Group</span>
-                        </button>
+
+                        @if (IsFromSource)
+                        {
+                            <div class="ws-menu-sep"></div>
+                            <button class="dropdown-item" @onclick="Rescan">
+                                <i class="bi bi-arrow-repeat"></i>
+                                <span>Rescan Source</span>
+                            </button>
+                            <button class="dropdown-item" @onclick="OpenSourceFolder">
+                                <i class="bi bi-folder2-open"></i>
+                                <span>Open Source Folder</span>
+                            </button>
+                        }
+                        else
+                        {
+                            <div class="ws-menu-sep"></div>
+                            <button class="dropdown-item" @onclick="ShowAddWorkspaceModal">
+                                <i class="bi bi-plus-circle"></i>
+                                <span>Add Workspace</span>
+                            </button>
+                            <button class="dropdown-item" @onclick="ShowRenameModal">
+                                <i class="bi bi-pencil"></i>
+                                <span>Rename</span>
+                            </button>
+                            <div class="ws-menu-sep"></div>
+                            <button class="dropdown-item danger" @onclick="OnDelete">
+                                <i class="bi bi-trash"></i>
+                                <span>Delete Group</span>
+                            </button>
+                        }
                     </div>
                 }
             </div>
         </div>
     </div>
-    
+
     <!-- Card Body - Workspace Grid -->
     @if (GroupViewModel.IsExpanded)
     {
-        <div class="mt-6">
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                @foreach (var workspaceViewModel in GroupViewModel.Workspaces)
+        <div class="ws-grid">
+            @foreach (var workspaceViewModel in GroupViewModel.Workspaces)
+            {
+                <WorkspaceCard
+                    @key="workspaceViewModel.StateKey"
+                    WorkspaceViewModel="workspaceViewModel"
+                    GlobalOptions="GlobalOptions"
+                    AvailableScripts="AvailableScripts"
+                    AvailableGroups="AllGroups.Where(g => g.Name != GroupViewModel.Name).ToList()"
+                    AllGroups="AllGroups"
+                    IsReadOnly="IsFromSource"
+                    OnDeleteWorkspace="() => DeleteWorkspace(workspaceViewModel.Workspace)"
+                    OnOpenWorkspaceLocation="OnOpenWorkspaceLocation"
+                    OnOpenInExplorer="OnOpenInExplorer"
+                    OnOpenInTerminal="OnOpenInTerminal"
+                    OnOpenWithCustomApp="OnOpenWithCustomApp"
+                    OnRunScriptOnLocation="OnRunScriptOnLocation"
+                    OnAddLocation="SaveWorkspaces"
+                    OnMoveToGroup="HandleMoveToGroup"
+                    OnRename="OnAddWorkspace"
+                    OnIconChanged="OnIconChanged" />
+            }
+
+            @if (IsFromSource)
+            {
+                @if (!GroupViewModel.Workspaces.Any())
                 {
-                    <WorkspaceCard 
-                        WorkspaceViewModel="workspaceViewModel"
-                        GlobalOptions="GlobalOptions"
-                        AvailableScripts="AvailableScripts"
-                        AvailableGroups="AllGroups.Where(g => g.Name != GroupViewModel.Name).ToList()"
-                        AllGroups="AllGroups"
-                        OnDeleteWorkspace="() => DeleteWorkspace(workspaceViewModel.Workspace)"
-                        OnOpenWorkspaceLocation="OnOpenWorkspaceLocation"
-                        OnOpenInExplorer="OnOpenInExplorer"
-                        OnOpenInTerminal="OnOpenInTerminal"
-                        OnOpenWithCustomApp="OnOpenWithCustomApp"
-                        OnRunScriptOnLocation="OnRunScriptOnLocation"
-                        OnAddLocation="SaveWorkspaces"
-                        OnMoveToGroup="HandleMoveToGroup"
-                        OnRename="OnAddWorkspace" />
+                    <div class="ws-empty">
+                        Nothing matched this source's pattern.
+                        Check the folder and pattern under <strong>Scan Folders</strong>.
+                    </div>
                 }
-                
+            }
+            else
+            {
                 <!-- Add Workspace Card -->
                 <div class="modern-card border-2 border-dashed border-dark-border hover:border-accent-blue/50 transition-colors cursor-pointer group"
                      @onclick="ShowAddWorkspaceModal">
@@ -85,13 +127,13 @@
                         <span class="text-dark-text-muted group-hover:text-accent-blue transition-colors">Add Workspace</span>
                     </div>
                 </div>
-            </div>
+            }
         </div>
     }
 </div>
 
 <Modal @bind-IsVisible="IsAddWorkspaceModalVisible" Title="@AddWorkspaceModalTitle">
-    <AddWorkspaceDialog 
+    <AddWorkspaceDialog
         WorkspaceName="@NewWorkspaceName"
         WorkspaceNameChanged="(name) => NewWorkspaceName = name"
         ErrorMessage="@GetModalError(AddWorkspaceModalKey)"
@@ -113,6 +155,14 @@
         OnRenameCompleted="HandleRenameCompleted" />
 </Modal>
 
+<Modal @bind-IsVisible="IsIconModalVisible" Title="@IconModalTitle">
+    <IconPickerDialog @ref="iconPicker"
+        Scope="IconScope.Group"
+        Name="@GroupViewModel.Name"
+        Current="icon"
+        OnSaved="HandleIconSaved" />
+</Modal>
+
 @code {
     [Parameter] public WorkspaceGroupViewModel GroupViewModel { get; set; } = null!;
     [Parameter] public GlobalCustomOpenOptions GlobalOptions { get; set; } = null!;
@@ -128,46 +178,70 @@
     [Parameter] public EventCallback<(ScriptInfo, Workspace, WorkspaceLocation)> OnRunScriptOnLocation { get; set; }
     [Parameter] public EventCallback<(Workspace, string)> OnMoveToGroup { get; set; }
     [Parameter] public EventCallback OnAddWorkspace { get; set; }
+    [Parameter] public EventCallback OnIconChanged { get; set; }
+
+    /// <summary>Rescan request for a group that came from a workspace source.</summary>
+    [Parameter] public EventCallback OnRescan { get; set; }
 
     private string NewWorkspaceName = string.Empty;
     private string NewGroupName = string.Empty;
     private bool showDropdown = false;
+    private IconStyle icon = new();
+
+    private bool IsFromSource => GroupViewModel.Group.IsFromSource;
 
     // Modal keys for ModalStateService
     private string AddWorkspaceModalKey => ModalStateService.GetModalKey("addWorkspace", GroupViewModel.Group.Name);
     private string RenameModalKey => ModalStateService.GetModalKey("renameGroup", GroupViewModel.Group.Name);
-    
+    private string IconModalKey => ModalStateService.GetModalKey("groupIcon", GroupViewModel.Group.Name);
+
     // Properties for binding to Modal components
     private bool IsAddWorkspaceModalVisible
     {
         get => ModalStateService.IsModalVisible(AddWorkspaceModalKey);
-        set 
+        set
         {
             if (value) ModalStateService.ShowModal(AddWorkspaceModalKey);
             else ModalStateService.HideModal(AddWorkspaceModalKey);
         }
     }
-    
+
     private bool IsRenameModalVisible
     {
         get => ModalStateService.IsModalVisible(RenameModalKey);
-        set 
+        set
         {
             if (value) ModalStateService.ShowModal(RenameModalKey);
             else ModalStateService.HideModal(RenameModalKey);
         }
     }
 
+    private bool IsIconModalVisible
+    {
+        get => ModalStateService.IsModalVisible(IconModalKey);
+        set
+        {
+            if (value) ModalStateService.ShowModal(IconModalKey);
+            else ModalStateService.HideModal(IconModalKey);
+        }
+    }
+
     private string? GetModalError(string modalKey) => ModalStateService.GetError(modalKey);
     private string AddWorkspaceModalTitle => $"Add Workspace to {GroupViewModel.Name}";
+    private string IconModalTitle => $"Icon for {GroupViewModel.Name}";
 
     // Component references for forms
     private RenameGroupDialog? renameGroupDialog;
+    private IconPickerDialog? iconPicker;
 
     protected override void OnParametersSet()
     {
         // Ensure the view model's expanded state is updated from CardStateService
         ViewModelFactory.UpdateGroupExpandedState(GroupViewModel);
+
+        // A source's own icon acts as the fallback, so a scanned group looks right
+        // before anyone opens the picker.
+        icon = IconService.Resolve(IconScope.Group, GroupViewModel.Name, GroupViewModel.Group.SourceIcon);
     }
 
     private void ToggleExpand()
@@ -196,14 +270,48 @@
         showDropdown = false;
     }
 
+    private void ShowIconModal()
+    {
+        iconPicker?.ResetForm();
+        IsIconModalVisible = true;
+        showDropdown = false;
+    }
+
+    private async Task HandleIconSaved()
+    {
+        IsIconModalVisible = false;
+        icon = IconService.Resolve(IconScope.Group, GroupViewModel.Name, GroupViewModel.Group.SourceIcon);
+        await OnIconChanged.InvokeAsync();
+        StateHasChanged();
+    }
+
+    private async Task Rescan()
+    {
+        showDropdown = false;
+        await OnRescan.InvokeAsync();
+    }
+
+    private async Task OpenSourceFolder()
+    {
+        showDropdown = false;
+        if (!string.IsNullOrWhiteSpace(GroupViewModel.Group.SourcePath))
+        {
+            var result = await SystemService.OpenInExplorerAsync(GroupViewModel.Group.SourcePath);
+            if (!result.Success)
+            {
+                Console.WriteLine(result.Error);
+            }
+        }
+    }
+
     private async Task HandleWorkspaceCreated(Workspace workspace)
     {
         GroupViewModel.Group.Workspaces.Add(workspace);
-        
+
         // Add to the view model as well
-        var workspaceViewModel = ViewModelFactory.CreateWorkspaceViewModel(workspace);
+        var workspaceViewModel = ViewModelFactory.CreateWorkspaceViewModel(workspace, GroupViewModel.Name);
         GroupViewModel.Workspaces.Add(workspaceViewModel);
-        
+
         await OnAddWorkspace.InvokeAsync();
 
         IsAddWorkspaceModalVisible = false;
@@ -215,14 +323,14 @@
     {
         // Remove from domain model
         GroupViewModel.Group.Workspaces.Remove(workspace);
-        
+
         // Remove from view model
         var workspaceViewModel = GroupViewModel.Workspaces.FirstOrDefault(vm => vm.Workspace.Id == workspace.Id);
         if (workspaceViewModel != null)
         {
             GroupViewModel.Workspaces.Remove(workspaceViewModel);
         }
-        
+
         await OnAddWorkspace.InvokeAsync();
         StateHasChanged();
     }
@@ -235,20 +343,20 @@
         {
             GroupViewModel.Workspaces.Remove(workspaceViewModel);
         }
-        
+
         // Remove from domain model
         GroupViewModel.Group.Workspaces.Remove(args.workspace);
-        
+
         // Update workspace's group name
         args.workspace.GroupName = args.groupName;
-        
+
         // Add workspace to new group in domain model
         var targetGroup = AllGroups.FirstOrDefault(g => g.Name == args.groupName);
         if (targetGroup != null)
         {
             targetGroup.Workspaces.Add(args.workspace);
         }
-        
+
         await OnMoveToGroup.InvokeAsync(args);
         StateHasChanged();
     }
@@ -272,4 +380,4 @@
         await OnAddWorkspace.InvokeAsync();
         StateHasChanged();
     }
-} 
+}
