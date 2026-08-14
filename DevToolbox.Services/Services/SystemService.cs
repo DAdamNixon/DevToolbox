@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using DevToolbox.Services.Interfaces;
 using DevToolbox.Services.Models;
 using Microsoft.Win32;
@@ -142,11 +143,11 @@ namespace DevToolbox.Services.Services
         /// <summary>
         /// Opens a location with a custom application
         /// </summary>
-        public async Task<OpenResult> OpenWithCustomAppAsync(string path, CustomOpenOption option)
+        public async Task<OpenResult> OpenWithCustomAppAsync(string path, CustomOpenOption option, int? line = null)
         {
             return await Task.Run(() => option.Type == OpenOptionType.Executable
-                ? RunExecutable(path, option)
-                : RunCommand(path, option));
+                ? RunExecutable(path, option, line)
+                : RunCommand(path, option, line));
         }
 
         private static OpenResult StartExplorer(string path)
@@ -162,7 +163,7 @@ namespace DevToolbox.Services.Services
             }
         }
 
-        private static OpenResult RunExecutable(string path, CustomOpenOption option)
+        private static OpenResult RunExecutable(string path, CustomOpenOption option, int? line = null)
         {
             // A locator wins over a literal path: it is there precisely because the
             // literal answer is wrong or moves between versions.
@@ -188,7 +189,7 @@ namespace DevToolbox.Services.Services
 
             try
             {
-                var startInfo = BuildStartInfo(resolved, path, option.Arguments);
+                var startInfo = BuildStartInfo(resolved, path, option.Arguments, line);
                 Process.Start(startInfo);
                 return OpenResult.Ok();
             }
@@ -198,7 +199,7 @@ namespace DevToolbox.Services.Services
             }
         }
 
-        private static ProcessStartInfo BuildStartInfo(string executable, string path, string argumentTemplate)
+        private static ProcessStartInfo BuildStartInfo(string executable, string path, string argumentTemplate, int? line = null)
         {
             // A .cmd/.bat is not a real executable, so CreateProcess cannot run it
             // directly — it has to go through cmd.exe. `code` on PATH is exactly this
@@ -209,7 +210,7 @@ namespace DevToolbox.Services.Services
             // and a stray brace would make string.Format throw.
             var arguments = string.IsNullOrWhiteSpace(argumentTemplate)
                 ? null
-                : argumentTemplate.Replace("{0}", path);
+                : SubstituteTokens(argumentTemplate, path, line);
 
             if (isScript)
             {
@@ -247,14 +248,29 @@ namespace DevToolbox.Services.Services
             return startInfo;
         }
 
-        private static OpenResult RunCommand(string path, CustomOpenOption option)
+        /// <summary>
+        /// Fills an argument or command template: <c>{0}</c> is the file path,
+        /// <c>{1}</c> the 1-based line.
+        /// <para>
+        /// With no line to substitute, <c>{1}</c> collapses to <c>1</c> rather than
+        /// being left in place — every editor treats line 1 as "the top of the
+        /// file", whereas a literal "{1}" reaching the command line is an error the
+        /// user cannot do anything about.
+        /// </para>
+        /// </summary>
+        private static string SubstituteTokens(string template, string path, int? line) =>
+            template
+                .Replace("{0}", path)
+                .Replace("{1}", (line is > 0 ? line.Value : 1).ToString(CultureInfo.InvariantCulture));
+
+        private static OpenResult RunCommand(string path, CustomOpenOption option, int? line = null)
         {
             if (string.IsNullOrWhiteSpace(option.Command))
             {
                 return OpenResult.Fail($"\"{option.Name}\" has no command configured.");
             }
 
-            var command = option.Command!.Replace("{0}", path);
+            var command = SubstituteTokens(option.Command!, path, line);
 
             try
             {

@@ -1,5 +1,6 @@
 using DevToolbox.Services.Interfaces;
 using DevToolbox.Services.Models;
+using DevToolbox.Services.Services;
 
 namespace DevToolbox.UI.Services;
 
@@ -443,7 +444,18 @@ public sealed class LogSearchStateService : IDisposable
         FilteredLogLines = pageData ?? new();
 
         if (pageData?.Any() == true)
-            TableColumns = pageData.OrderByDescending(l => l.Count).FirstOrDefault()?.Keys.ToList() ?? new();
+        {
+            // SourcePath stays on every row — double-click needs it to know which
+            // file to open — but it is not a column anyone wants to read. Hiding it
+            // here rather than dropping it keeps the grid unchanged while giving the
+            // row somewhere to carry its origin.
+            TableColumns = pageData
+                .OrderByDescending(l => l.Count)
+                .FirstOrDefault()?
+                .Keys
+                .Where(k => !string.Equals(k, DbLogService.SourcePathColumn, StringComparison.Ordinal))
+                .ToList() ?? new();
+        }
 
         HasMorePages = pageData?.Count == pageSize && (page + 1) < TotalPages;
         PageInput = page + 1;

@@ -5,10 +5,13 @@
 @using Microsoft.AspNetCore.Components.Web.Virtualization
 @using Microsoft.JSInterop
 @using System.Threading
+@using DevToolbox.Services.Services
 @inject ILogFileService LogFileService
 @inject IYamlStorageService YamlStorage
 @inject IJSRuntime JS
 @inject LogSearchStateService State
+@inject ISystemService SystemService
+@inject IOpenHandlerService OpenHandlers
 @implements IDisposable
 
 <!-- Page Header -->
@@ -322,7 +325,12 @@ else
                     <tbody class="bg-dark-bg">
                         <Virtualize Items="@State.FilteredLogLines" ItemSize="32" OverscanCount="10">
                             <ItemContent Context="logLine">
-                                <tr class="border-b border-dark-border hover:bg-dark-surface/50 transition-colors" role="row">
+                                @* Double-click opens the row's source file at its line.
+                                   Single click is left alone so selecting and copying
+                                   text still works. *@
+                                <tr class="border-b border-dark-border hover:bg-dark-surface/50 transition-colors" role="row"
+                                    @ondblclick="() => OpenRowSource(logLine)"
+                                    title="Double-click to open this line in your editor">
                                     @foreach (var col in State.TableColumns)
                                     {
                                         <td class="px-4 py-3 text-sm text-dark-text border-r border-dark-border overflow-hidden text-ellipsis whitespace-nowrap select-text"
@@ -434,6 +442,45 @@ else
     private async Task Search() => await State.SearchAsync();
 
     private void CancelSearch() => State.CancelSearch();
+
+    /// <summary>
+    /// Opens the file a row came from, at that row's line.
+    /// <para>
+    /// Which program that is comes from openHandlers.yaml, the same config the
+    /// Projects tab uses — so pointing log files at Notepad++ or Sublime instead of
+    /// VS Code is a config edit, not a code change. With no handler configured this
+    /// falls back to the Windows file association, which for a .txt is usually
+    /// Notepad and cannot jump to a line; that is still better than nothing.
+    /// </para>
+    /// </summary>
+    private async Task OpenRowSource(Dictionary<string, string> logLine)
+    {
+        var path = logLine.GetValueOrDefault(DbLogService.SourcePathColumn, "");
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            // Rows ingested before SourcePath existed, i.e. results still on screen
+            // from a search that ran under the previous build.
+            State.SetError("This row has no source file recorded. Run the search again.");
+            return;
+        }
+
+        if (!File.Exists(path))
+        {
+            State.SetError($"The source file is no longer reachable: {path}");
+            return;
+        }
+
+        int.TryParse(logLine.GetValueOrDefault("Sequence", ""), out var line);
+
+        await OpenHandlers.GetConfigAsync();
+        var handler = OpenHandlers.HandlerFor(path);
+
+        var result = handler is null
+            ? await SystemService.OpenLocationAsync(path)
+            : await SystemService.OpenWithCustomAppAsync(path, handler, line);
+
+        if (!result.Success) State.SetError(result.Error ?? "Could not open the source file.");
+    }
 
     /// <summary>"Checkout — 412 files", or just the name when nothing was counted.</summary>
     private string DescribeFileOption(string file) =>

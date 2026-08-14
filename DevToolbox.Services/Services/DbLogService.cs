@@ -21,6 +21,12 @@ namespace DevToolbox.Services.Services
         // Single active search table; dropped and recreated on every Search.
         private const string TableName = "logs";
 
+        /// <summary>
+        /// Column holding each row's originating file path. Public so the UI can
+        /// both find it and know to keep it out of the visible grid.
+        /// </summary>
+        public const string SourcePathColumn = "SourcePath";
+
         public DbLogService(IYamlStorageService yamlStorage, ILogStorageService logStorage)
         {
             _yamlStorage = yamlStorage;
@@ -241,6 +247,13 @@ namespace DevToolbox.Services.Services
             columns.Add("Location");
             columns.Add("SourceFile");
             columns.Add("Sequence");
+
+            // Full path, so a row can be opened in an editor without having to
+            // reconstruct where it came from. SourceFile is only the file name, and
+            // Location is the location's *name* rather than its path, so between
+            // them the original file is not actually recoverable. Kept last and
+            // hidden by the grid — it is provenance, not something to read.
+            columns.Add(SourcePathColumn);
             return columns;
         }
 
@@ -511,6 +524,7 @@ namespace DevToolbox.Services.Services
                         dict["Location"] = locationName;
                         dict["SourceFile"] = sourceFileName;
                         dict["Sequence"] = sequence.ToString();
+                        dict[SourcePathColumn] = filePath;
 
                         batch.Add(dict);
 
