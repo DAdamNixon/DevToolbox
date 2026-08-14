@@ -12,6 +12,22 @@ namespace DevToolbox.Services.Interfaces
         Task<List<LogLocation>> GetLogLocationsAsync();
         Task<LogTemplate?> LoadTemplateAsync(string fileName);
 
+        /// <summary>
+        /// The distinct log-file names present in <paramref name="locations"/>, for
+        /// the Log File dropdown.
+        /// <para>
+        /// Only locations carrying a <see cref="LogLocation.NamePattern"/> contribute;
+        /// the rest have no way to tell a project name from a date and are skipped,
+        /// leaving the caller on its configured preset list. Returns an empty list
+        /// rather than throwing when a share is unreachable — a dropdown that cannot
+        /// be filled must not break typing a name by hand.
+        /// </para>
+        /// </summary>
+        Task<List<DiscoveredLogName>> DiscoverLogFileNamesAsync(
+            IReadOnlyList<LogLocation> locations,
+            string templateName,
+            CancellationToken cancellationToken = default);
+
         // Ingests the selected files into a fresh table (drop + recreate) and returns the table name.
         // progress is optional; pass null for a silent ingest.
         Task<string> PrepareLogTableAsync(

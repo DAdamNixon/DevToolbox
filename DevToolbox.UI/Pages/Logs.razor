@@ -55,13 +55,13 @@
             {
                 <div class="absolute z-20 mt-1 w-full bg-dark-surface border border-dark-border rounded-lg shadow-lg max-h-64 overflow-auto">
                     <label class="flex items-center space-x-2 px-3 py-2 hover:bg-dark-surface-hover cursor-pointer border-b border-dark-border">
-                        <input type="checkbox" checked="@State.AllLocationsSelected" @onchange="_ => State.ToggleAllLocations()" />
+                        <input type="checkbox" checked="@State.AllLocationsSelected" @onchange="_ => State.ToggleAllLocationsAsync()" />
                         <span class="text-sm text-dark-text font-medium">Select all</span>
                     </label>
                     @foreach (var location in State.LogLocations)
                     {
                         <label class="flex items-center space-x-2 px-3 py-2 hover:bg-dark-surface-hover cursor-pointer">
-                            <input type="checkbox" checked="@State.IsLocationSelected(location)" @onchange="_ => State.ToggleLocation(location)" />
+                            <input type="checkbox" checked="@State.IsLocationSelected(location)" @onchange="_ => State.ToggleLocationAsync(location)" />
                             <span class="text-sm text-dark-text">@location.Name</span>
                         </label>
                     }
@@ -77,12 +77,31 @@
             <input id="endDate" type="date" class="input-modern w-full" @bind="State.EndDate" max="@DateTime.Today.ToString("yyyy-MM-dd")" />
         </div>
         <div>
-            <label for="logFile" class="block text-sm font-medium text-dark-text mb-2">Log File</label>
+            <label for="logFile" class="flex items-center justify-between text-sm font-medium text-dark-text mb-2">
+                <span>Log File</span>
+                @if (State.IsDiscoveringLogFiles)
+                {
+                    <span class="flex items-center gap-1 text-xs font-normal text-dark-text-muted">
+                        <span class="animate-spin rounded-full h-3 w-3 border-b-2 border-accent-blue"></span>
+                        finding
+                    </span>
+                }
+                else if (State.LogFilesWereDiscovered)
+                {
+                    <span class="text-xs font-normal text-dark-text-muted">@State.AvailableLogFiles.Count found</span>
+                }
+            </label>
+            @* Still an input with a datalist rather than a select: the discovered
+               list is a convenience, and typing a name that is not on it — because
+               a share is offline, or the location has no name pattern — has to keep
+               working exactly as before. *@
             <input id="logFile" class="input-modern w-full" list="logFiles" placeholder="Log file..." @bind="State.LogFile" />
             <datalist id="logFiles">
                 @foreach (var file in State.AvailableLogFiles)
                 {
-                    <option value="@file"></option>
+                    @* The count rides in the option label, which browsers show
+                       beside the value; the value itself stays the bare name. *@
+                    <option value="@file" label="@DescribeFileOption(file)"></option>
                 }
             </datalist>
         </div>
@@ -415,6 +434,12 @@ else
     private async Task Search() => await State.SearchAsync();
 
     private void CancelSearch() => State.CancelSearch();
+
+    /// <summary>"Checkout — 412 files", or just the name when nothing was counted.</summary>
+    private string DescribeFileOption(string file) =>
+        State.LogFileCounts.TryGetValue(file, out var count)
+            ? $"{file} — {count:N0} file{(count == 1 ? "" : "s")}"
+            : file;
 
     /// <summary>
     /// One line saying what is happening and how far in. Reads as

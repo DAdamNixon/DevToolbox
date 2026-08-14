@@ -17,7 +17,22 @@ public sealed class LogSearchStateService : IDisposable
     public DateTime StartDate { get; set; } = DateTime.Today.AddDays(-7);
     public DateTime EndDate { get; set; } = DateTime.Today;
     public string LogFile { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Names offered by the Log File box. Either discovered from the selected
+    /// locations or, when none of them declare a name pattern, the configured
+    /// preset list.
+    /// </summary>
     public List<string> AvailableLogFiles { get; set; } = new();
+
+    /// <summary>File count per discovered name, for the hint beside each option. Empty when using presets.</summary>
+    public Dictionary<string, int> LogFileCounts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Discovery is walking the selected locations.</summary>
+    public bool IsDiscoveringLogFiles { get; set; }
+
+    /// <summary>True when the list came from disk rather than from presets.</summary>
+    public bool LogFilesWereDiscovered { get; set; }
     public List<LogTemplateIndexEntry> AvailableTemplates { get; set; } = new();
     public string SelectedTemplateName { get; set; } = "";
     public LogFilePresetConfig? PresetConfig { get; set; }
@@ -60,6 +75,11 @@ public sealed class LogSearchStateService : IDisposable
     public event Action? OnChanged;
 
     private CancellationTokenSource? _cts;
+
+    // Discovery gets its own token source: it is triggered by changing a filter,
+    // which must neither cancel a running search nor be cancelled by one.
+    private CancellationTokenSource _discoveryCts = new();
+
     private readonly ILogFileService _logFileService;
     private readonly IYamlStorageService _yamlStorage;
 
@@ -97,6 +117,11 @@ public sealed class LogSearchStateService : IDisposable
                 await UpdateTableColumnsAsync();
             }
             IsInitialized = true;
+
+            // Deliberately not awaited: discovery walks directories that may be on
+            // a slow share, and the form must be usable while it runs. The dropdown
+            // shows a spinner and swaps its options in when the walk finishes.
+            _ = RefreshLogFileNamesAsync();
         }
         catch (Exception ex)
         {
@@ -124,18 +149,20 @@ public sealed class LogSearchStateService : IDisposable
     public bool IsLocationSelected(LogLocation location) =>
         SelectedLocations.Any(l => l.Path == location.Path);
 
-    public void ToggleLocation(LogLocation location)
+    public async Task ToggleLocationAsync(LogLocation location)
     {
         var existing = SelectedLocations.FirstOrDefault(l => l.Path == location.Path);
         if (existing != null) SelectedLocations.Remove(existing);
         else SelectedLocations.Add(location);
         ResetPagination();
+        await RefreshLogFileNamesAsync();
     }
 
-    public void ToggleAllLocations()
+    public async Task ToggleAllLocationsAsync()
     {
         SelectedLocations = AllLocationsSelected ? new() : new(LogLocations);
         ResetPagination();
+        await RefreshLogFileNamesAsync();
     }
 
     // --- template ---
@@ -145,6 +172,10 @@ public sealed class LogSearchStateService : IDisposable
         ApplyPresetsForTemplate();
         await UpdateTableColumnsAsync();
         ResetPagination();
+
+        // The template decides the extension, so the set of discoverable names
+        // changes with it.
+        await RefreshLogFileNamesAsync();
     }
 
     public void ApplyPresetsForTemplate()
@@ -152,8 +183,70 @@ public sealed class LogSearchStateService : IDisposable
         var group = PresetConfig?.Presets?
             .FirstOrDefault(p => string.Equals(p.Template, SelectedTemplateName, StringComparison.OrdinalIgnoreCase));
         AvailableLogFiles = group?.Files ?? new();
+        LogFileCounts = new(StringComparer.OrdinalIgnoreCase);
+        LogFilesWereDiscovered = false;
         if (!string.IsNullOrWhiteSpace(group?.DefaultFile))
             LogFile = group!.DefaultFile!;
+    }
+
+    /// <summary>
+    /// Replaces the Log File options with the names actually present in the
+    /// selected locations. Falls back to the preset list — leaving what
+    /// <see cref="ApplyPresetsForTemplate"/> set — when nothing is discoverable,
+    /// so an offline share or a location without a name pattern costs nothing.
+    /// </summary>
+    public async Task RefreshLogFileNamesAsync()
+    {
+        if (SelectedLocations.Count == 0 || string.IsNullOrWhiteSpace(SelectedTemplateName))
+        {
+            ApplyPresetsForTemplate();
+            Notify();
+            return;
+        }
+
+        // Supersede any walk still in flight — clicking through four locations
+        // should not leave four directory scans racing to set the same list.
+        _discoveryCts.Cancel();
+        _discoveryCts.Dispose();
+        _discoveryCts = new CancellationTokenSource();
+
+        IsDiscoveringLogFiles = true;
+        Notify();
+        try
+        {
+            var locations = SelectedLocations.ToList();
+            var templateName = SelectedTemplateName;
+
+            // Off the UI thread: this walks directories that may be on a slow share.
+            var discovered = await Task.Run(
+                () => _logFileService.DiscoverLogFileNamesAsync(locations, templateName, _discoveryCts.Token),
+                _discoveryCts.Token);
+
+            if (discovered.Count > 0)
+            {
+                AvailableLogFiles = discovered.Select(d => d.Name).ToList();
+                LogFileCounts = discovered.ToDictionary(d => d.Name, d => d.FileCount, StringComparer.OrdinalIgnoreCase);
+                LogFilesWereDiscovered = true;
+            }
+            else
+            {
+                ApplyPresetsForTemplate();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (InvalidOperationException ex)
+        {
+            // Discovery is a convenience. Say what happened, but leave the box usable.
+            SetError($"Could not list log file names: {ex.Message}");
+            ApplyPresetsForTemplate();
+        }
+        finally
+        {
+            IsDiscoveringLogFiles = false;
+            Notify();
+        }
     }
 
     public async Task UpdateTableColumnsAsync()
@@ -431,5 +524,7 @@ public sealed class LogSearchStateService : IDisposable
     {
         _cts?.Cancel();
         _cts?.Dispose();
+        _discoveryCts.Cancel();
+        _discoveryCts.Dispose();
     }
 }
