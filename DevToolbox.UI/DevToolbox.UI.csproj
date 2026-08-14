@@ -28,6 +28,32 @@
     <ProjectReference Include="..\DevToolbox.Services\DevToolbox.Services.csproj" />
   </ItemGroup>
 
+  <!--
+    Rebuild the Tailwind stylesheet when its inputs change.
+
+    wwwroot/css/output.css is a committed artifact, and keeping it in sync used to
+    be something you had to remember: Tailwind only emits the classes it saw at
+    build time, so a new utility class in markup silently did nothing until
+    someone re-ran npm. That trap is what pushed dashboard.css into being plain
+    CSS in the first place.
+
+    Conditioned on node_modules existing so `dotnet build` still works on a clone
+    with no npm install — the committed output.css is used as-is in that case,
+    which is the same behaviour as before. ContinueOnError keeps a Tailwind
+    failure from breaking an otherwise fine build; the stale stylesheet is a
+    cosmetic problem, not a broken one.
+  -->
+  <Target Name="BuildTailwindCss"
+          BeforeTargets="BeforeBuild"
+          Condition="Exists('$(MSBuildProjectDirectory)\node_modules')"
+          Inputs="wwwroot\css\input.css;tailwind.config.js;@(Content);@(None)"
+          Outputs="wwwroot\css\output.css">
+    <Message Importance="high" Text="Tailwind: rebuilding wwwroot/css/output.css" />
+    <Exec Command="npm run build-css-prod"
+          WorkingDirectory="$(MSBuildProjectDirectory)"
+          ContinueOnError="true" />
+  </Target>
+
   <ItemGroup>
     <Folder Include="Services\" />
     <Folder Include="wwwroot\css\" />

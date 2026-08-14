@@ -104,8 +104,11 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Tailwind CSS output
-wwwroot/css/output.css
+# Tailwind CSS output is deliberately NOT ignored. It is a committed artifact:
+# node_modules is not in the repo, so a fresh clone has no way to generate it and
+# the app would render unstyled without it. The file was already tracked despite
+# the old ignore rule here — force-added at some point — which meant the rule did
+# nothing except mislead anyone who deleted the file and tried to add it back.
 
 # Package lock files (optional - some teams commit these)
 package-lock.json

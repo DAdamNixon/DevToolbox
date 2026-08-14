@@ -1,4 +1,9 @@
 @page "/settings"
+@using DevToolbox.Services.Interfaces
+@using DevToolbox.Services.Models
+@using Microsoft.JSInterop
+@inject IUiSettingsService UiSettings
+@inject IJSRuntime JS
 
 <!-- Page Header -->
 <div class="mb-8">
@@ -20,12 +25,16 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div class="space-y-2">
                     <label class="block text-sm font-medium text-dark-text">Theme</label>
-                    <select class="input-modern w-full" @bind="selectedTheme">
-                        <option value="system">System Default</option>
-                        <option value="dark">Dark Theme</option>
-                        <option value="light">Light Theme</option>
+                    <select class="input-modern w-full" value="@selectedTheme" @onchange="OnThemeChangedAsync">
+                        <option value="@ThemeOptions.System">System Default</option>
+                        <option value="@ThemeOptions.Dark">Dark Theme</option>
+                        <option value="@ThemeOptions.Light">Light Theme</option>
                     </select>
                     <p class="text-xs text-dark-text-muted">Choose your preferred color scheme</p>
+                    @if (themeError is not null)
+                    {
+                        <p class="text-xs text-danger">@themeError</p>
+                    }
                 </div>
                 
                 <div class="space-y-2">
@@ -83,8 +92,8 @@
 
     <!-- Action Buttons -->
     <div class="flex justify-between items-center p-6 bg-dark-surface rounded-lg border border-dark-border">
-        <div class="text-sm text-dark-text-muted">
-            Changes are saved automatically
+        <div class="text-sm @(statusIsError ? "text-danger" : "text-dark-text-muted")">
+            @(statusMessage ?? "Changes are saved automatically")
         </div>
         <div class="flex space-x-3">
             <button class="btn-ghost flex items-center space-x-2" @onclick="ResetToDefaults">
@@ -100,20 +109,65 @@
 </div>
 
 @code {
-    private string selectedTheme = "system";
-    
+    private string selectedTheme = ThemeOptions.System;
+    private string? themeError;
+    private string? statusMessage;
+    private bool statusIsError;
+
     protected override async Task OnInitializedAsync()
     {
-        await base.OnInitializedAsync();
+        var settings = await UiSettings.GetAsync();
+        selectedTheme = settings.Theme;
+
+        // A malformed ui_settings.yaml leaves the dropdown showing defaults that
+        // are not what is in the file. Say so, rather than letting the next save
+        // quietly overwrite whatever the user was editing.
+        themeError = UiSettings.LoadError is null
+            ? null
+            : $"ui_settings.yaml could not be read, so defaults are shown: {UiSettings.LoadError}";
     }
 
-    private async Task SaveSettings()
+    // Applied and persisted on selection rather than on Save — the theme is the
+    // one setting here where seeing it is the only way to judge it.
+    private async Task OnThemeChangedAsync(ChangeEventArgs e)
     {
-        await Task.CompletedTask;
+        selectedTheme = ThemeOptions.Normalize(e.Value?.ToString());
+        await ApplyAndSaveThemeAsync();
     }
-    
+
+    private async Task SaveSettings() => await ApplyAndSaveThemeAsync();
+
     private async Task ResetToDefaults()
     {
-        await Task.CompletedTask;
+        selectedTheme = new UiSettings().Theme;
+        await ApplyAndSaveThemeAsync();
     }
-} 
+
+    private async Task ApplyAndSaveThemeAsync()
+    {
+        // Paint first so the change is instant even if the write is slow, then
+        // persist. If the write fails the screen and the file disagree, which is
+        // exactly what the error message needs to say.
+        await JS.InvokeVoidAsync("devtoolboxTheme.apply", selectedTheme);
+
+        try
+        {
+            var settings = await UiSettings.GetAsync();
+            settings.Theme = selectedTheme;
+            await UiSettings.SaveAsync(settings);
+
+            themeError = null;
+            SetStatus("Settings saved", isError: false);
+        }
+        catch (InvalidOperationException ex)
+        {
+            SetStatus($"Theme applied but not saved: {ex.Message}", isError: true);
+        }
+    }
+
+    private void SetStatus(string message, bool isError)
+    {
+        statusMessage = message;
+        statusIsError = isError;
+    }
+}

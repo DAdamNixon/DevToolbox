@@ -44,6 +44,7 @@ namespace DevToolbox.UI
             services.AddScoped<IConfigurationService, ConfigurationService>();
             services.AddScoped<IScriptExecutionService, ScriptExecutionService>();
             services.AddScoped<IYamlStorageService, YamlStorageService>();
+            services.AddScoped<IUiSettingsService, UiSettingsService>();
             services.AddScoped<ILogFileService, DbLogService>();
             services.AddScoped<ILogStorageService, SqliteLogStorageService>();
             services.AddScoped<IHealthMonitoringService, HealthMonitoringService>();

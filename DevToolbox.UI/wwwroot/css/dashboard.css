@@ -4,6 +4,12 @@
  * Written as plain CSS on purpose: the Tailwind build is a separate npm step, so
  * anything defined here works without regenerating output.css.
  *
+ * Colours come from the variables in theme.css and must keep coming from there.
+ * This file used to hold 43 hardcoded hex values copied by hand out of
+ * tailwind.config.js, which is exactly why the app could not have a light theme:
+ * every one of them had to be found and changed. Writing a literal colour here
+ * again re-breaks that, so use rgb(var(--c-…)) even when you know the hex.
+ *
  * The overflow bug this file fixes: flex and grid children default to
  * `min-width: auto`, which means they refuse to shrink below the width of their
  * longest unbreakable string. A full Windows path is exactly that, so every card
@@ -60,7 +66,7 @@
     flex: 0 0 auto;
     font-size: 0.8125rem;
     font-weight: 400;
-    color: #a1a1aa;
+    color: rgb(var(--c-text-muted));
     white-space: nowrap;
 }
 
@@ -70,13 +76,13 @@
     align-items: center;
     gap: 0.3rem;
     padding: 0.1rem 0.45rem;
-    border: 1px solid #3f3f46;
+    border: 1px solid rgb(var(--c-border));
     border-radius: 9999px;
     font-size: 0.6875rem;
     font-weight: 500;
     letter-spacing: 0.02em;
     text-transform: uppercase;
-    color: #a1a1aa;
+    color: rgb(var(--c-text-muted));
     white-space: nowrap;
 }
 
@@ -165,15 +171,15 @@
     gap: 0.625rem;
     min-width: 0;
     padding: 0.5rem 0.625rem;
-    border: 1px solid #3f3f46;
+    border: 1px solid rgb(var(--c-border));
     border-radius: 0.5rem;
-    background-color: rgba(26, 26, 26, 0.55);
+    background-color: rgb(var(--c-bg) / 0.55);
     transition: border-color 0.15s ease-out, background-color 0.15s ease-out;
 }
 
 .ws-loc:hover {
-    border-color: rgba(59, 130, 246, 0.55);
-    background-color: rgba(62, 62, 66, 0.45);
+    border-color: rgb(var(--c-accent-blue) / 0.55);
+    background-color: rgb(var(--c-surface-hover) / 0.45);
 }
 
 .ws-loc-body {
@@ -187,7 +193,7 @@
 .ws-loc-name {
     font-size: 0.875rem;
     font-weight: 500;
-    color: #e4e4e7;
+    color: rgb(var(--c-text));
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -195,7 +201,7 @@
 
 .ws-loc-desc {
     font-size: 0.75rem;
-    color: #a1a1aa;
+    color: rgb(var(--c-text-muted));
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -219,7 +225,7 @@
     font-family: 'JetBrains Mono', Monaco, Consolas, monospace;
     font-size: 0.6875rem;
     line-height: 1.4;
-    color: #a1a1aa;
+    color: rgb(var(--c-text-muted));
     cursor: default;
 }
 
@@ -234,15 +240,15 @@
 .ws-path-tail {
     white-space: nowrap;
     flex: 0 0 auto;
-    color: #d4d4d8;
+    color: rgb(var(--c-text));
 }
 
 .ws-loc.is-missing {
-    border-color: rgba(239, 68, 68, 0.45);
+    border-color: rgb(var(--c-danger) / 0.45);
 }
 
 .ws-loc.is-missing .ws-loc-name {
-    color: #fca5a5;
+    color: rgb(var(--c-danger-text));
 }
 
 /* ── Dropdowns ───────────────────────────────────────────────────────────── */
@@ -257,10 +263,10 @@
     max-width: min(20rem, 80vw);
     max-height: 22rem;
     overflow-y: auto;
-    background-color: #2d2d30;
-    border: 1px solid #3f3f46;
+    background-color: rgb(var(--c-surface));
+    border: 1px solid rgb(var(--c-border));
     border-radius: 0.75rem;
-    box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 10px 25px -3px rgb(0 0 0 / calc(0.5 * var(--shadow-strength))), 0 4px 6px -2px rgb(0 0 0 / calc(0.35 * var(--shadow-strength)));
     padding: 0.375rem;
 }
 
@@ -285,13 +291,13 @@
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: #a1a1aa;
+    color: rgb(var(--c-text-muted));
 }
 
 .ws-menu-sep {
     height: 1px;
     margin: 0.375rem 0.25rem;
-    background-color: #3f3f46;
+    background-color: rgb(var(--c-border));
 }
 
 /* ── Header toolbar ──────────────────────────────────────────────────────── */
@@ -305,11 +311,11 @@
 
 .ws-scan-note {
     font-size: 0.75rem;
-    color: #a1a1aa;
+    color: rgb(var(--c-text-muted));
 }
 
 .ws-scan-note.is-error {
-    color: #fca5a5;
+    color: rgb(var(--c-danger-text));
 }
 
 /* Failed opens used to vanish into Console.WriteLine; this is where they land now. */
@@ -318,10 +324,10 @@
     align-items: flex-start;
     gap: 0.5rem;
     padding: 0.625rem 0.75rem;
-    border: 1px solid rgba(239, 68, 68, 0.45);
+    border: 1px solid rgb(var(--c-danger) / 0.45);
     border-radius: 0.5rem;
-    background-color: rgba(239, 68, 68, 0.08);
-    color: #fca5a5;
+    background-color: rgb(var(--c-danger) / 0.08);
+    color: rgb(var(--c-danger-text));
     font-size: 0.8125rem;
     line-height: 1.4;
 }
@@ -349,9 +355,9 @@
     max-height: 15rem;
     overflow-y: auto;
     padding: 0.25rem;
-    border: 1px solid #3f3f46;
+    border: 1px solid rgb(var(--c-border));
     border-radius: 0.5rem;
-    background-color: rgba(26, 26, 26, 0.5);
+    background-color: rgb(var(--c-bg) / 0.5);
 }
 
 .icon-choice {
@@ -362,19 +368,19 @@
     border: 1px solid transparent;
     border-radius: 0.5rem;
     background: transparent;
-    color: #e4e4e7;
+    color: rgb(var(--c-text));
     font-size: 1.1rem;
     cursor: pointer;
     transition: background-color 0.12s ease-out, border-color 0.12s ease-out;
 }
 
 .icon-choice:hover {
-    background-color: #3e3e42;
+    background-color: rgb(var(--c-surface-hover));
 }
 
 .icon-choice.is-selected {
-    border-color: #3b82f6;
-    background-color: rgba(59, 130, 246, 0.15);
+    border-color: rgb(var(--c-accent-blue));
+    background-color: rgb(var(--c-accent-blue) / 0.15);
 }
 
 .color-row {
@@ -393,7 +399,7 @@
 }
 
 .color-choice.is-selected {
-    border-color: #e4e4e7;
+    border-color: rgb(var(--c-text));
 }
 
 .icon-preview {
@@ -401,9 +407,9 @@
     align-items: center;
     gap: 0.75rem;
     padding: 0.75rem;
-    border: 1px solid #3f3f46;
+    border: 1px solid rgb(var(--c-border));
     border-radius: 0.5rem;
-    background-color: rgba(26, 26, 26, 0.5);
+    background-color: rgb(var(--c-bg) / 0.5);
 }
 
 .icon-preview i {
@@ -423,33 +429,33 @@
 .ws-label {
     font-size: 0.8125rem;
     font-weight: 500;
-    color: #e4e4e7;
+    color: rgb(var(--c-text));
 }
 
 .ws-hint {
     font-size: 0.75rem;
-    color: #a1a1aa;
+    color: rgb(var(--c-text-muted));
 }
 
 .ws-error {
     font-size: 0.8125rem;
-    color: #fca5a5;
+    color: rgb(var(--c-danger-text));
 }
 
 .ws-input {
     width: 100%;
-    background-color: #1a1a1a;
-    border: 1px solid #3f3f46;
+    background-color: rgb(var(--c-bg));
+    border: 1px solid rgb(var(--c-border));
     border-radius: 0.5rem;
     padding: 0.5rem 0.625rem;
-    color: #e4e4e7;
+    color: rgb(var(--c-text));
     font-size: 0.875rem;
 }
 
 .ws-input:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+    border-color: rgb(var(--c-accent-blue));
+    box-shadow: 0 0 0 2px rgb(var(--c-accent-blue) / 0.3);
 }
 
 .ws-check {
@@ -457,7 +463,7 @@
     align-items: center;
     gap: 0.5rem;
     font-size: 0.875rem;
-    color: #e4e4e7;
+    color: rgb(var(--c-text));
 }
 
 .ws-dialog-actions {
@@ -471,6 +477,6 @@
 .ws-empty {
     padding: 2rem 1rem;
     text-align: center;
-    color: #a1a1aa;
+    color: rgb(var(--c-text-muted));
     font-size: 0.875rem;
 }

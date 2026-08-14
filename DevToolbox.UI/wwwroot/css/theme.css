@@ -1,0 +1,88 @@
+/* The only place a colour is written down.
+ *
+ * Everything else — the Tailwind palette in tailwind.config.js, dashboard.css,
+ * and any component style — refers back to these variables, so swapping a theme
+ * is a change to this file alone.
+ *
+ * Values are space-separated RGB channels, not hex, so one variable serves both
+ * consumers:
+ *     Tailwind   rgb(var(--c-bg) / <alpha-value>)   -> bg-dark-bg, bg-dark-bg/50
+ *     plain CSS  rgb(var(--c-bg))                   -> dashboard.css
+ * A hex value cannot do the first, which is why the channels are bare.
+ *
+ * The token names stay dark-flavoured (--c-bg was 'dark-bg') to match the
+ * Tailwind class names already in the markup. Under the light theme
+ * `bg-dark-bg` means white, which reads oddly; renaming the whole palette to
+ * semantic names is a separate pass, deliberately not mixed into this one.
+ *
+ * Only two states exist here: default (dark) and [data-theme="light"]. There is
+ * no prefers-color-scheme block — the boot script in index.html resolves the
+ * "system" setting itself and always writes a concrete theme onto <html>. That
+ * keeps the fallback honest: if scripting fails the page stays dark, which is
+ * what it was before any of this existed.
+ */
+
+:root {
+    color-scheme: dark;
+
+    --c-bg: 26 26 26;
+    --c-surface: 45 45 48;
+    --c-surface-hover: 62 62 66;
+    --c-border: 63 63 70;
+    --c-text: 228 228 231;
+    --c-text-muted: 161 161 170;
+
+    --c-accent-blue: 59 130 246;
+    --c-accent-blue-hover: 37 99 235;
+    --c-accent-purple: 139 92 246;
+    --c-accent-purple-hover: 124 58 237;
+
+    --c-success: 16 185 129;
+    --c-warning: 245 158 11;
+    --c-danger: 239 68 68;
+
+    /* Error *text*, which needs the opposite treatment to an error *fill*: it has
+     * to stay legible against the page, so it lightens on dark and darkens on
+     * light while --c-danger stays put for borders and backgrounds. */
+    --c-danger-text: 252 165 165;
+
+    /* Shadows read as depth on a dark ground and as dirt on a light one, so
+     * their opacity is a token rather than a constant in tailwind.config.js. */
+    --shadow-strength: 1;
+}
+
+:root[data-theme="light"] {
+    color-scheme: light;
+
+    --c-bg: 250 250 250;
+    --c-surface: 255 255 255;
+    --c-surface-hover: 244 244 245;
+    --c-border: 228 228 231;
+    --c-text: 24 24 27;
+    --c-text-muted: 82 82 91;
+
+    /* Blue and purple are lifted straight from the dark palette onto white,
+     * where #3b82f6 on #fafafa is 3.1:1 — under the 4.5:1 body text needs.
+     * The -hover shades already clear it, so each accent shifts one step
+     * darker and its hover one step darker again. */
+    --c-accent-blue: 37 99 235;
+    --c-accent-blue-hover: 29 78 216;
+    --c-accent-purple: 124 58 237;
+    --c-accent-purple-hover: 109 40 217;
+
+    --c-success: 5 150 105;
+    --c-warning: 217 119 6;
+    --c-danger: 220 38 38;
+
+    --c-danger-text: 185 28 28;
+
+    --shadow-strength: 0.35;
+}
+
+/* Painted here rather than left to Tailwind's base layer so the window has the
+ * right ground colour even before output.css is parsed. */
+html,
+body {
+    background-color: rgb(var(--c-bg));
+    color: rgb(var(--c-text));
+}

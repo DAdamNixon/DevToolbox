@@ -2,12 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Custom base styles for modern dark theme */
+/* Base styles. Colours come from the variables in theme.css — nothing here may
+   name one directly, or it stops following the active theme.
+
+   `color-scheme` deliberately is not set here: theme.css owns it, and this file
+   compiles into output.css which loads *after* theme.css, so a rule at this
+   specificity would win and pin the app to dark for ever. */
 @layer base {
-  html {
-    color-scheme: dark;
-  }
-  
   body {
     @apply bg-dark-bg text-dark-text font-sans antialiased;
     @apply min-h-screen;
@@ -195,7 +196,11 @@
   }
   
   .border-gradient {
-    background: linear-gradient(90deg, theme('colors.accent-blue'), theme('colors.accent-purple')) border-box;
+    /* Not theme('colors.accent-blue') — that now returns the raw config value,
+       which carries Tailwind's <alpha-value> placeholder and is not valid CSS
+       outside a colour utility. Reading the variable directly sidesteps it and
+       tracks the active theme for free. */
+    background: linear-gradient(90deg, rgb(var(--c-accent-blue)), rgb(var(--c-accent-purple))) border-box;
     border: 2px solid transparent;
     background-clip: padding-box, border-box;
   }

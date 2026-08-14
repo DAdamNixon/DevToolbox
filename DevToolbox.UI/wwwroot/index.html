@@ -1,5 +1,8 @@
 <!DOCTYPE html>
-<html class="dark">
+<!-- data-theme is written by the boot script below before first paint. It is
+     left off the markup on purpose so the file never disagrees with the saved
+     preference. -->
+<html>
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
@@ -10,6 +13,13 @@
     <base href="/" />
     <!-- Google Fonts for modern typography -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Colour tokens. Must come first: output.css and dashboard.css both
+         resolve their colours through the variables declared here. -->
+    <link href="css/theme.css" rel="stylesheet" />
+    <!-- Theme boot. Inline and before the body so the correct palette is in
+         place at first paint — a deferred script would flash the wrong theme. -->
+    <script src="js/theme.js"></script>
+    <script>window.devtoolboxTheme.boot();</script>
     <!-- Tailwind CSS -->
     <link href="css/output.css" rel="stylesheet" />
     <!-- Keep Bootstrap Icons for now -->
@@ -37,51 +47,9 @@
                     'width=device-width, initial-scale=' + (1 / scale) + ', maximum-scale=' + (1 / scale) + ', user-scalable=no');
             }
         }
-        
-        // Initialize dark mode based on saved preference or system preference
-        document.addEventListener('DOMContentLoaded', function() {
-            const darkModeEnabled = localStorage.getItem('darkMode') === 'true' || 
-                (localStorage.getItem('darkMode') === null && 
-                window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-            
-            if (darkModeEnabled) {
-                document.body.classList.add('dark-mode');
-            }
-            
-            // Listen for system theme changes
-            if (window.matchMedia) {
-                const colorSchemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
-                colorSchemeQuery.addEventListener('change', (e) => {
-                    if (localStorage.getItem('darkMode') === null) {
-                        if (e.matches) {
-                            document.body.classList.add('dark-mode');
-                        } else {
-                            document.body.classList.remove('dark-mode');
-                        }
-                    }
-                });
-            }
-        });
-        
-        // JavaScript function to toggle dark mode (will be called from Blazor)
-        window.toggleDarkMode = function(enabled) {
-            if (enabled) {
-                document.body.classList.add('dark-mode');
-                localStorage.setItem('darkMode', 'true');
-            } else {
-                document.body.classList.remove('dark-mode');
-                localStorage.setItem('darkMode', 'false');
-            }
-            return true;
-        };
-        
-        // Function to get current dark mode state
-        window.isDarkModeEnabled = function() {
-            return document.body.classList.contains('dark-mode');
-        };
     </script>
 </head>
-<body class="bg-dark-bg text-dark-text">
+<body>
     <div id="app">
         <div id="loading-message" class="flex items-center justify-center min-h-screen">
             <div class="text-center">
