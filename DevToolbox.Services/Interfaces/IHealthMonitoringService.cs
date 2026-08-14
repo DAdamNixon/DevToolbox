@@ -5,65 +5,66 @@ using DevToolbox.Services.Models;
 
 namespace DevToolbox.Services.Interfaces
 {
+    /// <summary>
+    /// Polls the configured endpoints on background loops and reports what it finds.
+    /// Registered as a singleton and started once at app launch, so monitoring runs
+    /// whether or not the Service Pulse tab is open.
+    /// </summary>
     public interface IHealthMonitoringService
     {
         /// <summary>
-        /// Gets all configured service endpoints
+        /// Loads configuration and starts the monitor loops. Safe to call more than
+        /// once; only the first call does anything.
+        /// <para>
+        /// Awaiting this matters: the old code kicked the load off from the
+        /// constructor with a bare <c>Task.Run</c>, so a page that rendered first
+        /// saw no services at all and showed the "nothing configured" empty state.
+        /// </para>
         /// </summary>
+        Task InitializeAsync();
+
+        /// <summary>All configured endpoints, enabled or not.</summary>
         Task<List<ServiceEndpoint>> GetServiceEndpointsAsync();
 
-        /// <summary>
-        /// Gets health status for all services
-        /// </summary>
+        /// <summary>Current health of every configured service.</summary>
         Task<List<ServiceHealth>> GetServiceHealthAsync();
 
-        /// <summary>
-        /// Gets health status for a specific service
-        /// </summary>
+        /// <summary>Current health of one service, or null if it is not configured.</summary>
         Task<ServiceHealth?> GetServiceHealthAsync(string serviceId);
 
-        /// <summary>
-        /// Starts monitoring all enabled services
-        /// </summary>
-        Task StartMonitoringAsync();
+        /// <summary>Whether the monitor loops are currently running.</summary>
+        bool IsMonitoring { get; }
 
         /// <summary>
-        /// Stops all monitoring
+        /// Why the configuration could not be read, or null. Non-null means the file
+        /// exists but is malformed, and it has deliberately been left untouched.
         /// </summary>
+        string? ConfigError { get; }
+
+        Task StartMonitoringAsync();
+
         Task StopMonitoringAsync();
 
         /// <summary>
-        /// Manually ping a specific service
+        /// Pings one service now and records the result, exactly as a scheduled ping
+        /// would. Returns the result for convenience; callers may ignore it and read
+        /// the updated <see cref="ServiceHealth"/> instead.
         /// </summary>
         Task<PingResult> PingServiceAsync(string serviceId);
 
-        /// <summary>
-        /// Add a new service endpoint
-        /// </summary>
         Task AddServiceEndpointAsync(ServiceEndpoint endpoint);
 
-        /// <summary>
-        /// Update an existing service endpoint
-        /// </summary>
         Task UpdateServiceEndpointAsync(ServiceEndpoint endpoint);
 
-        /// <summary>
-        /// Remove a service endpoint
-        /// </summary>
         Task RemoveServiceEndpointAsync(string serviceId);
 
-        /// <summary>
-        /// Save service configuration to YAML
-        /// </summary>
         Task SaveConfigurationAsync();
 
-        /// <summary>
-        /// Load service configuration from YAML
-        /// </summary>
         Task LoadConfigurationAsync();
 
         /// <summary>
-        /// Event raised when service health changes
+        /// Raised after every ping. Fires on a background thread — Blazor subscribers
+        /// must marshal with <c>InvokeAsync</c> before touching component state.
         /// </summary>
         event EventHandler<ServiceHealthChangedEventArgs> ServiceHealthChanged;
     }

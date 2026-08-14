@@ -82,16 +82,46 @@ public class YamlStorageService : IYamlStorageService
     {
         try
         {
-            // Convert to YAML directly
             var yaml = _yamlSerializer.Serialize(data);
-
-            // Save to file
             var filePath = Path.Combine(_storageDirectory, $"{fileName}.yaml");
-            await File.WriteAllTextAsync(filePath, yaml);
+
+            KeepPreviousVersion(filePath);
+
+            // Write to a temp file and swap, so an interrupted write cannot leave a
+            // half-serialized config that the next load rejects as malformed.
+            var tempPath = filePath + ".tmp";
+            await File.WriteAllTextAsync(tempPath, yaml);
+            File.Move(tempPath, filePath, overwrite: true);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or YamlDotNet.Core.YamlException)
         {
             throw new InvalidOperationException($"Failed to save YAML file: {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// Copies the current file to <c>&lt;name&gt;.yaml.bak</c> before it is replaced.
+    /// <para>
+    /// These files are meant to be hand-edited and commented, and serialization
+    /// keeps neither comments nor key order — so any save from the UI rewrites a
+    /// carefully annotated config into bare generated YAML. The backup is what
+    /// makes that recoverable instead of final. One generation is kept
+    /// deliberately: the point is to survive the save you did not mean to make,
+    /// not to be a version history.
+    /// </para>
+    /// </summary>
+    private static void KeepPreviousVersion(string filePath)
+    {
+        try
+        {
+            if (File.Exists(filePath)) File.Copy(filePath, filePath + ".bak", overwrite: true);
+        }
+        catch (IOException)
+        {
+            // A backup that cannot be written must not block the save itself.
+        }
+        catch (UnauthorizedAccessException)
+        {
         }
     }
 

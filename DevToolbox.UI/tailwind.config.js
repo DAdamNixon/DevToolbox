@@ -1,9 +1,17 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  // .cs is scanned as well as .razor: class names decided in a code-behind are
+  // just as real as ones in markup, and Tailwind only ever emits strings that
+  // match a known utility, so scanning code costs nothing but a little build time.
+  //
+  // Directories are listed individually rather than using ./**/ so the glob never
+  // walks bin/ and obj/, which contain generated copies of every razor file.
   content: [
-    "./Pages/**/*.{razor,html,cshtml}",
-    "./Components/**/*.{razor,html,cshtml}",
-    "./Shared/**/*.{razor,html,cshtml}",
+    "./Pages/**/*.{razor,html,cshtml,cs}",
+    "./Components/**/*.{razor,html,cshtml,cs}",
+    "./Shared/**/*.{razor,html,cshtml,cs}",
+    "./Services/**/*.cs",
+    "./Models/**/*.cs",
     "./wwwroot/**/*.{html,js}",
     "./*.razor"
   ],

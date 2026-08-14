@@ -43,11 +43,19 @@ namespace DevToolbox.UI
             services.AddScoped<DevToolbox.UI.Services.CardStateService>();
             services.AddScoped<IConfigurationService, ConfigurationService>();
             services.AddScoped<IScriptExecutionService, ScriptExecutionService>();
-            services.AddScoped<IYamlStorageService, YamlStorageService>();
-            services.AddScoped<IUiSettingsService, UiSettingsService>();
+            // Singleton, not scoped: YAML storage is stateless and both singletons
+            // below depend on it, and a singleton holding a scoped dependency is a
+            // captive that outlives its own scope.
+            services.AddSingleton<IYamlStorageService, YamlStorageService>();
+            services.AddSingleton<IUiSettingsService, UiSettingsService>();
             services.AddScoped<ILogFileService, DbLogService>();
             services.AddScoped<ILogStorageService, SqliteLogStorageService>();
-            services.AddScoped<IHealthMonitoringService, HealthMonitoringService>();
+
+            // Owns background monitor loops that must outlive any one page, and is
+            // started from MainWindow rather than from the Service Pulse tab. As a
+            // scoped service its Dispose tore down every timer whenever a scope
+            // ended, with nothing left to restart them.
+            services.AddSingleton<IHealthMonitoringService, HealthMonitoringService>();
 
             // Register UI-specific services
             services.AddScoped<ViewModelFactory>();

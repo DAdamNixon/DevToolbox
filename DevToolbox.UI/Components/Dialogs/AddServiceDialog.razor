@@ -5,7 +5,10 @@
     <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @onclick="Cancel"></div>
     
     <!-- Modal -->
-    <div class="relative bg-dark-card border border-dark-border rounded-xl shadow-2xl w-full max-w-md mx-4 max-h-[80vh] overflow-y-auto">
+    @* bg-dark-surface, not bg-dark-card: there is no 'dark-card' colour in
+       tailwind.config.js, so this panel had no background at all and the
+       backdrop showed straight through it. *@
+    <div class="relative bg-dark-surface border border-dark-border rounded-xl shadow-2xl w-full max-w-md mx-4 max-h-[80vh] overflow-y-auto">
         <!-- Header -->
         <div class="flex items-center justify-between p-6 border-b border-dark-border">
             <h3 class="text-xl font-semibold text-dark-text">
@@ -129,21 +132,25 @@
     {
         if (!IsValid) return;
 
-        var service = new ServiceEndpoint
-        {
-            Id = IsEditMode ? ExistingService!.Id : Guid.NewGuid().ToString(),
-            Name = ServiceName.Trim(),
-            Endpoint = Endpoint.Trim(),
-            PingIntervalSeconds = PingIntervalSeconds,
-            TimeoutSeconds = TimeoutSeconds,
-            Environment = Environment,
-            Description = string.IsNullOrWhiteSpace(Description) ? null : Description.Trim(),
-            Tags = TagsText.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                          .Select(t => t.Trim())
-                          .Where(t => !string.IsNullOrEmpty(t))
-                          .ToList(),
-            IsEnabled = IsEnabled
-        };
+        // Edits mutate the existing endpoint rather than building a replacement.
+        // A fresh ServiceEndpoint would silently drop expectStatus, degradedAboveMs
+        // and details — the hand-authored YAML fields this dialog has no inputs for
+        // — so opening a service and pressing Update deleted them.
+        var service = IsEditMode && ExistingService is not null
+            ? ExistingService
+            : new ServiceEndpoint { Id = Guid.NewGuid().ToString() };
+
+        service.Name = ServiceName.Trim();
+        service.Endpoint = Endpoint.Trim();
+        service.PingIntervalSeconds = PingIntervalSeconds;
+        service.TimeoutSeconds = TimeoutSeconds;
+        service.Environment = Environment;
+        service.Description = string.IsNullOrWhiteSpace(Description) ? null : Description.Trim();
+        service.Tags = TagsText.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                               .Select(t => t.Trim())
+                               .Where(t => !string.IsNullOrEmpty(t))
+                               .ToList();
+        service.IsEnabled = IsEnabled;
 
         await OnSave.InvokeAsync(service);
     }
