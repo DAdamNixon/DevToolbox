@@ -266,17 +266,59 @@ else
                 <i class="bi bi-table text-accent-blue"></i>
                 <span>Log Results</span>
             </h2>
-            <div class="flex items-center space-x-2">
-                <label class="text-sm text-dark-text-muted">Page size:</label>
-                <select class="input-modern w-auto" @bind="State.PageSize" @bind:after="OnPageSizeChanged">
-                    <option value="100">100</option>
-                    <option value="250">250</option>
-                    <option value="500">500</option>
-                    <option value="1000">1000</option>
-                </select>
+            <div class="flex items-center space-x-4">
+                <div class="flex items-center space-x-2">
+                    <label class="text-sm text-dark-text-muted">Split by:</label>
+                    <div class="flex rounded-lg border border-dark-border overflow-hidden" role="group" aria-label="Split results">
+                        @foreach (var option in SplitOptions)
+                        {
+                            <button type="button"
+                                    class="px-3 py-1 text-sm transition-colors @(State.SplitMode == option.Mode ? "bg-accent-blue text-white" : "bg-dark-surface text-dark-text-muted hover:bg-dark-surface-hover")"
+                                    @onclick="() => State.SetSplitModeAsync(option.Mode)"
+                                    disabled="@State.IsLoading"
+                                    aria-pressed="@(State.SplitMode == option.Mode)">
+                                @option.Label
+                            </button>
+                        }
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <label class="text-sm text-dark-text-muted">Page size:</label>
+                    <select class="input-modern w-auto" @bind="State.PageSize" @bind:after="OnPageSizeChanged">
+                        <option value="100">100</option>
+                        <option value="250">250</option>
+                        <option value="500">500</option>
+                        <option value="1000">1000</option>
+                    </select>
+                </div>
             </div>
         </div>
-        
+
+        @* Tab strip. Only shown when splitting is on — with one "All" tab it would
+           be pure decoration. *@
+        @if (State.SplitMode != LogSplitMode.None && State.Tabs.Count > 1)
+        {
+            <div class="flex items-end gap-1 mb-4 overflow-x-auto border-b border-dark-border" role="tablist">
+                @for (var i = 0; i < State.Tabs.Count; i++)
+                {
+                    var index = i;
+                    var tab = State.Tabs[i];
+                    var isActive = index == State.ActiveTabIndex;
+                    <button type="button"
+                            role="tab"
+                            aria-selected="@isActive"
+                            class="flex-none px-4 py-2 text-sm whitespace-nowrap border-b-2 -mb-px transition-colors @(isActive ? "border-accent-blue text-accent-blue font-medium" : "border-transparent text-dark-text-muted hover:text-dark-text")"
+                            @onclick="() => State.SelectTabAsync(index)"
+                            disabled="@State.IsLoading"
+                            title="@tab.Label">
+                        @tab.Label
+                        <span class="ml-2 text-xs text-dark-text-muted">@tab.RowCount.ToString("N0")</span>
+                    </button>
+                }
+            </div>
+        }
+
+
         <div class="border border-dark-border rounded-lg overflow-hidden">
             <div style="max-height: 600px; overflow: auto;" tabindex="0" role="region" aria-label="Log table">
                 <table id="logResultsTable" class="w-full select-text" style="table-layout: fixed; min-width: 1200px;">
@@ -444,6 +486,17 @@ else
     private void CancelSearch() => State.CancelSearch();
 
     /// <summary>
+    /// The Split by choices. "File" rather than "Source file" only because the
+    /// segmented control sits beside the page-size picker and the row is tight.
+    /// </summary>
+    private static readonly (LogSplitMode Mode, string Label)[] SplitOptions =
+    {
+        (LogSplitMode.None, "None"),
+        (LogSplitMode.Location, "Location"),
+        (LogSplitMode.File, "File"),
+    };
+
+    /// <summary>
     /// Opens the file a row came from, at that row's line.
     /// <para>
     /// Which program that is comes from openHandlers.yaml, the same config the
@@ -603,12 +656,15 @@ else
             var criteria = State.BuildCriteria();
             var criteriaArg = criteria.HasContent ? criteria : null;
 
+            // Exports the active tab, not the whole table — the CSV should hold
+            // what the grid is showing.
             var filePath = await LogFileService.DownloadLogCsvAsync(
                 State.CurrentTableName,
                 templateEntry.Name,
                 sorts,
                 criteriaArg,
-                null);
+                null,
+                State.CurrentSplitFilter);
 
             // Open the file location in Explorer (Blazor Hybrid/WinForms)
             if (!string.IsNullOrWhiteSpace(filePath) && File.Exists(filePath))

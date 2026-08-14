@@ -19,6 +19,14 @@ namespace DevToolbox.Services.Interfaces
         /// </summary>
         Task InsertLogLinesAsync(string tableName, IEnumerable<Dictionary<string, string>> lines, CancellationToken cancellationToken = default);
         Task<(IEnumerable<Dictionary<string, string>> Results, int TotalCount)> SearchLogsAsync(string tableName, LogQuery query);
+
+        /// <summary>
+        /// Row counts per distinct value of <paramref name="column"/>, honouring the
+        /// same filters as a search. One grouped query rather than a count per tab.
+        /// <paramref name="column"/> must pass <see cref="LogSplitColumns.IsAllowed"/>.
+        /// </summary>
+        Task<List<LogSplitGroup>> GetGroupCountsAsync(string tableName, string column, LogQuery query, CancellationToken cancellationToken = default);
+
         Task<bool> TableExistsAsync(string tableName);
         Task DropTableAsync(string tableName);
     }

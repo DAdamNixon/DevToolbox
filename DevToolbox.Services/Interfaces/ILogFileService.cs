@@ -40,6 +40,7 @@ namespace DevToolbox.Services.Interfaces
             CancellationToken cancellationToken = default);
 
         // Queries an already-prepared table; no re-ingestion.
+        // split restricts results to one tab; null is the "All" tab.
         Task<List<Dictionary<string, string>>> QueryLogPageAsync(
             string tableName,
             string templateName,
@@ -47,10 +48,23 @@ namespace DevToolbox.Services.Interfaces
             int pageSize,
             List<SortColumn>? sortColumns,
             LogSearchCriteria? criteria,
+            LogSplitFilter? split = null,
             CancellationToken cancellationToken = default);
 
         Task<int> CountLogEntriesAsync(
             string tableName,
+            LogSearchCriteria? criteria,
+            LogSplitFilter? split = null,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Distinct values of the split column with their row counts, for building
+        /// the tab strip. Respects the active keyword filter, so tab counts always
+        /// add up to what the All tab shows.
+        /// </summary>
+        Task<List<LogSplitGroup>> GetSplitGroupsAsync(
+            string tableName,
+            LogSplitMode mode,
             LogSearchCriteria? criteria,
             CancellationToken cancellationToken = default);
 
@@ -60,6 +74,7 @@ namespace DevToolbox.Services.Interfaces
             List<SortColumn>? sortColumns,
             LogSearchCriteria? criteria,
             string? outputPath = null,
+            LogSplitFilter? split = null,
             CancellationToken cancellationToken = default);
     }
 }

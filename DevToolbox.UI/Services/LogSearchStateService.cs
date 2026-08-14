@@ -63,6 +63,36 @@ public sealed class LogSearchStateService : IDisposable
     public bool AdvancedRawMode { get; set; }
     public string AdvancedExpression { get; set; } = "";
 
+    // --- split into tabs ---
+
+    /// <summary>
+    /// A tab over the single ingested table. Nothing is re-read or copied: a tab is
+    /// a WHERE clause, so splitting costs one grouped query and no extra memory.
+    /// </summary>
+    public sealed class LogTab
+    {
+        /// <summary>The split column's value, or null for the All tab.</summary>
+        public string? Value { get; init; }
+
+        public string Label { get; init; } = "All";
+        public int RowCount { get; init; }
+
+        // Kept per tab so switching away and back lands where you left off rather
+        // than resetting to page 1 of the default sort.
+        public int CurrentPage { get; set; }
+        public List<SortColumn> Sorts { get; set; } = new();
+    }
+
+    public LogSplitMode SplitMode { get; set; } = LogSplitMode.None;
+    public List<LogTab> Tabs { get; set; } = new();
+    public int ActiveTabIndex { get; set; }
+
+    public LogTab? ActiveTab =>
+        ActiveTabIndex >= 0 && ActiveTabIndex < Tabs.Count ? Tabs[ActiveTabIndex] : null;
+
+    /// <summary>The predicate for the active tab, or null on All.</summary>
+    public LogSplitFilter? CurrentSplitFilter => LogSplitFilter.For(SplitMode, ActiveTab?.Value);
+
     // --- pagination ---
     public int CurrentPage { get; set; }
     public int PageSize { get; set; } = 500;
@@ -394,7 +424,12 @@ public sealed class LogSearchStateService : IDisposable
                 token);
 
             if (token.IsCancellationRequested) return;
+
+            // Counts first: the All tab's total comes from the page query, so the
+            // strip is rebuilt again afterwards to pick it up.
+            await RebuildTabsAsync(token);
             await QueryPageCoreAsync(token);
+            await RebuildTabsAsync(token);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { SetError($"Search failed: {ex.Message}"); }
@@ -430,9 +465,11 @@ public sealed class LogSearchStateService : IDisposable
         var page = CurrentPage;
         var pageSize = PageSize;
 
+        var split = CurrentSplitFilter;
+
         // Task.Run keeps SQLite queries off the UI thread
-        var countTask = Task.Run(() => _logFileService.CountLogEntriesAsync(tableName, criteriaArg, token), token);
-        var dataTask = Task.Run(() => _logFileService.QueryLogPageAsync(tableName, templateName, page, pageSize, sorts, criteriaArg, token), token);
+        var countTask = Task.Run(() => _logFileService.CountLogEntriesAsync(tableName, criteriaArg, split, token), token);
+        var dataTask = Task.Run(() => _logFileService.QueryLogPageAsync(tableName, templateName, page, pageSize, sorts, criteriaArg, split, token), token);
         await Task.WhenAll(countTask, dataTask);
 
         if (token.IsCancellationRequested) return;
@@ -461,6 +498,107 @@ public sealed class LogSearchStateService : IDisposable
         PageInput = page + 1;
     }
 
+    // --- split tabs ---
+
+    /// <summary>
+    /// Rebuilds the tab strip from the current split mode and keyword filter.
+    /// All is always tab 0, so turning splitting off is never a special case and
+    /// the combined view is always one click away.
+    /// </summary>
+    public async Task RebuildTabsAsync(CancellationToken token)
+    {
+        var previousValue = ActiveTab?.Value;
+
+        if (SplitMode == LogSplitMode.None || string.IsNullOrEmpty(CurrentTableName))
+        {
+            Tabs = new List<LogTab> { new() { Value = null, Label = "All", RowCount = TotalRecords } };
+            ActiveTabIndex = 0;
+            return;
+        }
+
+        var criteria = BuildCriteria();
+        var groups = await Task.Run(
+            () => _logFileService.GetSplitGroupsAsync(CurrentTableName, SplitMode, criteria.HasContent ? criteria : null, token),
+            token);
+
+        // All's count is the sum of the groups, not TotalRecords. The groups
+        // partition the table under the same filter, so the sum is exact — and
+        // TotalRecords describes whichever tab was last queried, which made the All
+        // count show the previous tab's total for a moment after switching modes.
+        var allTab = new LogTab
+        {
+            Value = null,
+            Label = "All",
+            RowCount = groups.Sum(g => g.Count)
+        };
+
+        var tabs = new List<LogTab> { allTab };
+        tabs.AddRange(groups.Select(g => new LogTab
+        {
+            Value = g.Value,
+            Label = string.IsNullOrEmpty(g.Value) ? "(none)" : g.Value,
+            RowCount = g.Count
+        }));
+        Tabs = tabs;
+
+        // Stay on the same tab across a filter change when it still exists, rather
+        // than dumping the user back on All every time they type.
+        var index = previousValue is null ? 0 : tabs.FindIndex(t => t.Value == previousValue);
+        ActiveTabIndex = index >= 0 ? index : 0;
+    }
+
+    public async Task SetSplitModeAsync(LogSplitMode mode)
+    {
+        if (SplitMode == mode) return;
+        SplitMode = mode;
+        ActiveTabIndex = 0;
+
+        if (!HasSearched || string.IsNullOrEmpty(CurrentTableName))
+        {
+            await RebuildTabsAsync(CancellationToken.None);
+            Notify();
+            return;
+        }
+
+        IsLoading = true;
+        Notify();
+        try
+        {
+            var token = BeginOperation();
+            await RebuildTabsAsync(token);
+            ResetPagination();
+            await QueryPageCoreAsync(token);
+
+            // Again afterwards so that turning splitting *off* picks up the All
+            // total the query just produced; with splitting on this is a no-op.
+            await RebuildTabsAsync(token);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { SetError($"Split failed: {ex.Message}"); }
+        finally { IsLoading = false; Notify(); }
+    }
+
+    public async Task SelectTabAsync(int index)
+    {
+        if (index < 0 || index >= Tabs.Count || index == ActiveTabIndex) return;
+
+        // Park the current tab's position so returning to it restores the view.
+        if (ActiveTab is { } leaving)
+        {
+            leaving.CurrentPage = CurrentPage;
+            leaving.Sorts = new List<SortColumn>(ActiveSorts);
+        }
+
+        ActiveTabIndex = index;
+
+        var entering = Tabs[index];
+        CurrentPage = entering.CurrentPage;
+        PageInput = entering.CurrentPage + 1;
+        ActiveSorts = new List<SortColumn>(entering.Sorts);
+
+        await QueryCurrentPageAsync();
+    }
+
     public LogSearchCriteria BuildCriteria()
     {
         var criteria = new LogSearchCriteria { UseAdvanced = AdvancedRawMode };
@@ -487,6 +625,18 @@ public sealed class LogSearchStateService : IDisposable
         if (!HasSearched || string.IsNullOrEmpty(CurrentTableName)) return;
         ResetPagination();
         await QueryCurrentPageAsync();
+
+        // Tab counts are part of the filter's result, so they move with it.
+        if (SplitMode != LogSplitMode.None)
+        {
+            try
+            {
+                await RebuildTabsAsync(CancellationToken.None);
+                Notify();
+            }
+            catch (OperationCanceledException) { }
+            catch (InvalidOperationException ex) { SetError($"Could not refresh tab counts: {ex.Message}"); }
+        }
     }
 
     public async Task OnAdvancedToggledAsync()

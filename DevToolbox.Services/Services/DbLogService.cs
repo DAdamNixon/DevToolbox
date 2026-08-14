@@ -555,12 +555,14 @@ namespace DevToolbox.Services.Services
         public async Task<List<Dictionary<string, string>>> QueryLogPageAsync(
             string tableName, string templateName, int pageNumber, int pageSize,
             List<SortColumn>? sortColumns, LogSearchCriteria? criteria,
+            LogSplitFilter? split = null,
             CancellationToken cancellationToken = default)
         {
             var query = new LogQuery
             {
                 Page = pageNumber,
-                PageSize = pageSize
+                PageSize = pageSize,
+                Filters = split?.ToFilters()
             };
             ApplyCriteria(query, criteria);
             if (query.RawQuery == null)
@@ -578,9 +580,10 @@ namespace DevToolbox.Services.Services
         }
 
         public async Task<int> CountLogEntriesAsync(
-            string tableName, LogSearchCriteria? criteria, CancellationToken cancellationToken = default)
+            string tableName, LogSearchCriteria? criteria, LogSplitFilter? split = null,
+            CancellationToken cancellationToken = default)
         {
-            var query = new LogQuery();
+            var query = new LogQuery { Filters = split?.ToFilters() };
             ApplyCriteria(query, criteria);
 
             try
@@ -591,6 +594,26 @@ namespace DevToolbox.Services.Services
             catch (Exception ex)
             {
                 throw ToUserFacing(ex, query, "Failed to count log entries");
+            }
+        }
+
+        public async Task<List<LogSplitGroup>> GetSplitGroupsAsync(
+            string tableName, LogSplitMode mode, LogSearchCriteria? criteria,
+            CancellationToken cancellationToken = default)
+        {
+            if (!LogSplitColumns.TryResolve(mode, out var column))
+                return new List<LogSplitGroup>();
+
+            var query = new LogQuery();
+            ApplyCriteria(query, criteria);
+
+            try
+            {
+                return await _logStorage.GetGroupCountsAsync(tableName, column, query, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                throw ToUserFacing(ex, query, "Failed to group log entries");
             }
         }
 
@@ -671,11 +694,14 @@ namespace DevToolbox.Services.Services
             List<SortColumn>? sortColumns,
             LogSearchCriteria? criteria,
             string? outputPath = null,
+            LogSplitFilter? split = null,
             CancellationToken cancellationToken = default)
         {
             try
             {
-                var query = new LogQuery();
+                // Exports what is on screen, so a CSV taken from a split tab holds
+                // that tab's rows rather than the whole result set.
+                var query = new LogQuery { Filters = split?.ToFilters() };
                 ApplyCriteria(query, criteria);
                 if (query.RawQuery == null)
                     query.Sort = await ResolveEffectiveSortAsync(sortColumns, templateName);
