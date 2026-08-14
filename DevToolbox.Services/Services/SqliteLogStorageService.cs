@@ -7,6 +7,7 @@ using System.Data;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace DevToolbox.Services.Services
@@ -60,7 +61,7 @@ namespace DevToolbox.Services.Services
             return await reader.ReadAsync();
         }
 
-        public async Task InsertLogLinesAsync(string tableName, IEnumerable<Dictionary<string, string>> lines)
+        public async Task InsertLogLinesAsync(string tableName, IEnumerable<Dictionary<string, string>> lines, CancellationToken cancellationToken = default)
         {
             var logLines = lines as IList<Dictionary<string, string>> ?? lines.ToList();
             if (logLines.Count == 0) return;
@@ -69,12 +70,12 @@ namespace DevToolbox.Services.Services
             var columns = logLines.SelectMany(d => d.Keys).Distinct().ToList();
 
             using var conn = GetConnection();
-            await conn.OpenAsync();
+            await conn.OpenAsync(cancellationToken);
 
             using (var pragma = conn.CreateCommand())
             {
                 pragma.CommandText = "PRAGMA synchronous=NORMAL;";
-                await pragma.ExecuteNonQueryAsync();
+                await pragma.ExecuteNonQueryAsync(cancellationToken);
             }
 
             using var tx = conn.BeginTransaction();
@@ -98,9 +99,12 @@ namespace DevToolbox.Services.Services
             {
                 for (int i = 0; i < columns.Count; i++)
                     parameters[i].Value = line.TryGetValue(columns[i], out var val) ? (val ?? "") : "";
-                await cmd.ExecuteNonQueryAsync();
+                await cmd.ExecuteNonQueryAsync(cancellationToken);
             }
 
+            // Not passing the token: once the rows are written, rolling back on a
+            // late cancellation would waste the work for no benefit. The table is
+            // dropped and rebuilt by the next search anyway.
             await tx.CommitAsync();
         }
 

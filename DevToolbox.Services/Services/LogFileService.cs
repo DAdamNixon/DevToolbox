@@ -35,7 +35,7 @@ namespace DevToolbox.Services.Services
             return await _yamlStorage.LoadAsync<LogTemplate>(Path.GetFileNameWithoutExtension(fileName));
         }
 
-        public Task<string> PrepareLogTableAsync(string logFile, IReadOnlyList<LogLocation> locations, DateTime startDate, DateTime endDate, string templateName, CancellationToken cancellationToken = default)
+        public Task<string> PrepareLogTableAsync(string logFile, IReadOnlyList<LogLocation> locations, DateTime startDate, DateTime endDate, string templateName, IProgress<LogIngestProgress>? progress = null, CancellationToken cancellationToken = default)
             => throw new NotSupportedException("Use DbLogService.");
 
         public Task<List<Dictionary<string, string>>> QueryLogPageAsync(string tableName, string templateName, int pageNumber, int pageSize, List<SortColumn>? sortColumns, LogSearchCriteria? criteria, CancellationToken cancellationToken = default)

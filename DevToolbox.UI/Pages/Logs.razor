@@ -104,13 +104,45 @@
             <i class="bi bi-download"></i>
             <span>CSV</span>
         </button>
+        @if (State.IsLoading)
+        {
+            <button class="btn-danger flex items-center space-x-2" @onclick="CancelSearch" disabled="@State.IsCancelling" title="Stop the running search">
+                <i class="bi bi-x-circle"></i>
+                <span>@(State.IsCancelling ? "Cancelling…" : "Cancel")</span>
+            </button>
+        }
     </div>
-    
+
     @if (State.IsLoading)
     {
-        <div class="flex items-center space-x-2 text-dark-text-muted mt-4">
-            <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-accent-blue"></div>
-            <span>Loading logs...</span>
+        <div class="mt-4">
+            <div class="flex items-center justify-between text-sm text-dark-text-muted mb-2">
+                <span class="flex items-center space-x-2 min-w-0">
+                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-accent-blue flex-none"></div>
+                    <span class="truncate">@ProgressHeadline()</span>
+                </span>
+                <span class="flex-none ml-4">@ProgressEta()</span>
+            </div>
+
+            @* Determinate whenever there is something to be determinate about. The
+               indeterminate stripe is for the gap before the first report arrives
+               and for the final query, which has no measurable size. *@
+            <div class="w-full bg-dark-surface rounded-full h-2 overflow-hidden">
+                @if (State.Progress is { } p && p.PercentComplete > 0)
+                {
+                    <div class="bg-accent-blue h-2 rounded-full transition-all duration-200"
+                         style="width: @p.PercentComplete.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)%"></div>
+                }
+                else
+                {
+                    <div class="bg-accent-blue h-2 rounded-full w-1/3 animate-pulse"></div>
+                }
+            </div>
+
+            @if (State.Progress?.CurrentFile is { Length: > 0 } current)
+            {
+                <p class="text-xs text-dark-text-muted mt-1 truncate font-mono">@current</p>
+            }
         </div>
     }
 
@@ -174,7 +206,20 @@
 {
     <div class="modern-card text-center py-16">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-blue mx-auto"></div>
-        <p class="mt-4 text-dark-text-muted">Loading logs, please wait...</p>
+        <p class="mt-4 text-dark-text">@ProgressHeadline()</p>
+        @if (State.Progress is { } p && p.Phase != LogIngestPhase.Listing)
+        {
+            @* Separator keyed off the rendered text, not off Eta having a value:
+               the querying phase has an Eta but deliberately renders nothing for
+               it, which left a dangling "·" at the end of the line. *@
+            var eta = ProgressEta();
+            <p class="mt-1 text-sm text-dark-text-muted">
+                @p.RowsIngested.ToString("N0") rows so far@(eta.Length == 0 ? "" : $" · {eta}")
+            </p>
+        }
+        <button class="btn-secondary mt-6" @onclick="CancelSearch" disabled="@State.IsCancelling">
+            @(State.IsCancelling ? "Cancelling…" : "Cancel")
+        </button>
     </div>
 }
 else if (State.FilteredLogLines.Count == 0 && !State.HasSearched)
@@ -368,6 +413,69 @@ else
     private async Task RunLiveQueryAsync() => await State.RunLiveQueryAsync();
 
     private async Task Search() => await State.SearchAsync();
+
+    private void CancelSearch() => State.CancelSearch();
+
+    /// <summary>
+    /// One line saying what is happening and how far in. Reads as
+    /// "Reading 142 of 380 files · 1.2 GB of 3.4 GB".
+    /// </summary>
+    private string ProgressHeadline()
+    {
+        if (State.Progress is not { } p) return "Preparing search…";
+
+        if (p.Phase == LogIngestPhase.Querying) return "Querying results…";
+
+        // Listing has no denominator — the directory size is unknown until the walk
+        // ends — so it reports what it has looked at instead of a fraction.
+        if (p.Phase == LogIngestPhase.Listing)
+        {
+            var where = string.IsNullOrEmpty(p.CurrentFile) ? "" : $" in {p.CurrentFile}";
+            return p.ItemsExamined == 0
+                ? $"Listing files{where}…"
+                : $"Listing files{where} — {p.ItemsExamined:N0} checked, {p.FilesDone:N0} matched";
+        }
+
+        var verb = p.Phase == LogIngestPhase.Scanning ? "Scanning" : "Reading";
+        if (p.FilesTotal == 0) return $"{verb}…";
+
+        var text = $"{verb} {p.FilesDone:N0} of {p.FilesTotal:N0} files";
+        if (p.BytesTotal > 0) text += $" · {FormatBytes(p.BytesDone)} of {FormatBytes(p.BytesTotal)}";
+        return text;
+    }
+
+    private string ProgressEta()
+    {
+        if (State.Progress is not { } p) return "";
+        // Listing has no total to work towards, so it gets no estimate — the other
+        // phases now do, including Scanning, which measures itself in files.
+        if (p.Phase is LogIngestPhase.Querying or LogIngestPhase.Listing) return "";
+
+        // Null means the reporter does not yet have enough evidence. Saying so is
+        // better than showing a number that is about to change by minutes.
+        return p.Eta is not { } eta ? "estimating…" : $"~{FormatDuration(eta)} left";
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] units = { "B", "KB", "MB", "GB", "TB" };
+        double value = bytes;
+        int unit = 0;
+        while (value >= 1024 && unit < units.Length - 1)
+        {
+            value /= 1024;
+            unit++;
+        }
+        return unit == 0 ? $"{bytes} B" : $"{value:0.#} {units[unit]}";
+    }
+
+    private static string FormatDuration(TimeSpan span)
+    {
+        if (span.TotalSeconds < 5) return "a few seconds";
+        if (span.TotalMinutes < 1) return $"{(int)span.TotalSeconds}s";
+        if (span.TotalHours < 1) return $"{(int)span.TotalMinutes}m {span.Seconds}s";
+        return $"{(int)span.TotalHours}h {span.Minutes}m";
+    }
 
     private async Task JumpToPage() => await State.JumpToPageAsync();
 

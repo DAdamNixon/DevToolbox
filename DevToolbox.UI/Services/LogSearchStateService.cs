@@ -26,6 +26,16 @@ public sealed class LogSearchStateService : IDisposable
     public List<Dictionary<string, string>> FilteredLogLines { get; set; } = new();
     public List<string> TableColumns { get; set; } = new();
     public bool IsLoading { get; set; }
+
+    /// <summary>Latest ingest progress, or null when not ingesting.</summary>
+    public LogIngestProgress? Progress { get; set; }
+
+    /// <summary>
+    /// Cancel has been pressed but the operation has not unwound yet. Drives the
+    /// button's "Cancelling…" state so a Cancel during a long SQLite batch does not
+    /// look ignored.
+    /// </summary>
+    public bool IsCancelling { get; set; }
     public List<SortColumn> ActiveSorts { get; set; } = new();
     public bool HasSearched { get; set; }
     public string ErrorMessage { get; set; } = "";
@@ -213,11 +223,31 @@ public sealed class LogSearchStateService : IDisposable
 
     // --- search ---
 
+    /// <summary>
+    /// Cancels whatever is running and leaves it cancelled. This is the Cancel
+    /// button.
+    /// <para>
+    /// Kept separate from <see cref="BeginOperation"/> because the old single
+    /// method cancelled *and* immediately replaced the token source, and was
+    /// called at the start of every search — so there was no way to express "stop"
+    /// without also arming the next run.
+    /// </para>
+    /// </summary>
     public void CancelSearch()
+    {
+        _cts?.Cancel();
+        IsCancelling = IsLoading;
+        Notify();
+    }
+
+    /// <summary>Retires the previous token source and issues a fresh one for a new operation.</summary>
+    private CancellationToken BeginOperation()
     {
         _cts?.Cancel();
         _cts?.Dispose();
         _cts = new CancellationTokenSource();
+        IsCancelling = false;
+        return _cts.Token;
     }
 
     public void SetError(string message) { ErrorMessage = message; Notify(); }
@@ -240,11 +270,11 @@ public sealed class LogSearchStateService : IDisposable
     {
         if (IsLoading) return;
         IsLoading = true;
+        Progress = null;
         Notify();
         try
         {
-            CancelSearch();
-            var token = _cts!.Token;
+            var token = BeginOperation();
             var templateEntry = AvailableTemplates.FirstOrDefault(t => t.Name == SelectedTemplateName);
             if (templateEntry == null) { SetError($"Template '{SelectedTemplateName}' not found."); return; }
 
@@ -255,9 +285,18 @@ public sealed class LogSearchStateService : IDisposable
             var end = EndDate;
             var templateName = templateEntry.Name;
 
+            // Progress arrives from parser threads. Assign and notify only — the
+            // reporter already throttles to ~4/sec, so this is a render rate the UI
+            // can keep up with.
+            var progress = new Progress<LogIngestProgress>(p =>
+            {
+                Progress = p;
+                Notify();
+            });
+
             // Task.Run keeps heavy file I/O off the UI thread (Blazor Hybrid sync context)
             CurrentTableName = await Task.Run(
-                () => _logFileService.PrepareLogTableAsync(logFile, locations, start, end, templateName, token),
+                () => _logFileService.PrepareLogTableAsync(logFile, locations, start, end, templateName, progress, token),
                 token);
 
             if (token.IsCancellationRequested) return;
@@ -265,7 +304,7 @@ public sealed class LogSearchStateService : IDisposable
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { SetError($"Search failed: {ex.Message}"); }
-        finally { IsLoading = false; Notify(); }
+        finally { IsLoading = false; IsCancelling = false; Progress = null; Notify(); }
     }
 
     public async Task QueryCurrentPageAsync()
@@ -275,12 +314,11 @@ public sealed class LogSearchStateService : IDisposable
         Notify();
         try
         {
-            CancelSearch();
-            await QueryPageCoreAsync(_cts!.Token);
+            await QueryPageCoreAsync(BeginOperation());
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { SetError($"Search failed: {ex.Message}"); }
-        finally { IsLoading = false; Notify(); }
+        finally { IsLoading = false; IsCancelling = false; Notify(); }
     }
 
     private async Task QueryPageCoreAsync(CancellationToken token)

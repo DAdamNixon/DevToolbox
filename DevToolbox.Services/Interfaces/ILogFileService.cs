@@ -13,12 +13,14 @@ namespace DevToolbox.Services.Interfaces
         Task<LogTemplate?> LoadTemplateAsync(string fileName);
 
         // Ingests the selected files into a fresh table (drop + recreate) and returns the table name.
+        // progress is optional; pass null for a silent ingest.
         Task<string> PrepareLogTableAsync(
             string logFile,
             IReadOnlyList<LogLocation> locations,
             DateTime startDate,
             DateTime endDate,
             string templateName,
+            IProgress<LogIngestProgress>? progress = null,
             CancellationToken cancellationToken = default);
 
         // Queries an already-prepared table; no re-ingestion.
