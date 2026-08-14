@@ -1,12 +1,14 @@
 ﻿@page "/logs"
 @using DevToolbox.Services.Interfaces
 @using DevToolbox.Services.Models
+@using DevToolbox.UI.Services
 @using Microsoft.AspNetCore.Components.Web.Virtualization
 @using Microsoft.JSInterop
 @using System.Threading
 @inject ILogFileService LogFileService
 @inject IYamlStorageService YamlStorage
 @inject IJSRuntime JS
+@inject LogSearchStateService State
 @implements IDisposable
 
 <!-- Page Header -->
@@ -15,17 +17,17 @@
     <p class="text-dark-text-muted mt-2">View and analyze application logs with powerful search and filtering capabilities.</p>
 </div>
 
-@if (!string.IsNullOrWhiteSpace(errorMessage))
+@if (!string.IsNullOrWhiteSpace(State.ErrorMessage))
 {
     <div class="bg-red-500/10 border border-red-500/20 rounded-lg p-4 mb-6 flex items-start justify-between">
         <div class="flex items-start space-x-3">
             <i class="bi bi-exclamation-triangle text-red-400 text-xl"></i>
             <div>
                 <div class="font-medium text-red-400">Error</div>
-                <div class="text-red-300 text-sm">@errorMessage</div>
+                <div class="text-red-300 text-sm">@State.ErrorMessage</div>
             </div>
         </div>
-        <button type="button" class="btn-ghost p-2" @onclick="ClearError">
+        <button type="button" class="btn-ghost p-2" @onclick="State.ClearError">
             <i class="bi bi-x text-red-400"></i>
         </button>
     </div>
@@ -36,8 +38,8 @@
     <div class="grid grid-cols-1 md:grid-cols-6 gap-4">
         <div>
             <label for="templateSelect" class="block text-sm font-medium text-dark-text mb-2">Template</label>
-            <select id="templateSelect" class="input-modern w-full" @bind="selectedTemplateName" @bind:after="OnTemplateChanged">
-                @foreach (var template in availableTemplates)
+            <select id="templateSelect" class="input-modern w-full" @bind="State.SelectedTemplateName" @bind:after="OnTemplateChanged">
+                @foreach (var template in State.AvailableTemplates)
                 {
                     <option value="@template.Name">@template.Name</option>
                 }
@@ -46,20 +48,20 @@
         <div class="md:col-span-2 relative">
             <label class="block text-sm font-medium text-dark-text mb-2">Location</label>
             <button type="button" class="input-modern w-full text-left flex items-center justify-between" @onclick="ToggleLocationMenu">
-                <span class="truncate">@LocationSummary</span>
+                <span class="truncate">@State.LocationSummary</span>
                 <i class="bi bi-chevron-down text-dark-text-muted ml-2"></i>
             </button>
-            @if (showLocationMenu)
+            @if (State.ShowLocationMenu)
             {
                 <div class="absolute z-20 mt-1 w-full bg-dark-surface border border-dark-border rounded-lg shadow-lg max-h-64 overflow-auto">
                     <label class="flex items-center space-x-2 px-3 py-2 hover:bg-dark-surface-hover cursor-pointer border-b border-dark-border">
-                        <input type="checkbox" checked="@AllLocationsSelected" @onchange="ToggleAllLocations" />
+                        <input type="checkbox" checked="@State.AllLocationsSelected" @onchange="_ => State.ToggleAllLocations()" />
                         <span class="text-sm text-dark-text font-medium">Select all</span>
                     </label>
-                    @foreach (var location in logLocations)
+                    @foreach (var location in State.LogLocations)
                     {
                         <label class="flex items-center space-x-2 px-3 py-2 hover:bg-dark-surface-hover cursor-pointer">
-                            <input type="checkbox" checked="@IsLocationSelected(location)" @onchange="() => ToggleLocation(location)" />
+                            <input type="checkbox" checked="@State.IsLocationSelected(location)" @onchange="_ => State.ToggleLocation(location)" />
                             <span class="text-sm text-dark-text">@location.Name</span>
                         </label>
                     }
@@ -68,17 +70,17 @@
         </div>
         <div>
             <label for="startDate" class="block text-sm font-medium text-dark-text mb-2">Start Date</label>
-            <input id="startDate" type="date" class="input-modern w-full" @bind="startDate" max="@DateTime.Today.ToString("yyyy-MM-dd")" />
+            <input id="startDate" type="date" class="input-modern w-full" @bind="State.StartDate" max="@DateTime.Today.ToString("yyyy-MM-dd")" />
         </div>
         <div>
             <label for="endDate" class="block text-sm font-medium text-dark-text mb-2">End Date</label>
-            <input id="endDate" type="date" class="input-modern w-full" @bind="endDate" max="@DateTime.Today.ToString("yyyy-MM-dd")" />
+            <input id="endDate" type="date" class="input-modern w-full" @bind="State.EndDate" max="@DateTime.Today.ToString("yyyy-MM-dd")" />
         </div>
         <div>
             <label for="logFile" class="block text-sm font-medium text-dark-text mb-2">Log File</label>
-            <input id="logFile" class="input-modern w-full" list="logFiles" placeholder="Log file..." @bind="logFile" />
+            <input id="logFile" class="input-modern w-full" list="logFiles" placeholder="Log file..." @bind="State.LogFile" />
             <datalist id="logFiles">
-                @foreach (var file in availableLogFiles)
+                @foreach (var file in State.AvailableLogFiles)
                 {
                     <option value="@file"></option>
                 }
@@ -87,8 +89,8 @@
     </div>
     
     <div class="flex items-end gap-4 mt-6">
-        <button class="btn-primary flex items-center space-x-2" @onclick="Search" disabled="@isLoading" aria-describedby="searchHelp">
-            @if (isLoading)
+        <button class="btn-primary flex items-center space-x-2" @onclick="Search" disabled="@State.IsLoading" aria-describedby="searchHelp">
+            @if (State.IsLoading)
             {
                 <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
             }
@@ -98,13 +100,13 @@
             }
             <span>Search</span>
         </button>
-        <button class="btn-secondary flex items-center space-x-2" @onclick="DownloadCsv" disabled="@(isLoading || filteredLogLines.Count == 0)" title="Download as CSV">
+        <button class="btn-secondary flex items-center space-x-2" @onclick="DownloadCsv" disabled="@(State.IsLoading || State.FilteredLogLines.Count == 0)" title="Download as CSV">
             <i class="bi bi-download"></i>
             <span>CSV</span>
         </button>
     </div>
     
-    @if (isLoading)
+    @if (State.IsLoading)
     {
         <div class="flex items-center space-x-2 text-dark-text-muted mt-4">
             <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-accent-blue"></div>
@@ -116,29 +118,29 @@
     <div class="mt-6 border-t border-dark-border pt-4">
         <div class="flex items-center justify-between mb-3">
             <label class="flex items-center space-x-2 cursor-pointer">
-                <input type="checkbox" @bind="advancedRawMode" @bind:after="OnAdvancedToggled" />
+                <input type="checkbox" @bind="State.AdvancedRawMode" @bind:after="OnAdvancedToggled" />
                 <span class="text-sm font-medium text-dark-text">Advanced query mode (SQL)</span>
             </label>
-            <span class="text-xs text-dark-text-muted">@(advancedRawMode ? "Full SQL against the table named logs." : "Type to filter as you go (Enter or 500ms). Rows combine with AND / OR / NOT.")</span>
+            <span class="text-xs text-dark-text-muted">@(State.AdvancedRawMode ? "Full SQL against the table named logs." : "Type to filter as you go (Enter or 500ms). Rows combine with AND / OR / NOT.")</span>
         </div>
 
-        @if (advancedRawMode)
+        @if (State.AdvancedRawMode)
         {
             <div>
                 <label for="advExpr" class="block text-sm font-medium text-dark-text mb-2">Custom SQL query</label>
                 <textarea id="advExpr" rows="3" class="input-modern w-full font-mono text-sm"
                           placeholder="SELECT LEFT(DateTime,4) AS Year, COUNT(*) AS Hits FROM logs GROUP BY Year"
-                          @bind="advancedExpression" @bind:event="oninput" @bind:after="OnCriteriaInput"></textarea>
+                          @bind="State.AdvancedExpression" @bind:event="oninput" @bind:after="OnCriteriaInput"></textarea>
                 <div class="text-xs text-dark-text-muted mt-1">Full SQL against the table <code>logs</code>. Sorting and keyword groups are ignored in this mode. Run with Search or as you type (500ms).</div>
             </div>
         }
         else
         {
             <div class="space-y-2">
-                @for (int i = 0; i < keywordRows.Count; i++)
+                @for (int i = 0; i < State.KeywordRows.Count; i++)
                 {
                     var index = i;
-                    var row = keywordRows[index];
+                    var row = State.KeywordRows[index];
                     <div class="flex items-center space-x-2">
                         @if (index == 0)
                         {
@@ -154,7 +156,7 @@
                         }
                         <input class="input-modern flex-1" placeholder="Interchangeable terms (any match), comma-separated"
                                @bind="row.Text" @bind:event="oninput" @bind:after="OnCriteriaInput" @onkeypress="OnCriteriaKeyPress" />
-                        <button type="button" class="btn-ghost p-2" title="Remove group" @onclick="() => RemoveKeywordRow(index)" disabled="@(keywordRows.Count == 1)">
+                        <button type="button" class="btn-ghost p-2" title="Remove group" @onclick="() => RemoveKeywordRow(index)" disabled="@(State.KeywordRows.Count == 1)">
                             <i class="bi bi-x-lg text-dark-text-muted"></i>
                         </button>
                     </div>
@@ -168,21 +170,21 @@
     </div>
 </div>
 
-@if (isLoading)
+@if (State.IsLoading)
 {
     <div class="modern-card text-center py-16">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-blue mx-auto"></div>
         <p class="mt-4 text-dark-text-muted">Loading logs, please wait...</p>
     </div>
 }
-else if (filteredLogLines.Count == 0 && !hasSearched)
+else if (State.FilteredLogLines.Count == 0 && !State.HasSearched)
 {
     <div class="modern-card text-center py-16">
         <i class="bi bi-search text-6xl text-dark-text-muted"></i>
         <p class="text-dark-text-muted mt-4">Enter your search criteria and click "Search" to view logs.</p>
     </div>
 }
-else if (filteredLogLines.Count == 0)
+else if (State.FilteredLogLines.Count == 0)
 {
     <div class="modern-card text-center py-16">
         <i class="bi bi-inbox text-6xl text-dark-text-muted"></i>
@@ -199,7 +201,7 @@ else
             </h2>
             <div class="flex items-center space-x-2">
                 <label class="text-sm text-dark-text-muted">Page size:</label>
-                <select class="input-modern w-auto" @bind="pageSize" @bind:after="OnPageSizeChanged">
+                <select class="input-modern w-auto" @bind="State.PageSize" @bind:after="OnPageSizeChanged">
                     <option value="100">100</option>
                     <option value="250">250</option>
                     <option value="500">500</option>
@@ -212,17 +214,17 @@ else
             <div style="max-height: 600px; overflow: auto;" tabindex="0" role="region" aria-label="Log table">
                 <table id="logResultsTable" class="w-full select-text" style="table-layout: fixed; min-width: 1200px;">
                     <colgroup>
-                        @foreach (var col in tableColumns)
+                        @foreach (var col in State.TableColumns)
                         {
                             <col style="width: 160px;" />
                         }
                     </colgroup>
                     <thead class="bg-dark-surface border-b border-dark-border sticky top-0 z-10">
                         <tr>
-                            @foreach (var col in tableColumns)
+                            @foreach (var col in State.TableColumns)
                             {
-                                var sortEntry = activeSorts.FirstOrDefault(s => s.Column == col);
-                                var sortIndex = activeSorts.FindIndex(s => s.Column == col);
+                                var sortEntry = State.ActiveSorts.FirstOrDefault(s => s.Column == col);
+                                var sortIndex = State.ActiveSorts.FindIndex(s => s.Column == col);
                                 <th class="relative px-4 py-3 text-left text-xs font-medium text-dark-text uppercase tracking-wider border-r border-dark-border cursor-pointer hover:bg-dark-surface-hover transition-colors"
                                     style="width: 160px;"
                                     @onclick="(e) => SortByColumn(col, e.ShiftKey)"
@@ -237,7 +239,7 @@ else
                                             @if (sortEntry != null)
                                             {
                                                 <i class="bi @(sortEntry.Direction == "desc" ? "bi-chevron-down" : "bi-chevron-up") text-accent-blue"></i>
-                                                @if (activeSorts.Count > 1)
+                                                @if (State.ActiveSorts.Count > 1)
                                                 {
                                                     <span class="text-[10px] text-accent-blue ml-0.5">@(sortIndex + 1)</span>
                                                 }
@@ -254,10 +256,10 @@ else
                         </tr>
                     </thead>
                     <tbody class="bg-dark-bg">
-                        <Virtualize Items="@filteredLogLines" ItemSize="32" OverscanCount="10">
+                        <Virtualize Items="@State.FilteredLogLines" ItemSize="32" OverscanCount="10">
                             <ItemContent Context="logLine">
                                 <tr class="border-b border-dark-border hover:bg-dark-surface/50 transition-colors" role="row">
-                                    @foreach (var col in tableColumns)
+                                    @foreach (var col in State.TableColumns)
                                     {
                                         <td class="px-4 py-3 text-sm text-dark-text border-r border-dark-border overflow-hidden text-ellipsis whitespace-nowrap select-text"
                                             title="@logLine.GetValueOrDefault(col, "")" role="cell">
@@ -268,7 +270,7 @@ else
                             </ItemContent>
                             <Placeholder>
                                 <tr class="border-b border-dark-border">
-                                    @for (int i = 0; i < tableColumns.Count; i++)
+                                    @for (int i = 0; i < State.TableColumns.Count; i++)
                                     {
                                         <td class="px-4 py-3 border-r border-dark-border">
                                             <div class="animate-pulse">
@@ -285,7 +287,7 @@ else
         </div>
 
         <div class="flex justify-between items-center mt-6" role="navigation" aria-label="Pagination">
-            <button class="btn-secondary flex items-center space-x-2" @onclick="PrevPage" disabled="@(isLoading || currentPage == 0)" aria-label="Previous page">
+            <button class="btn-secondary flex items-center space-x-2" @onclick="PrevPage" disabled="@(State.IsLoading || State.CurrentPage == 0)" aria-label="Previous page">
                 <i class="bi bi-chevron-left"></i>
                 <span>Previous</span>
             </button>
@@ -297,19 +299,19 @@ else
                            type="number"
                            class="input-modern w-20 text-center"
                            min="1"
-                           max="@totalPages"
-                           @bind="pageInput"
+                           max="@State.TotalPages"
+                           @bind="State.PageInput"
                            @bind:event="oninput"
                            @onkeypress="OnPageKeyPress" />
-                    <button class="btn-secondary px-3 py-1" @onclick="JumpToPage" disabled="@isLoading">Go</button>
+                    <button class="btn-secondary px-3 py-1" @onclick="JumpToPage" disabled="@State.IsLoading">Go</button>
                 </div>
                 <span class="text-sm text-dark-text">
-                    of <span class="font-semibold text-accent-blue">@totalPages</span> 
-                    (<span class="font-semibold text-accent-blue">@totalRecords</span> total)
+                    of <span class="font-semibold text-accent-blue">@State.TotalPages</span> 
+                    (<span class="font-semibold text-accent-blue">@State.TotalRecords</span> total)
                 </span>
             </div>
 
-            <button class="btn-secondary flex items-center space-x-2" @onclick="NextPage" disabled="@(isLoading || !hasMorePages)" aria-label="Next page">
+            <button class="btn-secondary flex items-center space-x-2" @onclick="NextPage" disabled="@(State.IsLoading || !State.HasMorePages)" aria-label="Next page">
                 <span>Next</span>
                 <i class="bi bi-chevron-right"></i>
             </button>
@@ -319,157 +321,36 @@ else
 
 
 @code {
-    // State management
-    private List<LogLocation> logLocations = new();
-    private List<LogLocation> selectedLocations = new();
-    private bool showLocationMenu = false;
-    private DateTime startDate = DateTime.Today.AddDays(-7);
-    private DateTime endDate = DateTime.Today;
-    private string logFile = string.Empty;
-    private string currentTableName = string.Empty;
-    private List<string> availableLogFiles = new();
-    private List<LogTemplateIndexEntry> availableTemplates = new();
-    private string selectedTemplateName = "";
-    private List<Dictionary<string, string>> originalLogLines = new();
-    private List<Dictionary<string, string>> filteredLogLines = new();
-    private List<string> tableColumns = new();
-    private bool isLoading = false;
-    private List<SortColumn> activeSorts = new();
-    private bool hasSearched = false;
-    private string errorMessage = "";
-
-    // Advanced / keyword-group search
-    private class KeywordRow { public string Gate { get; set; } = "AND"; public string Text { get; set; } = ""; }
-    private List<KeywordRow> keywordRows = new() { new KeywordRow() };
-    private bool advancedRawMode = false;
-    private string advancedExpression = "";
-    private LogFilePresetConfig? presetConfig;
-    
-    // Pagination state
-    private int currentPage = 0;
-    private int pageSize = 500;
-    private bool hasMorePages = true;
-    private int pageInput = 1;
-    private int totalPages = 0;
-    private int totalRecords = 0;
-    
-    // Debouncing
     private System.Threading.Timer? _searchDebounceTimer;
-    private CancellationTokenSource? _cancellationTokenSource;
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadInitialDataAsync();
+        State.OnChanged += HandleStateChanged;
+        await State.InitializeAsync();
     }
 
-    private async Task LoadInitialDataAsync()
-    {
-        try
-        {
-            isLoading = true;
-            
-            var locationsTask = LogFileService.GetLogLocationsAsync();
-            var templatesTask = LogFileService.GetAvailableLogFileTemplatesAsync();
-            
-            await Task.WhenAll(locationsTask, templatesTask);
-            
-            logLocations = await locationsTask ?? new List<LogLocation>();
-            availableTemplates = await templatesTask ?? new List<LogTemplateIndexEntry>();
-            
-            presetConfig = await YamlStorage.LoadAsync<LogFilePresetConfig>("log_file_presets");
+    // Marshal state-change notifications from background threads back to the Blazor sync context
+    private async void HandleStateChanged() => await InvokeAsync(StateHasChanged);
 
-            selectedTemplateName = availableTemplates.FirstOrDefault()?.Name ?? string.Empty;
-            selectedLocations = logLocations.Take(1).ToList();
-            
-            if (!string.IsNullOrEmpty(selectedTemplateName))
-            {
-                ApplyPresetsForTemplate();
-                await UpdateTableColumnsAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            SetError($"Failed to load initial data: {ex.Message}");
-        }
-        finally
-        {
-            isLoading = false;
-            StateHasChanged();
-        }
-    }
+    private void ToggleLocationMenu() => State.ShowLocationMenu = !State.ShowLocationMenu;
 
-    private async Task OnTemplateChanged()
-    {
-        ApplyPresetsForTemplate();
-        await UpdateTableColumnsAsync();
-        ResetPagination();
-    }
+    private async Task OnTemplateChanged() => await State.OnTemplateChangedAsync();
 
-    private void ToggleLocationMenu() => showLocationMenu = !showLocationMenu;
-
-    private string LocationSummary => selectedLocations.Count switch
-    {
-        0 => "Select location(s)...",
-        1 => selectedLocations[0].Name,
-        _ => $"{selectedLocations.Count} locations selected"
-    };
-
-    private bool AllLocationsSelected => logLocations.Count > 0 && selectedLocations.Count == logLocations.Count;
-
-    private bool IsLocationSelected(LogLocation location) =>
-        selectedLocations.Any(l => l.Path == location.Path);
-
-    private void ToggleLocation(LogLocation location)
-    {
-        var existing = selectedLocations.FirstOrDefault(l => l.Path == location.Path);
-        if (existing != null)
-            selectedLocations.Remove(existing);
-        else
-            selectedLocations.Add(location);
-        ResetPagination();
-    }
-
-    private void ToggleAllLocations()
-    {
-        if (AllLocationsSelected)
-            selectedLocations.Clear();
-        else
-            selectedLocations = new List<LogLocation>(logLocations);
-        ResetPagination();
-    }
-
-    private async Task OnPageSizeChanged()
-    {
-        currentPage = 0;
-        pageInput = 1;
-        
-        if (hasSearched)
-        {
-            await QueryCurrentPageAsync();
-        }
-    }
-
-    private async Task OnPageKeyPress(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter")
-        {
-            await JumpToPage();
-        }
-    }
+    private async Task OnPageSizeChanged() => await State.OnPageSizeChangedAsync();
 
     private void DebounceQuery()
     {
         _searchDebounceTimer?.Dispose();
         _searchDebounceTimer = new Timer(async _ =>
         {
-            await InvokeAsync(RunLiveQueryAsync);
+            await InvokeAsync(State.RunLiveQueryAsync);
         }, null, TimeSpan.FromMilliseconds(500), Timeout.InfiniteTimeSpan);
     }
 
     // Typing in a keyword group or the SQL box re-queries the existing table (no re-ingest).
     private void OnCriteriaInput()
     {
-        if (!hasSearched) return;
+        if (!State.HasSearched) return;
         DebounceQuery();
     }
 
@@ -478,296 +359,37 @@ else
         if (e.Key == "Enter")
         {
             _searchDebounceTimer?.Dispose();
-            await RunLiveQueryAsync();
+            await State.RunLiveQueryAsync();
         }
     }
 
-    private async Task OnAdvancedToggled()
+    private async Task OnAdvancedToggled() => await State.OnAdvancedToggledAsync();
+
+    private async Task RunLiveQueryAsync() => await State.RunLiveQueryAsync();
+
+    private async Task Search() => await State.SearchAsync();
+
+    private async Task JumpToPage() => await State.JumpToPageAsync();
+
+    private async Task NextPage() => await State.NextPageAsync();
+
+    private async Task PrevPage() => await State.PrevPageAsync();
+
+    private async Task SortByColumn(string column, bool append) =>
+        await State.SortByColumnAsync(column, append);
+
+    private async Task AddKeywordRow() => await State.AddKeywordRowAsync();
+
+    private async Task RemoveKeywordRow(int index) => await State.RemoveKeywordRowAsync(index);
+
+    private async Task OnPageKeyPress(KeyboardEventArgs e)
     {
-        activeSorts.Clear();
-        if (hasSearched)
-            await RunLiveQueryAsync();
-    }
-
-    private async Task RunLiveQueryAsync()
-    {
-        if (!hasSearched || string.IsNullOrEmpty(currentTableName)) return;
-        ResetPagination();
-        await QueryCurrentPageAsync();
-    }
-
-    private void ResetPagination()
-    {
-        currentPage = 0;
-        pageInput = 1;
-        totalPages = 0;
-        totalRecords = 0;
-        hasMorePages = true;
-    }
-
-    private void CancelSearch()
-    {
-        _cancellationTokenSource?.Cancel();
-        _cancellationTokenSource?.Dispose();
-        _cancellationTokenSource = new CancellationTokenSource();
-    }
-
-    private void SetError(string message)
-    {
-        errorMessage = message;
-        StateHasChanged();
-    }
-
-    private void ClearError()
-    {
-        errorMessage = "";
-        StateHasChanged();
-    }
-
-    private async Task Search()
-    {
-        ClearError();
-        CancelSearch();
-        
-        if (string.IsNullOrWhiteSpace(selectedTemplateName))
-        {
-            SetError("Please select a template.");
-            return;
-        }
-        
-        if (selectedLocations.Count == 0)
-        {
-            SetError("Please select at least one location.");
-            return;
-        }
-        
-        if (startDate > endDate)
-        {
-            SetError("Start date cannot be after end date.");
-            return;
-        }
-
-        ResetPagination();
-        hasSearched = true;
-        activeSorts.Clear();
-        await PrepareAndQueryAsync();
-    }
-
-    // Search button: (re)build the table from the selected files, then query page 1.
-    private async Task PrepareAndQueryAsync()
-    {
-        if (isLoading) return;
-        isLoading = true;
-        StateHasChanged();
-        try
-        {
-            CancelSearch();
-            var token = _cancellationTokenSource!.Token;
-
-            var templateEntry = availableTemplates.FirstOrDefault(t => t.Name == selectedTemplateName);
-            if (templateEntry == null)
-            {
-                SetError($"Template '{selectedTemplateName}' not found.");
-                return;
-            }
-
-            currentTableName = await LogFileService.PrepareLogTableAsync(logFile, selectedLocations, startDate, endDate, templateEntry.Name, token);
-            if (token.IsCancellationRequested) return;
-            await QueryPageCoreAsync(token);
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            SetError($"Search failed: {ex.Message}");
-        }
-        finally
-        {
-            isLoading = false;
-            StateHasChanged();
-        }
-    }
-
-    // Query-only refresh against the already-prepared table (pagination, sort, live typing).
-    private async Task QueryCurrentPageAsync()
-    {
-        if (isLoading || string.IsNullOrEmpty(currentTableName)) return;
-        isLoading = true;
-        StateHasChanged();
-        try
-        {
-            CancelSearch();
-            await QueryPageCoreAsync(_cancellationTokenSource!.Token);
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            SetError($"Search failed: {ex.Message}");
-        }
-        finally
-        {
-            isLoading = false;
-            StateHasChanged();
-        }
-    }
-
-    private async Task QueryPageCoreAsync(CancellationToken token)
-    {
-        var templateEntry = availableTemplates.FirstOrDefault(t => t.Name == selectedTemplateName);
-        if (templateEntry == null)
-        {
-            SetError($"Template '{selectedTemplateName}' not found.");
-            return;
-        }
-
-        var criteria = BuildCriteria();
-        var criteriaArg = criteria.HasContent ? criteria : null;
-        var sorts = advancedRawMode ? null : (activeSorts.Count > 0 ? activeSorts : null);
-
-        var countTask = LogFileService.CountLogEntriesAsync(currentTableName, criteriaArg, token);
-        var dataTask = LogFileService.QueryLogPageAsync(currentTableName, templateEntry.Name, currentPage, pageSize, sorts, criteriaArg, token);
-        await Task.WhenAll(countTask, dataTask);
-
-        if (token.IsCancellationRequested) return;
-
-        totalRecords = await countTask;
-        totalPages = (int)Math.Ceiling(totalRecords / (double)pageSize);
-
-        var pageData = await dataTask;
-        originalLogLines = pageData ?? new List<Dictionary<string, string>>();
-        filteredLogLines = originalLogLines;
-
-        if (pageData?.Any() == true)
-        {
-            tableColumns = pageData.OrderByDescending(l => l.Count).FirstOrDefault()?.Keys.ToList() ?? new List<string>();
-        }
-
-        hasMorePages = pageData?.Count == pageSize && (currentPage + 1) < totalPages;
-        pageInput = currentPage + 1;
-    }
-
-    private async Task JumpToPage()
-    {
-        if (pageInput < 1) pageInput = 1;
-        if (pageInput > totalPages) pageInput = totalPages;
-
-        var newPage = pageInput - 1;
-        if (newPage != currentPage)
-        {
-            currentPage = newPage;
-            await QueryCurrentPageAsync();
-        }
-    }
-
-    private async Task NextPage()
-    {
-        if (hasMorePages && currentPage < totalPages - 1)
-        {
-            currentPage++;
-            await QueryCurrentPageAsync();
-        }
-    }
-
-    private async Task PrevPage()
-    {
-        if (currentPage > 0)
-        {
-            currentPage--;
-            await QueryCurrentPageAsync();
-        }
-    }
-
-    private async Task SortByColumn(string column, bool append)
-    {
-        if (isLoading || !hasSearched || advancedRawMode) return;
-
-        var existing = activeSorts.FirstOrDefault(s => s.Column == column);
-        if (append)
-        {
-            // Shift+Click builds a multi-column sort.
-            if (existing != null)
-                existing.Direction = existing.Direction == "asc" ? "desc" : "asc";
-            else
-                activeSorts.Add(new SortColumn { Column = column, Direction = "asc" });
-        }
-        else if (existing != null && activeSorts.Count == 1)
-        {
-            existing.Direction = existing.Direction == "asc" ? "desc" : "asc";
-        }
-        else
-        {
-            activeSorts = new List<SortColumn> { new SortColumn { Column = column, Direction = "asc" } };
-        }
-
-        currentPage = 0;
-        pageInput = 1;
-        await QueryCurrentPageAsync();
-    }
-
-    private async Task UpdateTableColumnsAsync()
-    {
-        try
-        {
-            var templateEntry = availableTemplates.FirstOrDefault(t => t.Name == selectedTemplateName);
-            if (templateEntry != null)
-            {
-                var template = await LogFileService.LoadTemplateAsync(templateEntry.File);
-                tableColumns = template?.Columns ?? new List<string>();
-            }
-        }
-        catch (Exception ex)
-        {
-            SetError($"Failed to update table columns: {ex.Message}");
-        }
-    }
-
-    private LogSearchCriteria BuildCriteria()
-    {
-        var criteria = new LogSearchCriteria { UseAdvanced = advancedRawMode };
-        if (advancedRawMode)
-        {
-            criteria.AdvancedExpression = advancedExpression;
-        }
-        else
-        {
-            foreach (var row in keywordRows)
-            {
-                var terms = (row.Text ?? string.Empty)
-                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                    .ToList();
-                if (terms.Count == 0) continue;
-                criteria.Groups.Add(new KeywordGroup { Gate = row.Gate, Terms = terms });
-            }
-        }
-        return criteria;
-    }
-
-    private async Task AddKeywordRow()
-    {
-        keywordRows.Add(new KeywordRow());
-        await RunLiveQueryAsync();
-    }
-
-    private async Task RemoveKeywordRow(int index)
-    {
-        if (keywordRows.Count > 1 && index >= 0 && index < keywordRows.Count)
-        {
-            keywordRows.RemoveAt(index);
-            await RunLiveQueryAsync();
-        }
-    }
-
-    private void ApplyPresetsForTemplate()
-    {
-        var group = presetConfig?.Presets?
-            .FirstOrDefault(p => string.Equals(p.Template, selectedTemplateName, StringComparison.OrdinalIgnoreCase));
-        availableLogFiles = group?.Files ?? new List<string>();
-        if (!string.IsNullOrWhiteSpace(group?.DefaultFile))
-            logFile = group!.DefaultFile!;
+        if (e.Key == "Enter") await JumpToPage();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!isLoading && filteredLogLines.Count > 0)
+        if (!State.IsLoading && State.FilteredLogLines.Count > 0)
         {
             try
             {
@@ -782,33 +404,33 @@ else
 
     private async Task DownloadCsv()
     {
-        if (isLoading || !hasSearched) return;
+        if (State.IsLoading || !State.HasSearched) return;
 
-        var templateEntry = availableTemplates.FirstOrDefault(t => t.Name == selectedTemplateName);
+        var templateEntry = State.AvailableTemplates.FirstOrDefault(t => t.Name == State.SelectedTemplateName);
         if (templateEntry == null)
         {
-            SetError("No template selected for CSV download.");
+            State.SetError("No template selected for CSV download.");
             return;
         }
 
-        var originalLoading = isLoading;
-        isLoading = true;
+        var wasLoading = State.IsLoading;
+        State.IsLoading = true;
         StateHasChanged();
 
         try
         {
-            var sorts = advancedRawMode ? null : (activeSorts.Count > 0 ? activeSorts : null);
-            var criteria = BuildCriteria();
+            var sorts = State.AdvancedRawMode ? null : (State.ActiveSorts.Count > 0 ? State.ActiveSorts : null);
+            var criteria = State.BuildCriteria();
             var criteriaArg = criteria.HasContent ? criteria : null;
 
             var filePath = await LogFileService.DownloadLogCsvAsync(
-                currentTableName,
+                State.CurrentTableName,
                 templateEntry.Name,
                 sorts,
                 criteriaArg,
                 null);
 
-            // Open the file location in Explorer (for Blazor Hybrid/WinForms)
+            // Open the file location in Explorer (Blazor Hybrid/WinForms)
             if (!string.IsNullOrWhiteSpace(filePath) && File.Exists(filePath))
             {
                 var psi = new System.Diagnostics.ProcessStartInfo
@@ -822,19 +444,19 @@ else
         }
         catch (Exception ex)
         {
-            SetError($"CSV download failed: {ex.Message}");
+            State.SetError($"CSV download failed: {ex.Message}");
         }
         finally
         {
-            isLoading = originalLoading;
+            State.IsLoading = wasLoading;
             StateHasChanged();
         }
     }
 
     public void Dispose()
     {
+        // Unsubscribe only — do NOT cancel the token so searches continue in the background
+        State.OnChanged -= HandleStateChanged;
         _searchDebounceTimer?.Dispose();
-        _cancellationTokenSource?.Cancel();
-        _cancellationTokenSource?.Dispose();
     }
 }

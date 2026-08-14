@@ -93,7 +93,7 @@ namespace DevToolbox.Services.Services
                     {
                         cancellationToken.ThrowIfCancellationRequested();
                         
-                        var parts = line.Split(template.Delimiter);
+                        var parts = SplitLine(line, template.Delimiter);
                         int extra = parts.Length - baseColumns.Count;
                         if (extra > maxMessageColumns)
                             maxMessageColumns = extra;
@@ -116,6 +116,15 @@ namespace DevToolbox.Services.Services
             columns.Add("SourceFile");
             columns.Add("Sequence");
             return columns;
+        }
+
+        private static string[] SplitLine(string line, string? delimiter)
+        {
+            // Empty delimiter means "row mode": keep the full line in one field.
+            if (string.IsNullOrEmpty(delimiter))
+                return new[] { line };
+
+            return line.Split(delimiter);
         }
 
         public async Task<string> PrepareLogTableAsync(
@@ -259,7 +268,7 @@ namespace DevToolbox.Services.Services
 
                     try
                     {
-                        var parts = line.Split(template.Delimiter);
+                        var parts = SplitLine(line, template.Delimiter);
                         var dict = new Dictionary<string, string>(allColumns.Count);
 
                         for (int i = 0; i < templateColumns.Count; i++)

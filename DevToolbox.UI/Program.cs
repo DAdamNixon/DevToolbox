@@ -48,6 +48,7 @@ namespace DevToolbox.UI
             // Register UI-specific services
             services.AddScoped<ViewModelFactory>();
             services.AddScoped<ModalStateService>();
+            services.AddScoped<LogSearchStateService>();
 
             var serviceProvider = services.BuildServiceProvider();
             Application.Run(new MainWindow(serviceProvider));
