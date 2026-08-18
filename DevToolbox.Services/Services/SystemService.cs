@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
@@ -554,26 +554,21 @@ namespace DevToolbox.Services.Services
         /// <summary>
         /// Executes a PowerShell script with the given parameters
         /// </summary>
-        public async Task ExecuteScriptAsync(string scriptName, Dictionary<string, object> parameters)
+        public async Task<OpenResult> ExecuteScriptAsync(string scriptName, Dictionary<string, object> parameters)
         {
             try
             {
-                Console.WriteLine($"SystemService: Executing PowerShell script: {scriptName}");
-
                 string scriptPath = Path.Combine(_powerShellService.ScriptsDirectory, $"{scriptName}.ps1");
 
                 if (!File.Exists(scriptPath))
                 {
-                    Console.WriteLine($"Script file '{scriptName}.ps1' not found.");
-                    return;
+                    return OpenResult.Fail($"Script '{scriptName}.ps1' was not found in {_powerShellService.ScriptsDirectory}.");
                 }
 
-                // Simplified for just ProjectPath
-                string projectPath = parameters.ContainsKey("ProjectPath") ? parameters["ProjectPath"].ToString() : "";
+                string projectPath = parameters.TryGetValue("ProjectPath", out var value) ? value?.ToString() ?? "" : "";
                 if (string.IsNullOrEmpty(projectPath))
                 {
-                    Console.WriteLine("ProjectPath parameter is required but was not provided or empty.");
-                    return;
+                    return OpenResult.Fail($"'{scriptName}' needs a path to run against, and none was supplied.");
                 }
 
                 // Build the PowerShell command with parameters
@@ -596,11 +591,11 @@ namespace DevToolbox.Services.Services
                 };
 
                 Process.Start(startInfo);
-                Console.WriteLine($"PowerShell script '{scriptName}' launched in a new terminal window.");
+                return OpenResult.Ok();
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or UnauthorizedAccessException)
             {
-                Console.WriteLine($"Error executing script: {scriptName}. Error: {ex.Message}");
+                return OpenResult.Fail($"Could not run '{scriptName}': {ex.Message}");
             }
         }
     }

@@ -1,4 +1,4 @@
-@page "/powershell"
+﻿@page "/powershell"
 @namespace DevToolbox.UI.Pages
 
 <!-- Page Header -->
@@ -118,10 +118,22 @@
                         </div>
 
                         <div>
-                            <label class="block text-sm font-medium text-dark-text mb-2">Test Path Parameters</label>
-                            <input type="text" @bind="projectPath" 
-                                   class="input-modern w-full" 
-                                   placeholder="Enter a path to use when testing the script" />
+                            <label class="block text-sm font-medium text-dark-text mb-2">
+                                Path to run against
+                                @if (RequiredParameters.Any())
+                                {
+                                    <span class="font-normal text-dark-text-muted">
+                                        &mdash; this script requires @string.Join(", ", RequiredParameters)
+                                    </span>
+                                }
+                            </label>
+                            <input type="text" @bind="projectPath"
+                                   class="input-modern w-full"
+                                   placeholder="C:\TFS\Tools\DevToolbox" />
+                            <p class="text-xs text-dark-text-muted mt-1">
+                                Passed to the script as <span class="font-mono">-ProjectPath</span>, the same way the
+                                Run Script menu on a workspace location passes it.
+                            </p>
                         </div>
 
                         @if (!string.IsNullOrEmpty(error))
@@ -155,13 +167,12 @@
                                 <i class="bi bi-save"></i>
                                 <span>Save</span>
                             </button>
+                            @* One Run button, not two. "Run Script" and "Run With Parameters" differed only in
+                               whether the path was passed, and the one that did not pass it could never work:
+                               every bundled script declares ProjectPath as mandatory. *@
                             <button class="btn-secondary flex items-center space-x-2" @onclick="ExecuteScript" disabled="@isExecuting">
                                 <i class="bi bi-play"></i>
                                 <span>@(isExecuting ? "Running..." : "Run Script")</span>
-                            </button>
-                            <button class="btn-accent flex items-center space-x-2" @onclick="ExecuteScriptWithParams" disabled="@isExecuting">
-                                <i class="bi bi-play-fill"></i>
-                                <span>Run With Parameters</span>
                             </button>
                             <button class="btn-danger flex items-center space-x-2" @onclick="DeleteScript" disabled="@isExecuting">
                                 <i class="bi bi-trash"></i>

@@ -1,4 +1,4 @@
-using DevToolbox.Services.Models;
+﻿using DevToolbox.Services.Models;
 
 namespace DevToolbox.Services.Interfaces
 {
@@ -54,6 +54,6 @@ namespace DevToolbox.Services.Interfaces
         /// <summary>
         /// Executes a PowerShell script with the given parameters
         /// </summary>
-        Task ExecuteScriptAsync(string scriptName, Dictionary<string, object> parameters);
+        Task<OpenResult> ExecuteScriptAsync(string scriptName, Dictionary<string, object> parameters);
     }
 }

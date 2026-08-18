@@ -1,4 +1,4 @@
-using DevToolbox.Services.Models;
+﻿using DevToolbox.Services.Models;
 
 namespace DevToolbox.Services.Interfaces
 {
@@ -11,7 +11,7 @@ namespace DevToolbox.Services.Interfaces
         Task<OpenResult> OpenLocationInExplorerAsync(WorkspaceLocation location);
         Task<OpenResult> OpenLocationInTerminalAsync(WorkspaceLocation location);
         Task<OpenResult> OpenLocationWithCustomAppAsync(Workspace workspace, WorkspaceLocation location, CustomOpenOption option);
-        Task RunScriptOnLocationAsync(ScriptInfo script, Workspace workspace, WorkspaceLocation location);
+        Task<OpenResult> RunScriptOnLocationAsync(ScriptInfo script, Workspace workspace, WorkspaceLocation location);
         Task<WorkspaceGroup> CreateWorkspaceGroupAsync(string name);
         Task<Workspace> CreateWorkspaceAsync(string name, string groupName);
     }

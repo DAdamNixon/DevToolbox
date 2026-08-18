@@ -1,4 +1,4 @@
-using DevToolbox.Services.Interfaces;
+﻿using DevToolbox.Services.Interfaces;
 using DevToolbox.Services.Models;
 using System.Diagnostics;
 using System.Text.Json;
@@ -174,31 +174,54 @@ namespace DevToolbox.Services.Services
             return await _systemService.OpenWithCustomAppAsync(location.Root, option);
         }
 
-        public async Task RunScriptOnLocationAsync(ScriptInfo script, Workspace workspace, WorkspaceLocation location)
+        /// <summary>
+        /// Runs a script against a location, in a terminal window the user can watch.
+        /// <para>
+        /// Both of the ways this used to fail were invisible. It required <c>Directory.Exists</c> on
+        /// the location's path, so every location pointing at a *file* — a .sln, a .code-workspace,
+        /// which is most of them — was skipped without a word. And it passed <c>location.Root</c>,
+        /// which is blank on any location that was added by hand rather than produced by a scan, so
+        /// the script was launched with an empty path and returned immediately. Every branch wrote to
+        /// <c>Console</c>, which on a WinForms app goes nowhere at all.
+        /// </para>
+        /// </summary>
+        public async Task<OpenResult> RunScriptOnLocationAsync(ScriptInfo script, Workspace workspace, WorkspaceLocation location)
         {
+            var target = ResolveScriptTarget(location);
+
+            if (target is null)
+            {
+                return OpenResult.Fail($"{location.Path} no longer exists, so '{script.Name}' was not run.");
+            }
+
+            var parameters = new Dictionary<string, object> { { "ProjectPath", target } };
+
+            return await _systemService.ExecuteScriptAsync(script.Name, parameters);
+        }
+
+        /// <summary>
+        /// The folder a script should be pointed at: the location itself when it is a folder, the
+        /// containing folder when it is a file. <c>Root</c> is preferred when it is set and real,
+        /// since a scan fills it in with the workspace root the file belongs to.
+        /// </summary>
+        private static string? ResolveScriptTarget(WorkspaceLocation location)
+        {
+            if (!string.IsNullOrWhiteSpace(location.Root) && Directory.Exists(location.Root))
+            {
+                return location.Root;
+            }
+
             if (Directory.Exists(location.Path))
             {
-                try
-                {
-                    Console.WriteLine($"Executing script: {script.Name} on location: {location.Path}");
-
-                    var parameters = new Dictionary<string, object>
-                    {
-                        { "ProjectPath", location.Root }
-                    };
-
-                    await _systemService.ExecuteScriptAsync(script.Name, parameters);
-                    Console.WriteLine($"Script execution initiated.");
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error executing script: {ex.Message}");
-                }
+                return location.Path;
             }
-            else
+
+            if (File.Exists(location.Path))
             {
-                Console.WriteLine($"Location path does not exist: {location.Path}");
+                return Path.GetDirectoryName(location.Path);
             }
+
+            return null;
         }
 
         public async Task<WorkspaceGroup> CreateWorkspaceGroupAsync(string name)
