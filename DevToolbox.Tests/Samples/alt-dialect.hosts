@@ -1,0 +1,7 @@
+#@group:Database
+#@env:Test
+203.0.113.80    db.example.com
+#@env:Production:prod
+# 203.0.113.11    db.example.com
+#@reset
+127.0.0.1        untouched.example.com

@@ -150,6 +150,110 @@ namespace DevToolbox.Services.Services
                 : RunCommand(path, option, line));
         }
 
+        /// <inheritdoc/>
+        public async Task<CommandResult> RunToCompletionAsync(
+            CustomOpenOption option,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(option);
+
+            var startInfo = option.Type == OpenOptionType.Command
+                ? BuildPowerShellStartInfo(option)
+                : BuildWaitableStartInfo(option);
+
+            if (startInfo is null)
+            {
+                return CommandResult.Failed(option.Type == OpenOptionType.Command
+                    ? $"\"{option.Name}\" has no command configured."
+                    : $"Could not locate \"{option.Name}\".");
+            }
+
+            try
+            {
+                using var process = Process.Start(startInfo);
+                if (process is null) return CommandResult.Failed($"\"{option.Name}\" did not start.");
+
+                // Both streams are read before waiting: a process that fills a redirected pipe
+                // blocks forever if nobody is draining it.
+                var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
+                var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
+
+                await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+
+                var output = (await stdout.ConfigureAwait(false)).Trim();
+                var error = (await stderr.ConfigureAwait(false)).Trim();
+
+                if (process.ExitCode == 0) return new CommandResult(true, 0, output, null);
+
+                return new CommandResult(
+                    true,
+                    process.ExitCode,
+                    output,
+                    error.Length > 0 ? error
+                        : output.Length > 0 ? output
+                        : $"Exited with code {process.ExitCode}.");
+            }
+            catch (Win32Exception ex)
+            {
+                return CommandResult.Failed($"Could not run \"{option.Name}\": {ex.Message}");
+            }
+            catch (InvalidOperationException ex)
+            {
+                return CommandResult.Failed($"Could not run \"{option.Name}\": {ex.Message}");
+            }
+            catch (IOException ex)
+            {
+                return CommandResult.Failed($"Could not read output of \"{option.Name}\": {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// A redirected start for an executable option, or null when the program cannot be found.
+        /// Arguments are passed through verbatim: this overload has no path or line to substitute.
+        /// </summary>
+        private static ProcessStartInfo? BuildWaitableStartInfo(CustomOpenOption option)
+        {
+            var resolved = RunLocator(option.ExecutableFrom);
+
+            if (resolved is null && !string.IsNullOrWhiteSpace(option.ExecutablePath))
+            {
+                resolved = ResolveExecutable(option.ExecutablePath!);
+            }
+
+            if (resolved is null) return null;
+
+            var startInfo = Redirected(resolved);
+            if (!string.IsNullOrWhiteSpace(option.Arguments)) startInfo.Arguments = option.Arguments;
+
+            return startInfo;
+        }
+
+        /// <summary>
+        /// A redirected PowerShell start for a command option. The command travels as
+        /// <c>-EncodedCommand</c> so quoting cannot mangle it, which is the same reason the Open
+        /// path uses it.
+        /// </summary>
+        private static ProcessStartInfo? BuildPowerShellStartInfo(CustomOpenOption option)
+        {
+            if (string.IsNullOrWhiteSpace(option.Command)) return null;
+
+            var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(option.Command));
+
+            var startInfo = Redirected("powershell.exe");
+            startInfo.Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}";
+
+            return startInfo;
+        }
+
+        private static ProcessStartInfo Redirected(string fileName) => new()
+        {
+            FileName = fileName,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+
         private static OpenResult StartExplorer(string path)
         {
             try

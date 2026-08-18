@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using DevToolbox.Services.Interfaces;
 using DevToolbox.Services.Services;
+using DevToolbox.Services.Services.Hosts;
 using DevToolbox.Services;
 using DevToolbox.UI.Services;
 
@@ -13,8 +14,17 @@ namespace DevToolbox.UI
         ///  The main entry point for the application.
         /// </summary>
         [STAThread]
-        static void Main()
+        static int Main(string[] args)
         {
+            // Handled before anything else exists. Started with the "runas" verb, this instance
+            // performs one hosts-file write (or one permission change) and exits — no window, no
+            // WebView, no services. Keeping the elevated path this small is the point: it is the
+            // only code in DevToolbox that ever runs as administrator.
+            if (HostsElevatedCommands.TryGetRequestDirectory(args, out var hostsRequest))
+            {
+                return HostsElevatedCommands.Execute(hostsRequest);
+            }
+
             // To customize application configuration such as set high DPI settings or default font,
             // see https://aka.ms/applicationconfiguration.
             ApplicationConfiguration.Initialize();
@@ -57,13 +67,29 @@ namespace DevToolbox.UI
             // ended, with nothing left to restart them.
             services.AddSingleton<IHealthMonitoringService, HealthMonitoringService>();
 
+            // Singletons for the same reason: the Host Changer's file watcher and poll loop have to
+            // outlive any one page, and the tray icon and the tab must agree about what is switched
+            // on — which they only can if they share one snapshot.
+            services.AddSingleton<IHostsSettingsService, HostsSettingsService>();
+            services.AddSingleton<IHostsBackupService, HostsBackupService>();
+            services.AddSingleton<IHostsWriteBroker, HostsWriteBroker>();
+            services.AddSingleton<IHostsPermissionService, HostsPermissionService>();
+            services.AddSingleton<IHostsFileService, HostsFileService>();
+
+            // The seam between the tray icon, which is Windows Forms, and the Blazor router.
+            services.AddSingleton<AppShellService>();
+
             // Register UI-specific services
             services.AddScoped<ViewModelFactory>();
             services.AddScoped<ModalStateService>();
             services.AddScoped<LogSearchStateService>();
 
-            var serviceProvider = services.BuildServiceProvider();
+            // Disposed on the way out: the Host Changer's singleton owns a FileSystemWatcher and a
+            // timer loop, and letting the provider go without disposing would leak both.
+            using var serviceProvider = services.BuildServiceProvider();
             Application.Run(new MainWindow(serviceProvider));
+
+            return 0;
         }
     }
 }

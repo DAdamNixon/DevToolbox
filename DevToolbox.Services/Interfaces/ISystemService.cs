@@ -35,6 +35,23 @@ namespace DevToolbox.Services.Interfaces
         Task<OpenResult> OpenWithCustomAppAsync(string path, CustomOpenOption option, int? line = null);
 
         /// <summary>
+        /// Runs a configured command to completion and reports its exit code and output.
+        /// <para>
+        /// Unlike the Open methods, this waits. It exists for commands whose result matters
+        /// rather than commands that hand off to another program — flushing the DNS cache after
+        /// a hosts-file change being the motivating case, where "launched" tells the user
+        /// nothing useful.
+        /// </para>
+        /// <para>
+        /// There is no path or line to substitute, so <c>{0}</c> and <c>{1}</c> in
+        /// <see cref="CustomOpenOption.Arguments"/> are not replaced. The executable is located
+        /// exactly as it is for an Open — locator command, then explicit path, then PATH ×
+        /// PATHEXT, then App Paths.
+        /// </para>
+        /// </summary>
+        Task<CommandResult> RunToCompletionAsync(CustomOpenOption option, CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Executes a PowerShell script with the given parameters
         /// </summary>
         Task ExecuteScriptAsync(string scriptName, Dictionary<string, object> parameters);

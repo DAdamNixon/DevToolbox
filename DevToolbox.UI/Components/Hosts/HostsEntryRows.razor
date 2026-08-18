@@ -1,0 +1,88 @@
+@using DevToolbox.Services.Models.Hosts
+@using DevToolbox.Services.Services.Hosts
+@using DevToolbox.UI.Models
+
+@*
+    The address / hostnames / note rows shared by every way of adding entries.
+
+    There is always one blank row at the bottom: that is how another is added, so nobody has to find
+    a button first. Blank rows are ignored entirely, which is also what makes "add nothing" work.
+*@
+
+<div class="hosts-entry-rows">
+    <div class="hosts-entry-head">
+        <span>Address</span>
+        <span>Hostnames</span>
+        <span>Note</span>
+        <span></span>
+    </div>
+
+    @foreach (var entry in Entries)
+    {
+        <div class="hosts-entry-row">
+            <input class="input-modern" placeholder="203.0.113.9" disabled="@Disabled"
+                   value="@entry.Address"
+                   @onchange="e => Set(entry, f => f.Address = Text(e))" />
+
+            <input class="input-modern" placeholder="db01.example.com  db01" disabled="@Disabled"
+                   value="@entry.Hostnames"
+                   @onchange="e => Set(entry, f => f.Hostnames = Text(e))" />
+
+            <input class="input-modern" placeholder="optional" disabled="@Disabled"
+                   value="@entry.Comment"
+                   @onchange="e => Set(entry, f => f.Comment = Text(e))" />
+
+            <button type="button" class="btn-ghost btn-sm" disabled="@Disabled"
+                    title="@(entry.Line > 0 ? $"Delete line {entry.Line}" : "Remove this row")"
+                    @onclick="() => Remove(entry)">
+                <i class="bi @(entry.Line > 0 ? "bi-trash3" : "bi-x-lg")"></i>
+            </button>
+        </div>
+
+        @foreach (var problem in ProblemsFor(entry))
+        {
+            <p class="hosts-field-error">
+                <i class="bi bi-exclamation-circle"></i>@problem
+            </p>
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public List<HostsEntryForm> Entries { get; set; } = null!;
+
+    [Parameter, EditorRequired] public HostsDialect Dialect { get; set; } = null!;
+
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Raised after any edit, so the dialog can recompute its preview.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private static string Text(ChangeEventArgs e) => e.Value?.ToString() ?? string.Empty;
+
+    private async Task Set(HostsEntryForm entry, Action<HostsEntryForm> edit)
+    {
+        edit(entry);
+        EnsureTrailingBlank();
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task Remove(HostsEntryForm entry)
+    {
+        Entries.Remove(entry);
+        EnsureTrailingBlank();
+        await OnChanged.InvokeAsync();
+    }
+
+    private void EnsureTrailingBlank()
+    {
+        if (Entries.Count == 0 || !Entries[^1].IsBlank) Entries.Add(new HostsEntryForm());
+    }
+
+    /// <summary>
+    /// A row nobody has finished typing is not wrong, it is unfinished — so a blank row says nothing
+    /// and a row with only an address waits until there is something to judge.
+    /// </summary>
+    private IReadOnlyList<string> ProblemsFor(HostsEntryForm entry) =>
+        entry.IsBlank ? [] : HostsLineValidator.ValidateEntry(entry.ToModel(), Dialect);
+}

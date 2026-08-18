@@ -28,6 +28,10 @@
         /// </summary>
         private void InitializeComponent()
         {
+            // Was left null, which meant Dispose had nothing to walk. Anything registered with it —
+            // the tray icon, for one — is now torn down with the form for free.
+            components = new System.ComponentModel.Container();
+
             blazorWebView1 = new Microsoft.AspNetCore.Components.WebView.WindowsForms.BlazorWebView();
             SuspendLayout();
             // 
@@ -50,6 +54,7 @@
             Text = "DevToolbox";
             StartPosition = FormStartPosition.CenterScreen;
             Load += MainWindow_Load;
+            FormClosing += MainWindow_FormClosing;
             ResumeLayout(false);
         }
 

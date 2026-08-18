@@ -1,0 +1,44 @@
+# Copyright (c) 1993-2009 Microsoft Corp.
+#
+# This is a sample HOSTS file used by Microsoft TCP/IP for Windows.
+#
+# For example:
+#
+#      102.54.94.97     rhino.acme.com          # source server
+#       38.25.63.10     x.acme.com              # x client host
+
+# localhost name resolution is handled within DNS itself.
+#	127.0.0.1       localhost
+#	::1             localhost
+
+##key:Local Sites
+
+##value:Me
+127.0.0.1		local.example.com
+127.0.0.1		local.demo.example.com
+127.0.0.1		services-local.example.com
+
+##value:Jorge
+# 203.0.113.101		local.example.com
+# 203.0.113.101		local.demo.example.com
+# 203.0.113.101		services-local.example.com
+
+##key:DB Server
+##value:Test
+198.51.100.9		db01.example.com
+198.51.100.9		db01
+##value:Live:warn
+# 192.0.2.180		db01.example.com
+# 192.0.2.180		db01
+
+##key:ShippingServiceDNS
+127.0.0.1			shipping.test	##value:Local
+# 192.0.2.146		shipping.test	##value:SR02:warn
+# 198.51.100.140		shipping.test	##value:WebDev01:warn
+# 203.0.113.101			shipping.test	##value:Jorge:warn
+
+##clear
+127.0.0.1		local.test
+127.0.0.1		workmanager.local
+127.0.0.1		api.workmanager.local
+#127.0.0.1		static.example.com

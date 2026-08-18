@@ -4,12 +4,21 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using DevToolbox.Services;
 using DevToolbox.Services.Interfaces;
+using DevToolbox.UI.Services;
 
 namespace DevToolbox.UI
 {
     public partial class MainWindow : Form
     {
         private readonly IServiceProvider _serviceProvider;
+
+        private HostsTrayIcon? _hostsTray;
+
+        /// <summary>
+        /// Set by the tray's Exit item so <see cref="MainWindow_FormClosing"/> lets the close through
+        /// instead of hiding the window again.
+        /// </summary>
+        private bool _exiting;
 
         public MainWindow(IServiceProvider serviceProvider)
         {
@@ -41,6 +50,87 @@ namespace DevToolbox.UI
             // pressed a button on that page, which is the main reason it appeared to
             // do nothing.
             _ = StartHealthMonitoringAsync();
+
+            // Same reasoning, and one more: the tray icon has to know which hosts
+            // options are switched on before anybody opens the tab.
+            _ = StartHostsWatchAsync();
+        }
+
+        private async Task StartHostsWatchAsync()
+        {
+            try
+            {
+                await _serviceProvider.GetRequiredService<IHostsFileService>().InitializeAsync();
+                await CreateHostsTrayAsync();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+            {
+                // A missing or unreadable hosts file must not stop the app from opening; the Host
+                // Changer tab surfaces the same failure through LoadError.
+                Debug.WriteLine($"Host Changer failed to start: {ex.Message}");
+            }
+        }
+
+        private async Task CreateHostsTrayAsync()
+        {
+            var settings = _serviceProvider.GetRequiredService<IHostsSettingsService>();
+            if (!(await settings.GetAsync()).ShowTrayIcon) return;
+
+            _hostsTray = new HostsTrayIcon(
+                components,
+                this,
+                _serviceProvider.GetRequiredService<IHostsFileService>(),
+                settings,
+                _serviceProvider.GetRequiredService<AppShellService>(),
+                ShowFromTray,
+                ExitFromTray);
+        }
+
+        /// <summary>Brings the window back, whatever state it was left in.</summary>
+        public void ShowFromTray()
+        {
+            Show();
+            if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+            Activate();
+            BringToFront();
+        }
+
+        private void ExitFromTray()
+        {
+            _exiting = true;
+            Close();
+        }
+
+        /// <summary>
+        /// Closing the window hides it instead of quitting, so the tray indicator survives.
+        /// <para>
+        /// That is the whole value of the indicator: knowing you are pointed at a live database is
+        /// worth nothing if it only shows while the window is open. It is a setting rather than a
+        /// rule, because an app that keeps running after you close it surprises people — hence the
+        /// one-off balloon the first time, and an explicit Exit in the tray menu.
+        /// </para>
+        /// </summary>
+        private void MainWindow_FormClosing(object? sender, FormClosingEventArgs e)
+        {
+            // Never argue with a shutdown or with Task Manager.
+            if (_exiting || _hostsTray is null) return;
+            if (e.CloseReason != CloseReason.UserClosing) return;
+
+            // Blocking here is deliberate and safe: FormClosing has to decide e.Cancel before it
+            // returns, so it cannot await, and by the time a window can be closed the settings have
+            // long been read and cached — GetAsync completes synchronously.
+            var settings = _serviceProvider.GetRequiredService<IHostsSettingsService>();
+            var current = settings.GetAsync().GetAwaiter().GetResult();
+            if (!current.MinimizeToTray) return;
+
+            e.Cancel = true;
+            Hide();
+
+            if (current.TrayHintShown) return;
+
+            _hostsTray.ShowHiddenToTrayHint();
+            current.TrayHintShown = true;
+            _ = settings.SaveAsync(current);
         }
 
         private async Task StartHealthMonitoringAsync()

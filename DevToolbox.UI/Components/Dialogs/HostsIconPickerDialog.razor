@@ -1,0 +1,57 @@
+@using DevToolbox.UI.Models
+
+@*
+    Which glyph a group's card carries.
+
+    Purely cosmetic, and stored in this application's own settings rather than in the hosts file —
+    that file is shared, and an icon is a preference about a screen, not a fact about a network.
+*@
+
+<Modal Title="@($"Icon for {GroupName}")" IsVisible="IsVisible" IsVisibleChanged="OnVisibleChanged">
+    @if (IsVisible)
+    {
+        <button type="button" class="hosts-icon-auto @(IsPinned ? null : "is-on")" @onclick="ChooseAutomatic">
+            <i class="bi bi-magic"></i>
+            <span>
+                <strong>Automatic</strong>
+                <span class="text-dark-text-muted">Chosen from where this group's entries point.</span>
+            </span>
+        </button>
+
+        <div class="hosts-icon-grid">
+            @foreach (var choice in HostsGroupIcons.Choices)
+            {
+                <button type="button"
+                        class="hosts-icon-choice @(IsPinned && choice.Class == Current ? "is-on" : null)"
+                        title="@choice.Label"
+                        @onclick="() => Choose(choice.Class)">
+                    <i class="bi @choice.Class"></i>
+                    <span>@choice.Label</span>
+                </button>
+            }
+        </div>
+    }
+</Modal>
+
+@code {
+    [Parameter] public bool IsVisible { get; set; }
+
+    [Parameter] public string GroupName { get; set; } = string.Empty;
+
+    /// <summary>The icon in use, whether it was configured or derived.</summary>
+    [Parameter] public string Current { get; set; } = HostsGroupIcons.Fallback;
+
+    /// <summary>Whether the current icon was configured, so "Automatic" can show as the live choice.</summary>
+    [Parameter] public bool IsPinned { get; set; }
+
+    /// <summary>Raised with the chosen class, or null to go back to deriving it.</summary>
+    [Parameter] public EventCallback<string?> OnChoose { get; set; }
+
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private Task Choose(string icon) => OnChoose.InvokeAsync(icon);
+
+    private Task ChooseAutomatic() => OnChoose.InvokeAsync(null);
+
+    private Task OnVisibleChanged(bool visible) => visible ? Task.CompletedTask : OnCancel.InvokeAsync();
+}

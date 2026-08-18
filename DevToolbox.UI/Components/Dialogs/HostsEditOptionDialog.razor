@@ -1,0 +1,268 @@
+@using DevToolbox.Services.Interfaces
+@using DevToolbox.Services.Models.Hosts
+@using DevToolbox.Services.Services.Hosts
+@using DevToolbox.UI.Components.Hosts
+@using DevToolbox.UI.Models
+
+@inject IHostsFileService Hosts
+
+@*
+    Everything about one option in one place: its name, its flag, and every entry it owns — each of
+    which can be corrected, removed, or joined by a new one.
+
+    The dialog states the option's *destination* rather than a list of operations, and the editor
+    works out the difference. That is what makes the whole thing one change set, one preview and one
+    write, however many rows were touched.
+
+    Lines the option does not truly own are shown but never offered for editing. A line tagged
+    individually carries its own directive, a parked line is deliberately never toggled, and a
+    quarantined line is not the option's at all.
+*@
+
+<Modal Title="@($"Edit {GroupName} / {OptionName}")" SizeClass="is-wide"
+       IsVisible="IsVisible" IsVisibleChanged="OnVisibleChanged">
+    @if (IsVisible && _option is not null)
+    {
+        <div class="hosts-add-form">
+            <div class="hosts-option-block-head">
+                <label class="hosts-field flex-1">
+                    <span class="hosts-field-label">Option name</span>
+                    <input class="input-modern" disabled="@Busy" value="@_name"
+                           @onchange="e => SetName(e.Value?.ToString())" />
+                </label>
+
+                <label class="hosts-field">
+                    <span class="hosts-field-label">Flag</span>
+                    <select class="input-modern" disabled="@Busy" value="@_severity"
+                            @onchange="e => SetSeverity(e.Value?.ToString())">
+                        @foreach (var level in Enum.GetValues<HostsSeverityLevel>())
+                        {
+                            <option value="@level">@SeverityLabel(level)</option>
+                        }
+                    </select>
+                </label>
+            </div>
+
+            @foreach (var problem in HostsLineValidator.ValidateName(_name, Dialect(), "option"))
+            {
+                <p class="hosts-field-error"><i class="bi bi-exclamation-circle"></i>@problem</p>
+            }
+
+            <HostsEntryRows Entries="_rows" Dialect="Dialect()" Disabled="Busy" OnChanged="Recompute" />
+
+            @if (_readOnly.Count > 0)
+            {
+                <div>
+                    <p class="hosts-field-label mb-1">Left alone</p>
+                    <div class="hosts-readonly-lines">
+                        @foreach (var line in _readOnly)
+                        {
+                            <div class="hosts-readonly-line">
+                                <span class="hosts-diff-line">@line.Number</span>
+                                <code>@line.Text</code>
+                                <span class="hosts-readonly-why">@line.Why</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (_error is not null)
+            {
+                <div class="ws-notice">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <span>@_error</span>
+                </div>
+            }
+
+            @if (_preview is not null)
+            {
+                <div>
+                    <h3 class="text-sm font-semibold text-dark-text mb-2">
+                        @_preview.Changes.Count line@(_preview.Changes.Count == 1 ? "" : "s") will change
+                    </h3>
+                    <HostsDiffPreview Changes="_preview.Changes" />
+                </div>
+            }
+        </div>
+
+        <div class="flex items-center justify-between gap-3 mt-6">
+            @if (_confirmingDelete)
+            {
+                <div class="flex items-center gap-2">
+                    <span class="text-sm text-dark-text">Delete this option and its @_option.TotalCount entries?</span>
+                    <button type="button" class="btn-danger btn-sm" disabled="@Busy" @onclick="DeleteOption">Delete</button>
+                    <button type="button" class="btn-ghost btn-sm" disabled="@Busy"
+                            @onclick="() => _confirmingDelete = false">Keep it</button>
+                </div>
+            }
+            else
+            {
+                <button type="button" class="btn-ghost btn-sm" disabled="@Busy" @onclick="() => _confirmingDelete = true">
+                    <i class="bi bi-trash3 me-2"></i>Delete option
+                </button>
+            }
+
+            <div class="flex items-center gap-3">
+                <button type="button" class="btn-secondary" disabled="@Busy" @onclick="Cancel">Cancel</button>
+                <button type="button" class="btn-primary" disabled="@(Busy || _preview is null)" @onclick="Save">
+                    @if (Busy)
+                    {
+                        <i class="bi bi-hourglass-split me-2"></i><text>Saving…</text>
+                    }
+                    else
+                    {
+                        <i class="bi bi-check-lg me-2"></i><text>Save changes</text>
+                    }
+                </button>
+            </div>
+        </div>
+    }
+</Modal>
+
+@code {
+    [Parameter] public bool IsVisible { get; set; }
+
+    [Parameter] public string GroupName { get; set; } = string.Empty;
+
+    [Parameter] public string OptionName { get; set; } = string.Empty;
+
+    [Parameter] public bool Busy { get; set; }
+
+    [Parameter] public EventCallback<HostsEdit> OnConfirm { get; set; }
+
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    /// <summary>A line shown for context but never edited, and the reason it is not.</summary>
+    private sealed record ReadOnlyLine(int Number, string Text, string Why);
+
+    private HostsOption? _option;
+    private string _name = string.Empty;
+    private HostsSeverityLevel _severity;
+    private List<HostsEntryForm> _rows = [];
+    private List<ReadOnlyLine> _readOnly = [];
+
+    private HostsChangePreview? _preview;
+    private string? _error;
+    private bool _confirmingDelete;
+    private bool _wasVisible;
+
+    protected override void OnParametersSet()
+    {
+        if (IsVisible == _wasVisible) return;
+
+        _wasVisible = IsVisible;
+        if (IsVisible) Load();
+    }
+
+    /// <summary>
+    /// Reads the option's current state out of the file. Done on open rather than held, so a change
+    /// made elsewhere between openings is picked up instead of being written back over.
+    /// </summary>
+    private void Load()
+    {
+        _preview = null;
+        _error = null;
+        _confirmingDelete = false;
+        _rows = [];
+        _readOnly = [];
+
+        var snapshot = Hosts.Current;
+        _option = snapshot?.Map.Find(GroupName, OptionName);
+
+        if (snapshot is null || _option is null) return;
+
+        _name = _option.Name;
+        _severity = _option.Severity;
+
+        foreach (var line in _option.OwnedLines)
+        {
+            var text = snapshot.Document.Lines[line - 1].Text;
+            var entry = HostsLineValidator.DecomposeEntry(text);
+
+            // A line the option owns that is not an entry — a stray note, say — has no fields to put
+            // in a form, so it is shown as-is rather than mangled into one.
+            if (entry is null) _readOnly.Add(new ReadOnlyLine(line, text, "not an entry"));
+            else _rows.Add(HostsEntryForm.From(line, entry));
+        }
+
+        AddReadOnly(snapshot, _option.InlineLines, "tagged on its own line");
+        AddReadOnly(snapshot, _option.ParkedLines, "parked, never switched");
+        AddReadOnly(snapshot, _option.SuspectLines, "does not look like this option's");
+
+        _readOnly = _readOnly.OrderBy(line => line.Number).ToList();
+        _rows.Add(new HostsEntryForm());
+
+        Recompute();
+    }
+
+    private void AddReadOnly(HostsSnapshot snapshot, IReadOnlyList<int> lines, string why)
+    {
+        foreach (var line in lines)
+        {
+            _readOnly.Add(new ReadOnlyLine(line, snapshot.Document.Lines[line - 1].Text, why));
+        }
+    }
+
+    private HostsDialect Dialect() => Hosts.Current?.Map.Dialect ?? HostsDialect.Default;
+
+    // ── editing ──────────────────────────────────────────────────────────────
+
+    private void SetName(string? value)
+    {
+        _name = value ?? string.Empty;
+        Recompute();
+    }
+
+    private void SetSeverity(string? value)
+    {
+        _severity = Enum.TryParse<HostsSeverityLevel>(value, out var level) ? level : HostsSeverityLevel.Normal;
+        Recompute();
+    }
+
+    private void Recompute()
+    {
+        _preview = null;
+        _error = null;
+
+        var snapshot = Hosts.Current;
+        if (snapshot is null || _option is null || _name.Trim().Length == 0) return;
+
+        try
+        {
+            var preview = Hosts.PreviewEdit(snapshot, Build());
+            if (preview.Changes.Count > 0) _preview = preview;
+        }
+        catch (Exception ex) when (ex is ArgumentException or KeyNotFoundException or InvalidOperationException)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// The option as it should end up. Blank rows are dropped rather than reported: an empty row is
+    /// how another one is added, so it means "nothing here yet", not "an entry with no address".
+    /// </summary>
+    private HostsEdit.UpdateOption Build() => new(
+        GroupName,
+        OptionName,
+        _name.Trim(),
+        _severity,
+        _rows.Where(row => !row.IsBlank).Select(row => row.ToEdit()).ToArray());
+
+    private string SeverityLabel(HostsSeverityLevel level)
+    {
+        var flag = Dialect().FlagFor(level);
+        return flag is null ? "none" : $"{flag} ({level.ToString().ToLowerInvariant()})";
+    }
+
+    // ── finishing ────────────────────────────────────────────────────────────
+
+    private Task Save() => OnConfirm.InvokeAsync(Build());
+
+    private Task DeleteOption() => OnConfirm.InvokeAsync(new HostsEdit.DeleteOption(GroupName, OptionName));
+
+    private Task Cancel() => OnCancel.InvokeAsync();
+
+    private Task OnVisibleChanged(bool visible) => visible ? Task.CompletedTask : Cancel();
+}

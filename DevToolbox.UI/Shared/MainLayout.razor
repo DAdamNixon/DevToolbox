@@ -1,5 +1,9 @@
 @using Microsoft.AspNetCore.Components
+@using DevToolbox.UI.Services
 @inherits LayoutComponentBase
+@inject AppShellService Shell
+@inject NavigationManager Navigation
+@implements IDisposable
 
 <div class="min-h-screen bg-dark-bg flex flex-col">
     <!-- Navigation -->
@@ -21,3 +25,14 @@
         <StatusBar />
     </footer>
 </div>
+
+@code {
+    protected override void OnInitialized() => Shell.NavigationRequested += OnNavigationRequested;
+
+    // Raised from the tray icon, which runs on the Windows Forms thread, so it has to be marshalled
+    // onto the Blazor context before touching the router.
+    private void OnNavigationRequested(string route) =>
+        _ = InvokeAsync(() => Navigation.NavigateTo(route));
+
+    public void Dispose() => Shell.NavigationRequested -= OnNavigationRequested;
+}
