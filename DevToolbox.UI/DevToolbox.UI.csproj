@@ -4,6 +4,10 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
+    <!-- The icon Windows shows for the file, the shortcut and the taskbar button. Without it the
+         published executable carries the generic .NET icon, while the window and tray icons — set
+         from the same file at runtime — looked right, so the mismatch only showed up on the desktop. -->
+    <ApplicationIcon>Resources\toolbox_Y9B_icon.ico</ApplicationIcon>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <PublishProfile>win-x64.pubxml</PublishProfile>

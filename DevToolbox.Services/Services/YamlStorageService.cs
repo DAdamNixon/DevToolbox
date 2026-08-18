@@ -39,6 +39,11 @@ public class YamlStorageService : IYamlStorageService
 
         // Migrate any existing files from the old location
         MigrateFromOldLocation();
+
+        // Then anything an installer bundled that this machine does not have yet. After the
+        // migration so a file the user already had always wins over a shipped default, and here
+        // rather than at startup so it cannot be skipped by whichever page reads config first.
+        ConfigDefaults.SeedInto(_storageDirectory);
     }
 
     private void MigrateFromOldLocation()
