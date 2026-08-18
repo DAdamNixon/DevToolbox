@@ -1,4 +1,4 @@
-<Project>
+﻿<Project>
   <PropertyGroup>
     <StartupProject>DevToolbox.UI</StartupProject>
   </PropertyGroup>
@@ -23,12 +23,15 @@
       beta     0.9.x     the WebTeam subteam
       release  1.x       team, then company
 
-    Bump VersionSuffix (alpha.1 -> alpha.2) for a build that goes to somebody else; bump
-    VersionPrefix when a feature lands. Promotion to beta is a bar, not a date — see
+    Any build that leaves this machine must raise the four-part number, so bump the patch in
+    VersionPrefix as well as the suffix. Bumping VersionSuffix alone reads like a new build but
+    leaves the package at the same 0.4.0.0, and App Installer only upgrades to a numerically higher
+    version — it would decline to install over its predecessor, silently, on every machine.
+    Promotion to beta is a bar, not a date — see
     [[03-Projects/DevToolbox/Plans/2026-08-18-alpha-launch-feedback]] in the vault.
   -->
   <PropertyGroup>
-    <VersionPrefix>0.4.0</VersionPrefix>
-    <VersionSuffix>alpha.1</VersionSuffix>
+    <VersionPrefix>0.4.1</VersionPrefix>
+    <VersionSuffix>alpha.2</VersionSuffix>
   </PropertyGroup>
 </Project>
