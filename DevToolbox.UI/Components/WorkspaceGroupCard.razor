@@ -1,4 +1,4 @@
-@using DevToolbox.UI.Components
+﻿@using DevToolbox.UI.Components
 @using DevToolbox.Services.Models
 @using DevToolbox.Services.Interfaces
 @using DevToolbox.Services.Services
@@ -8,15 +8,20 @@
 @using DevToolbox.UI.Components.Dialogs
 @inject IJSRuntime JS
 @inject CardStateService CardStateService
+@inject MenuStateService Menu
 @inject ViewModelFactory ViewModelFactory
 @inject ModalStateService ModalStateService
 @inject IIconService IconService
 @inject ISystemService SystemService
+@implements IDisposable
 
-<div class="glow-card @(GroupViewModel.IsExpanded ? "ring-2 ring-accent-blue/50" : "")">
+@* Same as WorkspaceCard: the whole card is the target, and the two regions that must not collapse it
+   — the actions menu and the workspace grid — stop the click themselves. *@
+<div class="glow-card cursor-pointer @(GroupViewModel.IsExpanded ? "ring-2 ring-accent-blue/50" : "")"
+     @onclick="ToggleExpand">
     <!-- Card Header -->
     <div class="ws-group-header">
-        <div class="ws-group-title cursor-pointer" @onclick="ToggleExpand">
+        <div class="ws-group-title">
             <i class="bi @icon.Icon ws-icon text-xl" style="color: @icon.Color"></i>
             <h3 class="workspace-card-title ws-group-name" title="@GroupViewModel.Name">@GroupViewModel.Name</h3>
             <span class="ws-group-meta">(@GroupViewModel.Workspaces.Count workspaces)</span>
@@ -30,15 +35,15 @@
 
         <!-- Actions Menu -->
         <div class="ws-actions">
-            <div class="relative inline-block text-left" @onclick:stopPropagation="true">
+            <div class="ws-menu-anchor" data-menu-anchor @onclick:stopPropagation="true">
                 <button type="button"
                     class="btn-ghost p-2 rounded-lg"
                     title="Group actions"
-                    @onclick="ToggleDropdown">
+                    @onclick="() => Menu.Toggle(GroupMenuId)">
                     <i class="bi bi-three-dots-vertical"></i>
                 </button>
 
-                @if (showDropdown)
+                @if (Menu.IsOpen(GroupMenuId))
                 {
                     <div class="ws-menu">
                         <button class="dropdown-item" @onclick="ShowIconModal">
@@ -84,7 +89,7 @@
     <!-- Card Body - Workspace Grid -->
     @if (GroupViewModel.IsExpanded)
     {
-        <div class="ws-grid">
+        <div class="ws-grid" @onclick:stopPropagation="true">
             @foreach (var workspaceViewModel in GroupViewModel.Workspaces)
             {
                 <WorkspaceCard
@@ -185,7 +190,6 @@
 
     private string NewWorkspaceName = string.Empty;
     private string NewGroupName = string.Empty;
-    private bool showDropdown = false;
     private IconStyle icon = new();
 
     private bool IsFromSource => GroupViewModel.Group.IsFromSource;
@@ -234,6 +238,17 @@
     private RenameGroupDialog? renameGroupDialog;
     private IconPickerDialog? iconPicker;
 
+    // Menu identity, not menu state — which menu is open is owned by MenuStateService, so opening
+    // one closes every other and the backdrop can close whichever it is.
+    private string GroupMenuId => $"group:{GroupViewModel.Group.Name}";
+
+    protected override void OnInitialized() => Menu.Changed += OnMenuChanged;
+
+    // The click that closes this card's menu usually lands somewhere else entirely.
+    private void OnMenuChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Menu.Changed -= OnMenuChanged;
+
     protected override void OnParametersSet()
     {
         // Ensure the view model's expanded state is updated from CardStateService
@@ -248,33 +263,28 @@
     {
         CardStateService.ToggleExpand("group", GroupViewModel.Group.Name);
         GroupViewModel.IsExpanded = !GroupViewModel.IsExpanded;
-        showDropdown = false; // Close dropdown when expanding/collapsing
-    }
-
-    private void ToggleDropdown()
-    {
-        showDropdown = !showDropdown;
+        Menu.Close();
     }
 
     private void ShowAddWorkspaceModal()
     {
         NewWorkspaceName = string.Empty;
         IsAddWorkspaceModalVisible = true;
-        showDropdown = false;
+        Menu.Close();
     }
 
     private void ShowRenameModal()
     {
         NewGroupName = GroupViewModel.Name;
         IsRenameModalVisible = true;
-        showDropdown = false;
+        Menu.Close();
     }
 
     private void ShowIconModal()
     {
         iconPicker?.ResetForm();
         IsIconModalVisible = true;
-        showDropdown = false;
+        Menu.Close();
     }
 
     private async Task HandleIconSaved()
@@ -287,13 +297,13 @@
 
     private async Task Rescan()
     {
-        showDropdown = false;
+        Menu.Close();
         await OnRescan.InvokeAsync();
     }
 
     private async Task OpenSourceFolder()
     {
-        showDropdown = false;
+        Menu.Close();
         if (!string.IsNullOrWhiteSpace(GroupViewModel.Group.SourcePath))
         {
             var result = await SystemService.OpenInExplorerAsync(GroupViewModel.Group.SourcePath);
@@ -364,7 +374,7 @@
     private async Task OnDelete()
     {
         await OnDeleteGroup.InvokeAsync(GroupViewModel.Group);
-        showDropdown = false;
+        Menu.Close();
     }
 
     private async Task SaveWorkspaces()

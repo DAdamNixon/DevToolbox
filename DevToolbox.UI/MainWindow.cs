@@ -86,6 +86,22 @@ namespace DevToolbox.UI
                 ExitFromTray);
         }
 
+        /// <summary>
+        /// Answers the broadcast a second launch sends before exiting, so clicking the shortcut
+        /// reopens this window rather than doing nothing. See <see cref="SingleInstance"/>.
+        /// </summary>
+        protected override void WndProc(ref Message m)
+        {
+            // The zero check is not redundant: RegisterWindowMessage returns 0 on failure, and a
+            // great many ordinary messages have id 0 — matching on it would fire this constantly.
+            if (SingleInstance.ShowWindowMessage != 0 && m.Msg == SingleInstance.ShowWindowMessage)
+            {
+                ShowFromTray();
+            }
+
+            base.WndProc(ref m);
+        }
+
         /// <summary>Brings the window back, whatever state it was left in.</summary>
         public void ShowFromTray()
         {

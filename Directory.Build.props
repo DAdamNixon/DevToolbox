@@ -2,4 +2,33 @@
   <PropertyGroup>
     <StartupProject>DevToolbox.UI</StartupProject>
   </PropertyGroup>
-</Project> 
+
+  <!--
+    The version, for every project in the solution. This is the only place it is written down.
+
+    Two numbers come out of these two properties, and they are for different readers:
+
+      AssemblyVersion / FileVersion   0.4.0.0          what MSIX and Windows compare
+      InformationalVersion            0.4.0-alpha.1    what a person reads
+
+    MSIX requires exactly four numeric parts and rejects a prerelease suffix, and Windows App
+    Installer only upgrades to a numerically *higher* version — so the four-part number must only
+    ever go up, and the channel cannot live in it. Hence VersionSuffix: the channel is a name
+    carried by InformationalVersion, which is what the status bar and Settings show.
+
+    Build-Installer.ps1 reads both back out of the published executable rather than taking a
+    -Version argument, so the package version cannot drift from the assembly's.
+
+      alpha    0.x       the two of us, and the first tester
+      beta     0.9.x     the WebTeam subteam
+      release  1.x       team, then company
+
+    Bump VersionSuffix (alpha.1 -> alpha.2) for a build that goes to somebody else; bump
+    VersionPrefix when a feature lands. Promotion to beta is a bar, not a date — see
+    [[03-Projects/DevToolbox/Plans/2026-08-18-alpha-launch-feedback]] in the vault.
+  -->
+  <PropertyGroup>
+    <VersionPrefix>0.4.0</VersionPrefix>
+    <VersionSuffix>alpha.1</VersionSuffix>
+  </PropertyGroup>
+</Project>

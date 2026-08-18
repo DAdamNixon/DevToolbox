@@ -18,10 +18,9 @@ namespace DevToolbox.Services.Services
 
         public SqliteLogStorageService(string? dbPath = null)
         {
-            _dbPath = dbPath ?? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "DevToolbox", "logs.db"
-            );
+            // LogDatabase owns the location, because something other than this class has to be able
+            // to delete the file at startup - see LogDatabase for why it is thrown away.
+            _dbPath = dbPath ?? LogDatabase.Path;
             Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
         }
 

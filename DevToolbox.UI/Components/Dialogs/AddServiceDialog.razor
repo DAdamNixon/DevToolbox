@@ -97,13 +97,34 @@
     private string TagsText = "";
     private bool IsEnabled = true;
 
+    /// <summary>The dialog stays mounted while hidden, so "opened" is a change in <see cref="IsVisible"/>.</summary>
+    private bool _wasVisible;
+
     private bool IsValid => !string.IsNullOrWhiteSpace(ServiceName) && 
                            !string.IsNullOrWhiteSpace(Endpoint) &&
                            Uri.TryCreate(Endpoint, UriKind.Absolute, out _);
 
+    /// <summary>
+    /// Seeds the form when the dialog opens, and at no other time.
+    /// <para>
+    /// It used to fill every field on every <c>OnParametersSet</c> — which runs on each re-render of
+    /// the page, not each opening of the dialog. Service Pulse re-renders once a second to redraw its
+    /// "3s ago" labels, and again on every health event, so a field committed on blur was overwritten
+    /// within about a second: in add mode with an empty string, in edit mode with the stored value.
+    /// That is the whole of "the text just keeps disappearing when you unfocus from it".
+    /// </para>
+    /// <para>
+    /// Same shape as the Hosts dialogs, which already do this.
+    /// </para>
+    /// </summary>
     protected override void OnParametersSet()
     {
-        if (IsEditMode && ExistingService != null)
+        if (IsVisible == _wasVisible) return;
+
+        _wasVisible = IsVisible;
+        if (!IsVisible) return;
+
+        if (IsEditMode && ExistingService is not null)
         {
             ServiceName = ExistingService.Name;
             Endpoint = ExistingService.Endpoint;
@@ -113,19 +134,17 @@
             Description = ExistingService.Description ?? "";
             TagsText = string.Join(", ", ExistingService.Tags);
             IsEnabled = ExistingService.IsEnabled;
+            return;
         }
-        else if (!IsEditMode)
-        {
-            // Reset for new service
-            ServiceName = "";
-            Endpoint = "";
-            PingIntervalSeconds = 30;
-            TimeoutSeconds = 10;
-            Environment = "";
-            Description = "";
-            TagsText = "";
-            IsEnabled = true;
-        }
+
+        ServiceName = "";
+        Endpoint = "";
+        PingIntervalSeconds = 30;
+        TimeoutSeconds = 10;
+        Environment = "";
+        Description = "";
+        TagsText = "";
+        IsEnabled = true;
     }
 
     private async Task Save()

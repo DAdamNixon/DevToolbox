@@ -1,4 +1,4 @@
-@using DevToolbox.UI.Components
+﻿@using DevToolbox.UI.Components
 @using DevToolbox.Services.Models
 @using DevToolbox.Services.Interfaces
 @using DevToolbox.Services.Services
@@ -9,15 +9,22 @@
 @using DevToolbox.UI.Components.Dialogs
 @inject IJSRuntime JS
 @inject CardStateService CardStateService
+@inject MenuStateService Menu
 @inject ViewModelFactory ViewModelFactory
 @inject ModalStateService ModalStateService
 @inject IIconService IconService
 @inject ISystemService SystemService
+@implements IDisposable
 
-<div class="workspace-card @(WorkspaceViewModel.IsExpanded ? "ring-2 ring-accent-purple/50" : "")">
+@* The whole card expands it, not just the name. The handler was on .ws-card-title, which wraps only
+   the icon, the name and the count, leaving most of the card dead to the click that is the obvious
+   thing to do to it. The two regions that must not collapse the card stop the click themselves:
+   the actions menu, and the locations list you are expanding the card to use. *@
+<div class="workspace-card cursor-pointer @(WorkspaceViewModel.IsExpanded ? "ring-2 ring-accent-purple/50" : "")"
+     @onclick="ToggleExpand">
     <!-- Workspace Header -->
     <div class="ws-card-header">
-        <div class="ws-card-title cursor-pointer" @onclick="ToggleExpand">
+        <div class="ws-card-title">
             <i class="bi @icon.Icon ws-icon" style="color: @icon.Color"></i>
             <h4 class="workspace-card-title ws-card-name" title="@WorkspaceViewModel.Name">@WorkspaceViewModel.Name</h4>
             <span class="ws-group-meta">@WorkspaceViewModel.Locations.Count</span>
@@ -25,15 +32,15 @@
 
         <!-- Actions Menu -->
         <div class="ws-actions">
-            <div class="relative inline-block text-left" @onclick:stopPropagation="true">
+            <div class="ws-menu-anchor" data-menu-anchor @onclick:stopPropagation="true">
                 <button type="button"
                     class="btn-ghost p-2 rounded-lg"
                     title="Workspace actions"
-                    @onclick="ToggleDropdown">
+                    @onclick="() => Menu.Toggle(WorkspaceMenuId)">
                     <i class="bi bi-three-dots-vertical"></i>
                 </button>
 
-                @if (showDropdown)
+                @if (Menu.IsOpen(WorkspaceMenuId))
                 {
                     <div class="ws-menu">
                         <button class="dropdown-item" @onclick="ShowIconModal">
@@ -70,7 +77,7 @@
     <!-- Workspace Locations -->
     @if (WorkspaceViewModel.IsExpanded)
     {
-        <div class="ws-locations">
+        <div class="ws-locations" @onclick:stopPropagation="true">
             @foreach (var location in WorkspaceViewModel.Locations)
             {
                 <div class="ws-loc @(missing.Contains(location.Path) ? "is-missing" : "")">
@@ -97,15 +104,15 @@
                         </button>
 
                         <!-- More Actions Dropdown for Location -->
-                        <div class="relative inline-block text-left">
+                        <div class="ws-menu-anchor" data-menu-anchor>
                             <button type="button"
                                 class="btn-ghost btn-sm"
                                 title="More actions"
-                                @onclick="() => ToggleLocationDropdown(location.Path)">
+                                @onclick="() => Menu.Toggle(LocationMenuId(location))">
                                 <i class="bi bi-three-dots"></i>
                             </button>
 
-                            @if (activeLocationDropdown == location.Path)
+                            @if (Menu.IsOpen(LocationMenuId(location)))
                             {
                                 <div class="ws-menu">
                                     <button class="dropdown-item" @onclick="() => OnOpenInExplorer.InvokeAsync(location)">
@@ -182,8 +189,13 @@
 
 <Modal @bind-IsVisible="IsRenameModalVisible" Title="Rename Workspace">
     <RenameWorkspaceDialog @ref="renameWorkspaceDialog"
-        WorkspaceName="@WorkspaceViewModel.Name"
-        WorkspaceNameChanged="@((name) => { /* Name property is read-only and updated via the Workspace object */ })"
+        @* The value being edited has to live here, not be read back off the workspace. It used to be
+           bound to WorkspaceViewModel.Name with a Changed callback that did nothing, so every commit
+           of the input was immediately overwritten by the unchanged parameter on the next render —
+           and Rename then wrote the old name back over itself. WorkspaceGroupCard already does it
+           this way for groups. *@
+        WorkspaceName="@renameName"
+        WorkspaceNameChanged="(name) => renameName = name"
         ErrorMessage="@GetModalError(RenameModalKey)"
         ErrorMessageChanged="(msg) => ModalStateService.SetError(RenameModalKey, msg)"
         Workspace="WorkspaceViewModel.Workspace"
@@ -221,9 +233,10 @@
     [Parameter] public EventCallback OnIconChanged { get; set; }
 
     // Component state
-    private bool showDropdown = false;
-    private string activeLocationDropdown = string.Empty;
     private IconStyle icon = new();
+
+    /// <summary>The name being typed in the rename dialog, owned here so a re-render cannot revert it.</summary>
+    private string renameName = string.Empty;
     private readonly HashSet<string> missing = new(StringComparer.OrdinalIgnoreCase);
     private bool missingChecked;
 
@@ -275,9 +288,24 @@
 
     private string? GetModalError(string modalKey) => ModalStateService.GetError(modalKey);
 
+    // Menu identity, not menu state: which menu is open is owned by MenuStateService, so that
+    // opening one closes every other and the backdrop can close whichever it is. Keyed off StateKey
+    // for the same reason the modal keys are — the workspace id is not unique.
+    private string WorkspaceMenuId => $"workspace:{WorkspaceViewModel.StateKey}";
+    private string LocationMenuId(WorkspaceLocation location) =>
+        $"location:{WorkspaceViewModel.StateKey}:{location.Path}";
+
     private string AddLocationModalTitle => $"Add Location to {WorkspaceViewModel.Name}";
     private string MoveToGroupModalTitle => $"Move {WorkspaceViewModel.Name} to Group";
     private string IconModalTitle => $"Icon for {WorkspaceViewModel.Name}";
+
+    protected override void OnInitialized() => Menu.Changed += OnMenuChanged;
+
+    // The click that closes this card's menu usually lands on another card, or on the backdrop, so
+    // nothing local would prompt the re-render that hides it.
+    private void OnMenuChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Menu.Changed -= OnMenuChanged;
 
     protected override void OnParametersSet()
     {
@@ -330,7 +358,7 @@
     {
         CardStateService.ToggleExpand("workspace", WorkspaceViewModel.StateKey);
         WorkspaceViewModel.IsExpanded = !WorkspaceViewModel.IsExpanded;
-        showDropdown = false; // Close dropdown when expanding/collapsing
+        Menu.Close();
 
         if (WorkspaceViewModel.IsExpanded)
         {
@@ -339,41 +367,30 @@
         }
     }
 
-    private void ToggleDropdown()
-    {
-        showDropdown = !showDropdown;
-        activeLocationDropdown = string.Empty; // Close any location dropdowns
-    }
-
-    private void ToggleLocationDropdown(string locationPath)
-    {
-        activeLocationDropdown = activeLocationDropdown == locationPath ? string.Empty : locationPath;
-        showDropdown = false; // Close main dropdown
-    }
-
     private void ShowAddLocationModal()
     {
         IsAddLocationModalVisible = true;
-        showDropdown = false;
+        Menu.Close();
     }
 
     private void ShowMoveToGroupModal()
     {
         IsMoveToGroupModalVisible = true;
-        showDropdown = false;
+        Menu.Close();
     }
 
     private void ShowRenameModal()
     {
+        renameName = WorkspaceViewModel.Name;
         IsRenameModalVisible = true;
-        showDropdown = false;
+        Menu.Close();
     }
 
     private void ShowIconModal()
     {
         iconPicker?.ResetForm();
         IsIconModalVisible = true;
-        showDropdown = false;
+        Menu.Close();
     }
 
     private async Task HandleIconSaved()
@@ -386,7 +403,7 @@
 
     private async Task CopyPath(WorkspaceLocation location)
     {
-        activeLocationDropdown = string.Empty;
+        Menu.Close();
         try
         {
             await JS.InvokeVoidAsync("navigator.clipboard.writeText", location.Path);
@@ -419,7 +436,7 @@
     {
         WorkspaceViewModel.Workspace.Locations.Remove(location);
         OnAddLocation.InvokeAsync();
-        activeLocationDropdown = string.Empty; // Close dropdown
+        Menu.Close();
         StateHasChanged();
     }
 

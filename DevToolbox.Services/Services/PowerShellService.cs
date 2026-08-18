@@ -1,7 +1,6 @@
-using System.Management.Automation;
+﻿using System.Management.Automation;
 using System.Management.Automation.Runspaces;
 using System.Text;
-using System.Reflection;
 using DevToolbox.Services.Models;
 using DevToolbox.Services.Services;
 
@@ -13,17 +12,9 @@ public class PowerShellService
     
     public PowerShellService()
     {
-        // Get the base directory of the application
-        string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
-        
-        // Determine the location of scripts - defaults to Scripts folder in the same directory as the assembly
-        _scriptsDirectory = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? baseDirectory, "Scripts");
-        
-        // Create the directory if it doesn't exist
-        if (!Directory.Exists(_scriptsDirectory))
-        {
-            Directory.CreateDirectory(_scriptsDirectory);
-        }
+        // Under %LOCALAPPDATA%, not beside the executable: this service saves and deletes, and an
+        // installed package's own folder is read-only. See ScriptLibrary.
+        _scriptsDirectory = ScriptLibrary.EnsureUserDirectory();
     }
     
     /// <summary>

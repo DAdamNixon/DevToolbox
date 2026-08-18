@@ -31,40 +31,6 @@ public static class ConfigDefaults
     /// <param name="configDirectory">The live config folder. Created if needed.</param>
     /// <returns>How many files were copied. Zero on any failure — seeding is a convenience, and must
     /// never be the reason the application cannot start.</returns>
-    public static int SeedFrom(string sourceDirectory, string configDirectory)
-    {
-        if (string.IsNullOrWhiteSpace(sourceDirectory) || string.IsNullOrWhiteSpace(configDirectory)) return 0;
-
-        var copied = 0;
-
-        try
-        {
-            if (!Directory.Exists(sourceDirectory)) return 0;
-
-            Directory.CreateDirectory(configDirectory);
-
-            foreach (var source in Directory.EnumerateFiles(sourceDirectory))
-            {
-                if (!source.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase)) continue;
-
-                var destination = Path.Combine(configDirectory, Path.GetFileName(source));
-                if (File.Exists(destination)) continue;
-
-                try
-                {
-                    File.Copy(source, destination);
-                    copied++;
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    // One file that cannot be written must not stop the rest.
-                }
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-        }
-
-        return copied;
-    }
+    public static int SeedFrom(string sourceDirectory, string configDirectory) =>
+        BundledFiles.CopyMissing(sourceDirectory, configDirectory, ".yaml");
 }

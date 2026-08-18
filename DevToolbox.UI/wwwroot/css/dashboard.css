@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Dashboard (Projects tab) layout.
  *
  * Written as plain CSS on purpose: the Tailwind build is a separate npm step, so
@@ -252,6 +252,24 @@
 }
 
 /* ── Dropdowns ───────────────────────────────────────────────────────────── */
+
+/* What a card menu hangs off. Marked data-menu-anchor in the markup so the click-outside listener in
+   js/menu.js can tell "inside a menu" from "anywhere else"; deliberately carries no z-index, because
+   the cards raise stacking contexts on hover and focus and nothing here can reliably outrank them. */
+.ws-menu-anchor {
+    position: relative;
+    display: inline-block;
+    text-align: left;
+}
+
+/* The card as a whole is clickable and says so with a pointer, but not everything inside it is:
+   the expanded lists and the menu panel stop the click rather than expanding the card, and a cursor
+   claiming otherwise is simply wrong. The items inside the menu set their own pointer back. */
+.ws-locations,
+.ws-grid,
+.ws-menu {
+    cursor: default;
+}
 
 /* Menus were clipping inside the card and running off the right edge of narrow cards. */
 .ws-menu {

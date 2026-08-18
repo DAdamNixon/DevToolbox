@@ -1,8 +1,11 @@
-@using Microsoft.AspNetCore.Components
+﻿@using Microsoft.AspNetCore.Components
 @using DevToolbox.UI.Services
 @inherits LayoutComponentBase
 @inject AppShellService Shell
 @inject NavigationManager Navigation
+@inject MenuStateService Menu
+@inject IJSRuntime JS
+@using Microsoft.JSInterop
 @implements IDisposable
 
 <div class="min-h-screen bg-dark-bg flex flex-col">
@@ -27,12 +30,32 @@
 </div>
 
 @code {
+    private DotNetObjectReference<MainLayout>? _self;
+
     protected override void OnInitialized() => Shell.NavigationRequested += OnNavigationRequested;
+
+    // Registered once, for the life of the window. See wwwroot/js/menu.js for why this is a document
+    // listener rather than a backdrop element.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        _self = DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("devtoolboxMenu.watch", _self, nameof(CloseMenus));
+    }
+
+    /// <summary>Called from JavaScript when a click lands outside every menu.</summary>
+    [JSInvokable]
+    public void CloseMenus() => Menu.Close();
 
     // Raised from the tray icon, which runs on the Windows Forms thread, so it has to be marshalled
     // onto the Blazor context before touching the router.
     private void OnNavigationRequested(string route) =>
         _ = InvokeAsync(() => Navigation.NavigateTo(route));
 
-    public void Dispose() => Shell.NavigationRequested -= OnNavigationRequested;
+    public void Dispose()
+    {
+        Shell.NavigationRequested -= OnNavigationRequested;
+        _self?.Dispose();
+    }
 }

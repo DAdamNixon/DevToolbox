@@ -13,6 +13,8 @@ public class YamlStorageService : IYamlStorageService
     private readonly ISerializer _yamlSerializer;
     private readonly IDeserializer _yamlDeserializer;
 
+    public string StorageDirectory => _storageDirectory;
+
     public YamlStorageService()
     {
         // Use AppData/Local directory for configuration storage

@@ -12,9 +12,17 @@
             <span class="text-dark-text">None</span>
         </div>
     </div>
+    @* Was the literal "0.1.0", which had been wrong for months — there was no version property in
+       the repo at all, so nothing could have kept it right. Now from Directory.Build.props via
+       AppVersion. *@
     <div class="flex items-center space-x-2">
         <span class="text-dark-text-muted">Version:</span>
-        <span class="text-dark-text font-medium">0.1.0</span>
+        <span class="text-dark-text font-medium" title="Package version @AppVersion.Package">@AppVersion.Display</span>
+        @if (AppVersion.ChannelLabel is string channel)
+        {
+            <span class="px-1.5 py-0.5 rounded bg-accent-purple/20 text-accent-purple uppercase tracking-wide"
+                  title="Pre-release build — expect bugs, and please report them">@channel</span>
+        }
     </div>
 </div>
 
