@@ -157,10 +157,9 @@ namespace DevToolbox.UI.Pages
 # Created: " + DateTime.Now.ToString("g") + @"
 
 # Script logic goes here
+# Report progress with Write-Host; the Scripts tab and the terminal window both show it.
 
-# Keep window open for viewing
-Write-Host ""`nPress any key to close this window...""
-$null = $Host.UI.RawUI.ReadKey(""NoEcho,IncludeKeyDown"")";
+Write-Host ""Done.""";
             }
             
             selectedScript = "NewScript" + DateTime.Now.ToString("yyyyMMddHHmmss");

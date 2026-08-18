@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Position=0, Mandatory=$true)]
     [string]$ProjectPath
 )
@@ -59,6 +59,3 @@ catch {
     Write-Error "Error: $_"
 }
 
-# Keep window open for viewing (comment this out if not needed)
-Write-Host "`nPress any key to close this window..."
-$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")

@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Position=0, Mandatory=$true)]
     [string]$ProjectPath,
     [Parameter(Position=1)]
@@ -57,6 +57,3 @@ $yaml | Out-File -FilePath $OutputFile -Encoding UTF8
 
 Write-Host "YAML configuration has been written to $OutputFile"
 
-# Keep window open for viewing
-Write-Host "`nPress any key to close this window..."
-$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")

@@ -551,6 +551,36 @@ namespace DevToolbox.Services.Services
             return null;
         }
 
+
+        /// <summary>
+        /// The powershell.exe command line for running a bundled script against a path.
+        /// <para>
+        /// <c>-Command</c> with the call operator, deliberately, and not <c>-File</c>. <c>-File</c>
+        /// does not parse what follows it as PowerShell: quotes around a value are taken as part of
+        /// the value, so a script received <c>'C:\path'</c> complete with apostrophes and failed with
+        /// <em>"a drive with the name ''C' does not exist"</em>. <c>Real-Clean.ps1</c> carries a
+        /// <c>$ProjectPath.Trim("'", '"')</c> line to undo that, which is exactly why it worked while
+        /// <c>npm-install</c> and <c>Workspace-Builder</c> did not — the workaround lived in one
+        /// script instead of in the launcher. <c>-Command</c> hands the whole string to PowerShell,
+        /// which parses the quoting properly, so no script has to know about any of this.
+        /// </para>
+        /// </summary>
+        public static string BuildScriptArguments(string scriptPath, IReadOnlyDictionary<string, object> parameters)
+        {
+            var builder = new StringBuilder();
+
+            foreach (var parameter in parameters)
+            {
+                // Doubling is how a single-quoted PowerShell string escapes a quote.
+                var value = parameter.Value?.ToString()?.Replace("'", "''") ?? string.Empty;
+                builder.Append($"-{parameter.Key} '{value}' ");
+            }
+
+            var escapedScriptPath = scriptPath.Replace("'", "''");
+
+            return $"-NoExit -ExecutionPolicy Bypass -Command \"& '{escapedScriptPath}' {builder}\"";
+        }
+
         /// <summary>
         /// Executes a PowerShell script with the given parameters
         /// </summary>
@@ -571,21 +601,15 @@ namespace DevToolbox.Services.Services
                     return OpenResult.Fail($"'{scriptName}' needs a path to run against, and none was supplied.");
                 }
 
-                // Build the PowerShell command with parameters
-                var paramString = new StringBuilder();
-                foreach (var param in parameters)
-                {
-                    // Properly escape single quotes in values by doubling them
-                    string escapedValue = param.Value.ToString().Replace("'", "''");
-                    paramString.Append($"-{param.Key} '{escapedValue}' ");
-                }
-
-                // Start PowerShell with the script and parameters
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = "powershell.exe",
-                    // -NoExit keeps the window open after script execution
-                    Arguments = $"-NoExit -ExecutionPolicy Bypass -File \"{scriptPath}\" {paramString}",
+                    // -NoExit keeps the window open after the script finishes.
+                    Arguments = BuildScriptArguments(scriptPath, parameters),
+                    // Run from the folder being worked on, so a script writing a relative output file
+                    // puts it there. Workspace-Builder defaults its output to workspaceGroups.yaml,
+                    // which without this landed in whatever DevToolbox's own working directory was.
+                    WorkingDirectory = Directory.Exists(projectPath) ? projectPath : string.Empty,
                     UseShellExecute = true,
                     CreateNoWindow = false
                 };
