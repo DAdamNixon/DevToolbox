@@ -24,13 +24,24 @@ namespace DevToolbox.Services.Services
     {
         private const string ConfigKey = "service_health_config";
 
-        /// <summary>Ping history kept per service. Bounds memory on a long-running app.</summary>
-        private const int MaxHistory = 100;
+        /// <summary>
+        /// Absolute backstop, independent of <see cref="ServiceEndpoint.HistoryRetention"/>.
+        /// The real trim is time-based (see <see cref="TrimHistory"/>) so retention actually
+        /// means what it says regardless of ping interval, but a 24h retention at a 1-second
+        /// interval would otherwise hold ~86,400 entries before that trim ever caught up.
+        /// </summary>
+        private const int HardCapHistory = 20_000;
 
         private readonly IYamlStorageService _yamlStorage;
         private readonly ConcurrentDictionary<string, ServiceHealth> _health = new();
         private readonly ConcurrentDictionary<string, ServiceEndpoint> _endpoints = new();
-        private readonly ConcurrentDictionary<string, Task> _monitors = new();
+        /// <summary>
+        /// One running loop, with the handle needed to stop just that one. Named to avoid
+        /// colliding with <see cref="System.Threading.Monitor"/>, which <c>lock</c> compiles to.
+        /// </summary>
+        private sealed record RunningMonitor(CancellationTokenSource Cts, Task Task);
+
+        private readonly ConcurrentDictionary<string, RunningMonitor> _monitors = new();
 
         // Guards start/stop/initialize against each other. Without it, the page and
         // the app-start call can both decide monitoring is not running and each
@@ -45,9 +56,24 @@ namespace DevToolbox.Services.Services
 
         public bool IsMonitoring { get; private set; }
 
+        /// <summary>
+        /// Loops started minus loops stopped — i.e. how many are believed to be alive.
+        /// <para>
+        /// Deliberately NOT <c>_monitors.Count</c>. The duplicate-loop bug worked by overwriting
+        /// the dictionary slot, so the orphaned loop kept running while the count stayed at one:
+        /// a test asserting on the dictionary passes against the very bug it is meant to catch
+        /// (confirmed by reintroducing it). Counting starts against stops sees the orphan,
+        /// because nothing ever stopped it.
+        /// </para>
+        /// </summary>
+        internal int RunningMonitorCount => Volatile.Read(ref _liveLoops);
+
+        private int _liveLoops;
+
         public string? ConfigError { get; private set; }
 
         public event EventHandler<ServiceHealthChangedEventArgs> ServiceHealthChanged = delegate { };
+        public event EventHandler<ServiceAlertEventArgs> ServiceAlertRaised = delegate { };
 
         public HealthMonitoringService(IYamlStorageService yamlStorage)
         {
@@ -143,20 +169,69 @@ namespace DevToolbox.Services.Services
             _monitors.Clear();
             try
             {
-                await Task.WhenAll(running).ConfigureAwait(false);
+                await Task.WhenAll(running.Select(m => m.Task)).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
                 // Expected: this is how the loops end.
             }
 
+            // After the tasks have unwound, never before: a linked source disposed while its
+            // loop is still using the token throws ObjectDisposedException inside the loop.
+            foreach (var monitor in running) monitor.Cts.Dispose();
+            Interlocked.Add(ref _liveLoops, -running.Length);
+
             _monitorCts?.Dispose();
             _monitorCts = null;
         }
 
+        /// <summary>
+        /// Starts one loop for an endpoint. Callers that might already have a loop for it must
+        /// <see cref="StopMonitorAsync"/> first — see the note there for why that matters.
+        /// </summary>
         private void StartMonitor(ServiceEndpoint endpoint, CancellationToken token)
         {
-            _monitors[endpoint.Id] = Task.Run(() => MonitorLoopAsync(endpoint, token), token);
+            // Linked to the shared token, so a global stop still cancels this, while the
+            // per-endpoint source allows cancelling this one alone.
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+
+            // Incremented here rather than inside the loop so the count is correct the instant
+            // this returns, with no dependency on the scheduled task having started yet.
+            Interlocked.Increment(ref _liveLoops);
+            _monitors[endpoint.Id] = new RunningMonitor(cts, Task.Run(() => MonitorLoopAsync(endpoint, cts.Token), cts.Token));
+        }
+
+        /// <summary>
+        /// Stops the loop for one endpoint and waits for it to unwind. Caller must hold
+        /// <see cref="_lifecycle"/>.
+        /// <para>
+        /// There was no way to do this before: the dictionary slot was overwritten with a new
+        /// task while the old one kept running, and the only cancellation source was the global
+        /// one. So every edit of a service left an extra loop pinging it — two loops meant
+        /// <c>ConsecutiveFailures</c> advanced twice per interval and an alert set for 3
+        /// failures fired after 2, which mattered the moment alerts existed because enabling
+        /// them *requires* editing the service. Unchecking "enable monitoring" had the mirror
+        /// problem: nothing stopped the running loop, so the off switch did nothing.
+        /// </para>
+        /// </summary>
+        private async Task StopMonitorAsync(string endpointId)
+        {
+            if (!_monitors.TryRemove(endpointId, out var monitor)) return;
+
+            try
+            {
+                await monitor.Cts.CancelAsync().ConfigureAwait(false);
+                await monitor.Task.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected: this is how a loop ends.
+            }
+            finally
+            {
+                monitor.Cts.Dispose();
+                Interlocked.Decrement(ref _liveLoops);
+            }
         }
 
         /// <summary>
@@ -208,21 +283,52 @@ namespace DevToolbox.Services.Services
             var result = await PingEndpointAsync(endpoint, token).ConfigureAwait(false);
 
             var health = _health.GetOrAdd(endpoint.Id, _ => NewHealth(endpoint));
+            ServiceAlertEventArgs? alert = null;
             lock (health)
             {
                 health.ServiceName = endpoint.Name;
                 health.LastPing = result.Timestamp;
-                health.PingHistory.Add(result);
-                if (health.PingHistory.Count > MaxHistory) health.PingHistory.RemoveAt(0);
+
+                // Copy-on-write, not mutate-in-place. GetServiceHealthAsync hands out the live
+                // ServiceHealth objects (its ToList copies the outer list only), and the Blazor
+                // page enumerates PingHistory on the render thread while taking no lock at all —
+                // so mutating this list here invalidates an in-flight foreach over there and
+                // throws "Collection was modified". Building a replacement and swapping the
+                // reference means a reader is always holding a list nobody will touch again.
+                // The reference assignment is atomic, so a reader sees either the old snapshot
+                // or the new one, never a half-updated list.
+                //
+                // The race pre-dates this feature (the strip used to enumerate TakeLast(15)), but
+                // retention made it far likelier: the walk went from at most 100 entries to
+                // potentially thousands, widening the window by the same factor.
+                var history = new List<PingResult>(health.PingHistory) { result };
+                HistoryTrimmer.Trim(history, endpoint.HistoryRetention, result.Timestamp, HardCapHistory);
+                health.PingHistory = history;
 
                 health.Status = ClassifyStatus(endpoint, result);
                 health.LastError = result.IsSuccess ? null : result.ErrorMessage;
                 health.Details = result.Details;
 
                 CalculateMetrics(health, endpoint);
+
+                var before = new AlertEvaluator.State(health.ConsecutiveFailures, health.HasAlerted);
+                var outcome = AlertEvaluator.Evaluate(before, result.IsSuccess, endpoint.AlertsEnabled, endpoint.AlertThreshold, endpoint.AlertRepeat);
+                health.ConsecutiveFailures = outcome.State.ConsecutiveFailures;
+                health.HasAlerted = outcome.State.HasAlerted;
+
+                if (outcome.RaiseDownAlert)
+                {
+                    alert = new ServiceAlertEventArgs(endpoint.Id, endpoint.Name, isRecovery: false, health.ConsecutiveFailures);
+                }
+                else if (outcome.RaiseRecoveryAlert)
+                {
+                    alert = new ServiceAlertEventArgs(endpoint.Id, endpoint.Name, isRecovery: true, consecutiveFailures: 0);
+                }
             }
 
             ServiceHealthChanged.Invoke(this, new ServiceHealthChangedEventArgs(endpoint.Id, health));
+            if (alert is not null) ServiceAlertRaised.Invoke(this, alert);
+
             return result;
         }
 
@@ -400,12 +506,22 @@ namespace DevToolbox.Services.Services
         {
             _endpoints.TryRemove(serviceId, out _);
             _health.TryRemove(serviceId, out _);
-            await SaveConfigurationAsync().ConfigureAwait(false);
 
-            // The loop for a removed endpoint ends on the next full stop/start. It
-            // is harmless in the meantime: its results go to a health entry nothing
-            // reads. Cancelling one loop individually would mean a token per
-            // endpoint, which is not worth it for a config edit.
+            // Now genuinely stopped, rather than left running until the next full stop/start.
+            // The old comment here reasoned it was harmless because its results went to a health
+            // entry nothing read — true before alerts existed, false afterwards: the loop still
+            // had the endpoint object, so a deleted service could keep raising tray balloons.
+            await _lifecycle.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                await StopMonitorAsync(serviceId).ConfigureAwait(false);
+            }
+            finally
+            {
+                _lifecycle.Release();
+            }
+
+            await SaveConfigurationAsync().ConfigureAwait(false);
         }
 
         /// <summary>
@@ -420,6 +536,12 @@ namespace DevToolbox.Services.Services
             try
             {
                 if (!IsMonitoring || _monitorCts is null) return;
+
+                // Unconditionally, before deciding whether to start a replacement. This used to
+                // be start-only, which is what made an edit spawn a second loop and made
+                // unchecking "enable monitoring" do nothing at all.
+                await StopMonitorAsync(endpoint.Id).ConfigureAwait(false);
+
                 if (endpoint.IsEnabled) StartMonitor(endpoint, _monitorCts.Token);
             }
             finally

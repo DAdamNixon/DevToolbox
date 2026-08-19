@@ -143,9 +143,17 @@
   .status-online {
     @apply bg-success shadow-glow-sm;
   }
-  
+
   .status-offline {
     @apply bg-gray-500;
+  }
+
+  .status-degraded {
+    @apply bg-warning shadow-glow-sm;
+  }
+
+  .status-down {
+    @apply bg-danger shadow-glow-sm;
   }
   
   /* Search input */

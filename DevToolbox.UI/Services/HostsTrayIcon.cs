@@ -71,11 +71,19 @@ public sealed class HostsTrayIcon : IDisposable
     }
 
     /// <summary>Shows a one-off balloon explaining that closing the window did not quit.</summary>
-    public void ShowHiddenToTrayHint()
+    public void ShowHiddenToTrayHint() =>
+        ShowBalloon("DevToolbox is still running", "Right-click the tray icon to switch hosts, show the window, or exit.");
+
+    /// <summary>
+    /// Generic balloon for any feature that wants to reach the user without its own tray icon —
+    /// Service Pulse alerts use this rather than getting a second icon next to it. The name on
+    /// this class predates that; it is the one tray icon the app has.
+    /// </summary>
+    public void ShowBalloon(string title, string text, ToolTipIcon icon = ToolTipIcon.Info)
     {
-        _icon.BalloonTipTitle = "DevToolbox is still running";
-        _icon.BalloonTipText = "Right-click the tray icon to switch hosts, show the window, or exit.";
-        _icon.BalloonTipIcon = ToolTipIcon.Info;
+        _icon.BalloonTipTitle = title;
+        _icon.BalloonTipText = text;
+        _icon.BalloonTipIcon = icon;
         _icon.ShowBalloonTip(5000);
     }
 

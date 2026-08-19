@@ -175,13 +175,18 @@
                 <!-- Mini Chart (recent pings) -->
                 @if (health.PingHistory.Any())
                 {
+                    var bars = BuildHistoryBars(health, endpoint, style);
+
                     <div class="mb-4">
-                        <p class="text-xs text-dark-text-muted mb-2">Recent ping history</p>
+                        <p class="text-xs text-dark-text-muted mb-2">
+                            Recent ping history
+                            <span class="text-dark-text-muted/70">— last @DescribeRetention(endpoint)</span>
+                        </p>
                         <div class="flex space-x-1">
-                            @foreach (var ping in health.PingHistory.TakeLast(15))
+                            @foreach (var bar in bars)
                             {
-                                <div class="@(ping.IsSuccess ? style.Bar : "bg-red-500") h-6 flex-1 rounded-sm opacity-80 hover:opacity-100 transition-opacity"
-                                     title="@DescribePing(ping)">
+                                <div class="@bar.CssClass h-6 flex-1 rounded-sm opacity-80 hover:opacity-100 transition-opacity"
+                                     style="@bar.Style" title="@bar.Title">
                                 </div>
                             }
                         </div>

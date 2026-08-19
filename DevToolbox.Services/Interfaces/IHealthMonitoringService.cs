@@ -67,6 +67,14 @@ namespace DevToolbox.Services.Interfaces
         /// must marshal with <c>InvokeAsync</c> before touching component state.
         /// </summary>
         event EventHandler<ServiceHealthChangedEventArgs> ServiceHealthChanged;
+
+        /// <summary>
+        /// Raised when a service's alert state changes — armed (down) or cleared
+        /// (recovered) — for an endpoint with <see cref="ServiceEndpoint.AlertsEnabled"/> set.
+        /// Same threading rules as <see cref="ServiceHealthChanged"/>: fires on a background
+        /// thread, and UI subscribers must marshal it.
+        /// </summary>
+        event EventHandler<ServiceAlertEventArgs> ServiceAlertRaised;
     }
 
     public class ServiceHealthChangedEventArgs : EventArgs
@@ -78,6 +86,26 @@ namespace DevToolbox.Services.Interfaces
         {
             ServiceId = serviceId;
             ServiceHealth = serviceHealth;
+        }
+    }
+
+    public class ServiceAlertEventArgs : EventArgs
+    {
+        public string ServiceId { get; }
+        public string ServiceName { get; }
+
+        /// <summary>False for a down alert, true for the matching recovery.</summary>
+        public bool IsRecovery { get; }
+
+        /// <summary>Meaningful only when <see cref="IsRecovery"/> is false.</summary>
+        public int ConsecutiveFailures { get; }
+
+        public ServiceAlertEventArgs(string serviceId, string serviceName, bool isRecovery, int consecutiveFailures)
+        {
+            ServiceId = serviceId;
+            ServiceName = serviceName;
+            IsRecovery = isRecovery;
+            ConsecutiveFailures = consecutiveFailures;
         }
     }
 }

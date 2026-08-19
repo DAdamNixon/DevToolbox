@@ -19,6 +19,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- So the test project can assert on monitor-loop lifecycle, which is not observable from
+         the public surface and is exactly where two duplicate-loop bugs went unnoticed. -->
+    <InternalsVisibleTo Include="DevToolbox.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="Scripts\*.ps1">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

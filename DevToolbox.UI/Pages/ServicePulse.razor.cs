@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DevToolbox.Services.Interfaces;
 using DevToolbox.Services.Models;
+using DevToolbox.Services.Services;
 using Microsoft.AspNetCore.Components;
 
 namespace DevToolbox.UI.Pages
@@ -212,6 +213,63 @@ namespace DevToolbox.UI.Pages
             ping.IsSuccess
                 ? $"{ping.Timestamp.ToLocalTime():HH:mm:ss} — {ping.ResponseTimeMs}ms"
                 : $"{ping.Timestamp.ToLocalTime():HH:mm:ss} — {ping.ErrorMessage}";
+
+        // ── recent ping history strip ───────────────────────────────────────────
+
+        private static string DescribeRetention(ServiceEndpoint? endpoint)
+        {
+            var hours = (endpoint?.HistoryRetention ?? HistoryRetention.OneHour).ToTimeSpan().TotalHours;
+            return $"{hours:0.#}h";
+        }
+
+        /// <summary>Beyond this many bars, "All" (no configured bar count) falls back to the
+        /// same bucketed rendering every other bar count uses — otherwise a 24h retention at a
+        /// fast ping interval renders thousands of one-pixel slivers. The bucket math itself
+        /// lives in <see cref="ServiceHistoryVisualizer"/>; this is purely "how wide is too
+        /// wide for this UI".</summary>
+        private const int AllBarsCap = 300;
+
+        private sealed record HistoryBar(string CssClass, string? Style, string Title);
+
+        /// <summary>
+        /// One bar per ping while there's little enough history to show it raw — a single
+        /// ping is a success or a failure, there's no ratio to gradient. Past that, delegates
+        /// to <see cref="ServiceHistoryVisualizer"/> for the actual bucketing and just turns
+        /// each bucket into Tailwind classes / an inline style.
+        /// </summary>
+        private static List<HistoryBar> BuildHistoryBars(ServiceHealth health, ServiceEndpoint? endpoint, StatusStyle style)
+        {
+            var barCount = ServiceHistoryVisualizer.ResolveBarCount(endpoint?.HistoryBars, health.PingHistory.Count, AllBarsCap);
+            if (barCount <= 0) return new List<HistoryBar>();
+
+            if (health.PingHistory.Count <= barCount)
+            {
+                return health.PingHistory
+                    .Select(p => new HistoryBar(p.IsSuccess ? style.Bar : "bg-red-500", null, DescribePing(p)))
+                    .ToList();
+            }
+
+            var window = (endpoint?.HistoryRetention ?? HistoryRetention.OneHour).ToTimeSpan();
+            var buckets = ServiceHistoryVisualizer.BuildBuckets(health.PingHistory, barCount, window, DateTime.UtcNow);
+
+            return buckets
+                .Select(b => b.PingCount == 0 ? new HistoryBar("bg-dark-border", null, "No data") : BucketBar(b))
+                .ToList();
+        }
+
+        private static HistoryBar BucketBar(ServiceHistoryVisualizer.HistoryBucket bucket)
+        {
+            var (r, g, b) = ServiceHistoryVisualizer.GradientColor(bucket.SuccessRate);
+
+            // Can't be a literal Tailwind class the way StyleFor's discrete states are —
+            // Tailwind only emits classes it can see as text (see the Decisions.md entry
+            // "Tailwind cannot see interpolated class names") — so a continuous gradient
+            // renders as an inline style, same as BarWidthPercent's bar already does.
+            return new HistoryBar(
+                CssClass: "",
+                Style: $"background-color: rgb({r}, {g}, {b})",
+                Title: $"{bucket.SuccessRate * 100:F0}% success ({bucket.PingCount} pings)");
+        }
 
         /// <summary>Where the average sits between the fastest and slowest response.</summary>
         private static double BarWidthPercent(ServiceHealth health)

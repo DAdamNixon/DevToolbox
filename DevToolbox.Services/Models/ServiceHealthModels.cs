@@ -60,6 +60,63 @@ namespace DevToolbox.Services.Models
         /// </para>
         /// </summary>
         public List<HealthDetailSpec> Details { get; set; } = new();
+
+        /// <summary>
+        /// How long ping history is kept before <see cref="HealthMonitoringService"/> prunes it.
+        /// Independent of <see cref="PingIntervalSeconds"/> — a longer interval just fills the
+        /// same window with fewer points.
+        /// </summary>
+        public HistoryRetention HistoryRetention { get; set; } = HistoryRetention.OneHour;
+
+        /// <summary>
+        /// Bars in the "recent ping history" strip. Null means one bar per retained ping (no
+        /// aggregation) — see the bucketing in <c>ServicePulse.razor.cs</c>. Kept at one of the
+        /// dialog's own preset choices (30/50/100/200) so a fresh default round-trips through
+        /// the dropdown instead of landing on an unlisted value.
+        /// </summary>
+        public int? HistoryBars { get; set; } = 50;
+
+        /// <summary>Opt-in: notify when this service goes down. Off by default.</summary>
+        public bool AlertsEnabled { get; set; }
+
+        /// <summary>Consecutive failed pings before the first alert fires.</summary>
+        public int AlertThreshold { get; set; } = 3;
+
+        public AlertRepeatMode AlertRepeat { get; set; } = AlertRepeatMode.OnceUntilRecovery;
+    }
+
+    /// <summary>How much ping history an endpoint keeps around.</summary>
+    public enum HistoryRetention
+    {
+        OneHour,
+        EightHours,
+        TwelveHours,
+        TwentyFourHours
+    }
+
+    public static class HistoryRetentionExtensions
+    {
+        public static TimeSpan ToTimeSpan(this HistoryRetention retention) => retention switch
+        {
+            HistoryRetention.OneHour => TimeSpan.FromHours(1),
+            HistoryRetention.EightHours => TimeSpan.FromHours(8),
+            HistoryRetention.TwelveHours => TimeSpan.FromHours(12),
+            HistoryRetention.TwentyFourHours => TimeSpan.FromHours(24),
+            _ => TimeSpan.FromHours(1)
+        };
+    }
+
+    /// <summary>
+    /// How an armed alert repeats while a service stays down. Both reset when a
+    /// successful ping arrives — the next outage can alert again either way.
+    /// </summary>
+    public enum AlertRepeatMode
+    {
+        /// <summary>Fires once when the threshold is first reached, then stays quiet.</summary>
+        OnceUntilRecovery,
+
+        /// <summary>Fires again every additional <c>AlertThreshold</c> failures (N, 2N, 3N…).</summary>
+        EveryNFailures
     }
 
     /// <summary>Reads one labelled value out of a JSON response body.</summary>
@@ -101,6 +158,16 @@ namespace DevToolbox.Services.Models
 
         /// <summary>Values pulled from the most recent response body; empty if none were configured.</summary>
         public List<HealthDetail> Details { get; set; } = new();
+
+        /// <summary>
+        /// Consecutive failed pings right now; 0 whenever the last ping succeeded. In-memory
+        /// only, same as the rest of this class — resets on every app launch.
+        /// </summary>
+        public int ConsecutiveFailures { get; set; }
+
+        /// <summary>Whether an alert has already fired for the current outage. Cleared on
+        /// recovery so the next outage is free to alert again.</summary>
+        public bool HasAlerted { get; set; }
     }
 
     public class PingResult

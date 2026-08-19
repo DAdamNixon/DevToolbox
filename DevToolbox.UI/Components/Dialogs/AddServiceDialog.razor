@@ -69,6 +69,52 @@
                 <input type="checkbox" id="isEnabled" @bind="IsEnabled" class="w-4 h-4 text-accent-blue bg-dark-surface border-dark-border rounded focus:ring-accent-blue focus:ring-2" />
                 <label for="isEnabled" class="text-sm text-dark-text">Enable monitoring for this service</label>
             </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-dark-text mb-2">History Retention</label>
+                    <select class="input-modern w-full" @bind="HistoryRetention">
+                        <option value="OneHour">1 hour</option>
+                        <option value="EightHours">8 hours</option>
+                        <option value="TwelveHours">12 hours</option>
+                        <option value="TwentyFourHours">24 hours</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-dark-text mb-2">History Bars</label>
+                    <select class="input-modern w-full" @bind="HistoryBarsText">
+                        <option value="30">30</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                        <option value="All">All (no aggregation)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="border-t border-dark-border pt-4">
+                <div class="flex items-center space-x-3">
+                    <input type="checkbox" id="alertsEnabled" @bind="AlertsEnabled" class="w-4 h-4 text-accent-blue bg-dark-surface border-dark-border rounded focus:ring-accent-blue focus:ring-2" />
+                    <label for="alertsEnabled" class="text-sm text-dark-text">Notify when this service goes down</label>
+                </div>
+
+                @if (AlertsEnabled)
+                {
+                    <div class="grid grid-cols-2 gap-4 mt-4">
+                        <div>
+                            <label class="block text-sm font-medium text-dark-text mb-2">Alert after N failed pings</label>
+                            <input type="number" class="input-modern w-full" @bind="AlertThreshold" min="1" max="100" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-dark-text mb-2">Repeat Alerts</label>
+                            <select class="input-modern w-full" @bind="AlertRepeat">
+                                <option value="OnceUntilRecovery">Once, until it recovers</option>
+                                <option value="EveryNFailures">Every N failures</option>
+                            </select>
+                        </div>
+                    </div>
+                }
+            </div>
         </div>
         
         <!-- Footer -->
@@ -96,6 +142,15 @@
     private string Description = "";
     private string TagsText = "";
     private bool IsEnabled = true;
+    private HistoryRetention HistoryRetention = HistoryRetention.OneHour;
+
+    /// <summary>Proxy for <see cref="ServiceEndpoint.HistoryBars"/> — a plain <c>&lt;select&gt;</c>
+    /// can't bind an <c>int?</c> straight through "All" without one.</summary>
+    private string HistoryBarsText = "50";
+
+    private bool AlertsEnabled;
+    private int AlertThreshold = 3;
+    private AlertRepeatMode AlertRepeat = AlertRepeatMode.OnceUntilRecovery;
 
     /// <summary>The dialog stays mounted while hidden, so "opened" is a change in <see cref="IsVisible"/>.</summary>
     private bool _wasVisible;
@@ -134,6 +189,11 @@
             Description = ExistingService.Description ?? "";
             TagsText = string.Join(", ", ExistingService.Tags);
             IsEnabled = ExistingService.IsEnabled;
+            HistoryRetention = ExistingService.HistoryRetention;
+            HistoryBarsText = ExistingService.HistoryBars?.ToString() ?? "All";
+            AlertsEnabled = ExistingService.AlertsEnabled;
+            AlertThreshold = ExistingService.AlertThreshold;
+            AlertRepeat = ExistingService.AlertRepeat;
             return;
         }
 
@@ -145,6 +205,11 @@
         Description = "";
         TagsText = "";
         IsEnabled = true;
+        HistoryRetention = HistoryRetention.OneHour;
+        HistoryBarsText = "50";
+        AlertsEnabled = false;
+        AlertThreshold = 3;
+        AlertRepeat = AlertRepeatMode.OnceUntilRecovery;
     }
 
     private async Task Save()
@@ -170,6 +235,11 @@
                                .Where(t => !string.IsNullOrEmpty(t))
                                .ToList();
         service.IsEnabled = IsEnabled;
+        service.HistoryRetention = HistoryRetention;
+        service.HistoryBars = int.TryParse(HistoryBarsText, out var bars) ? bars : null;
+        service.AlertsEnabled = AlertsEnabled;
+        service.AlertThreshold = AlertThreshold;
+        service.AlertRepeat = AlertRepeat;
 
         await OnSave.InvokeAsync(service);
     }

@@ -153,7 +153,9 @@ namespace DevToolbox.UI
         {
             try
             {
-                await _serviceProvider.GetRequiredService<IHealthMonitoringService>().InitializeAsync();
+                var monitoring = _serviceProvider.GetRequiredService<IHealthMonitoringService>();
+                monitoring.ServiceAlertRaised += OnServiceAlertRaised;
+                await monitoring.InitializeAsync();
             }
             catch (InvalidOperationException ex)
             {
@@ -162,7 +164,47 @@ namespace DevToolbox.UI
                 Debug.WriteLine($"Service Pulse failed to start: {ex.Message}");
             }
         }
-        
+
+        /// <summary>Raised from a monitor loop, so this has to be marshalled — same shape as
+        /// <see cref="HostsTrayIcon"/>'s own <c>OnHostsChanged</c>.</summary>
+        private void OnServiceAlertRaised(object? sender, ServiceAlertEventArgs e)
+        {
+            if (IsDisposed) return;
+
+            try
+            {
+                if (InvokeRequired) BeginInvoke(() => ShowServiceAlertBalloon(e));
+                else ShowServiceAlertBalloon(e);
+            }
+            catch (ObjectDisposedException)
+            {
+                // The window went away between the check and the call.
+            }
+            catch (InvalidOperationException)
+            {
+                // No handle yet; the next alert will catch up.
+            }
+        }
+
+        /// <summary>
+        /// No tray icon exists if the user turned it off in Host Changer settings, or if this
+        /// races ahead of <see cref="CreateHostsTrayAsync"/> — either way the alert is simply
+        /// not shown rather than falling back to something more intrusive like a MessageBox.
+        /// </summary>
+        private void ShowServiceAlertBalloon(ServiceAlertEventArgs e)
+        {
+            if (_hostsTray is null) return;
+
+            if (e.IsRecovery)
+            {
+                _hostsTray.ShowBalloon($"{e.ServiceName} is back online", "Service Pulse", ToolTipIcon.Info);
+            }
+            else
+            {
+                _hostsTray.ShowBalloon($"{e.ServiceName} is down", $"{e.ConsecutiveFailures} consecutive failed pings — Service Pulse", ToolTipIcon.Warning);
+            }
+        }
+
         // DPI awareness for Windows
         [DllImport("user32.dll")]
         private static extern bool SetProcessDPIAware();

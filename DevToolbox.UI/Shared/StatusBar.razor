@@ -1,17 +1,9 @@
-<div class="bg-dark-surface border-t border-dark-border h-8 flex items-center justify-between px-4 text-xs">
-    <div class="flex items-center space-x-6">
-        <div class="flex items-center space-x-2">
-            <span class="text-dark-text-muted">Status:</span>
-            <div class="flex items-center space-x-1">
-                <div class="status-indicator status-online"></div>
-                <span class="text-dark-text">Ready</span>
-            </div>
-        </div>
-        <div class="flex items-center space-x-2">
-            <span class="text-dark-text-muted">Active Workspace:</span>
-            <span class="text-dark-text">None</span>
-        </div>
-    </div>
+<div class="bg-dark-surface border-t border-dark-border h-8 flex items-center justify-end px-4 text-xs">
+    @* "Status: Ready" and "Active Workspace: None" were removed 2026-08-19 — both were
+       hardcoded literals with no state behind them; nothing in the app ever set either,
+       and a dashboard of many workspace cards has no single "active" one to report. The
+       nav bar's "Online" dot had the same problem and got a real replacement instead —
+       see NavMenu.razor.cs and the DevToolbox Decisions.md entry for the same date. *@
     @* Was the literal "0.1.0", which had been wrong for months — there was no version property in
        the repo at all, so nothing could have kept it right. Now from Directory.Build.props via
        AppVersion. *@
