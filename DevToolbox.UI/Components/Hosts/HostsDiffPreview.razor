@@ -1,0 +1,58 @@
+@using DevToolbox.Services.Models.Hosts
+
+@*
+    The line-by-line diff of a pending change.
+
+    This is the guarantee the whole feature rests on: whatever heuristics decided which lines belong
+    to an option, a developer sees the exact lines about to be commented or uncommented before
+    agreeing to it. A wrong answer becomes visible instead of silent.
+*@
+
+@if (Changes.Count == 0)
+{
+    <p class="text-sm text-dark-text-muted">Nothing would change.</p>
+}
+else
+{
+    <div class="hosts-diff">
+        @foreach (var change in Changes)
+        {
+            <div class="hosts-diff-row">
+                <span class="hosts-diff-line">@change.Line</span>
+
+                @if (change.Kind == HostsLineChangeKind.Inserted)
+                {
+                    <span class="hosts-diff-added"><span class="hosts-diff-sign">+</span>@change.After</span>
+                }
+                else
+                {
+                    <span class="hosts-diff-removed"><span class="hosts-diff-sign">-</span>@change.Before</span>
+                    <span class="hosts-diff-line"></span>
+                    <span class="hosts-diff-added"><span class="hosts-diff-sign">+</span>@change.After</span>
+                }
+            </div>
+        }
+    </div>
+
+    <p class="text-xs text-dark-text-muted mt-3">
+        @Summarise()
+    </p>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<HostsLineChange> Changes { get; set; } = [];
+
+    private string Summarise()
+    {
+        var enabled = Changes.Count(c => c.Kind == HostsLineChangeKind.Uncommented);
+        var disabled = Changes.Count(c => c.Kind == HostsLineChangeKind.Commented);
+        var added = Changes.Count(c => c.Kind == HostsLineChangeKind.Inserted);
+
+        var parts = new List<string>();
+        if (enabled > 0) parts.Add($"{enabled} line{(enabled == 1 ? "" : "s")} enabled");
+        if (disabled > 0) parts.Add($"{disabled} commented out");
+        if (added > 0) parts.Add($"{added} added");
+
+        return string.Join(", ", parts) + ".";
+    }
+}

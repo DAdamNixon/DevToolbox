@@ -1,0 +1,39 @@
+@*
+    Middle-truncating path label.
+
+    A path is one long unbreakable string, so left-to-right ellipsis hides the only
+    part that identifies it — the file name. This splits the path at the last
+    separator: the head shrinks and ellipsises, the tail is pinned, and the full path
+    stays available in the tooltip.
+*@
+
+<span class="ws-path" title="@Path">
+    @if (!string.IsNullOrEmpty(head))
+    {
+        <span class="ws-path-head">@head</span>
+    }
+    <span class="ws-path-tail">@tail</span>
+</span>
+
+@code {
+    [Parameter] public string Path { get; set; } = string.Empty;
+
+    private string head = string.Empty;
+    private string tail = string.Empty;
+
+    protected override void OnParametersSet()
+    {
+        var value = Path ?? string.Empty;
+        var cut = value.LastIndexOfAny(new[] { '\\', '/' });
+
+        if (cut < 0 || cut == value.Length - 1)
+        {
+            head = string.Empty;
+            tail = value;
+            return;
+        }
+
+        head = value[..(cut + 1)];
+        tail = value[(cut + 1)..];
+    }
+}

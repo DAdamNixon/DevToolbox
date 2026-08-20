@@ -2,8 +2,12 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net9.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
+    <!-- The icon Windows shows for the file, the shortcut and the taskbar button. Without it the
+         published executable carries the generic .NET icon, while the window and tray icons — set
+         from the same file at runtime — looked right, so the mismatch only showed up on the desktop. -->
+    <ApplicationIcon>Resources\toolbox_Y9B_icon.ico</ApplicationIcon>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <PublishProfile>win-x64.pubxml</PublishProfile>
@@ -18,15 +22,41 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebView.WindowsForms" Version="8.0.3" />
-    <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.0-preview.1.24080.9" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.0-preview.1.24080.9" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.0-preview.1.24080.9" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebView.WindowsForms" Version="10.0.90" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.11" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\DevToolbox.Services\DevToolbox.Services.csproj" />
   </ItemGroup>
+
+  <!--
+    Rebuild the Tailwind stylesheet when its inputs change.
+
+    wwwroot/css/output.css is a committed artifact, and keeping it in sync used to
+    be something you had to remember: Tailwind only emits the classes it saw at
+    build time, so a new utility class in markup silently did nothing until
+    someone re-ran npm. That trap is what pushed dashboard.css into being plain
+    CSS in the first place.
+
+    Conditioned on node_modules existing so `dotnet build` still works on a clone
+    with no npm install — the committed output.css is used as-is in that case,
+    which is the same behaviour as before. ContinueOnError keeps a Tailwind
+    failure from breaking an otherwise fine build; the stale stylesheet is a
+    cosmetic problem, not a broken one.
+  -->
+  <Target Name="BuildTailwindCss"
+          BeforeTargets="BeforeBuild"
+          Condition="Exists('$(MSBuildProjectDirectory)\node_modules')"
+          Inputs="wwwroot\css\input.css;tailwind.config.js;@(Content);@(None)"
+          Outputs="wwwroot\css\output.css">
+    <Message Importance="high" Text="Tailwind: rebuilding wwwroot/css/output.css" />
+    <Exec Command="npm run build-css-prod"
+          WorkingDirectory="$(MSBuildProjectDirectory)"
+          ContinueOnError="true" />
+  </Target>
 
   <ItemGroup>
     <Folder Include="Services\" />

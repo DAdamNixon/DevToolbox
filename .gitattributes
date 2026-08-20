@@ -1,0 +1,5 @@
+# The hosts-file samples are compared byte-for-byte by the tests: each one pins a
+# specific mix of BOM, CRLF/LF, and trailing-newline behaviour. Line-ending
+# normalization (core.autocrlf) rewrites exactly what they exist to preserve, so
+# they must reach the working tree untouched.
+*.hosts -text

@@ -7,6 +7,7 @@ using System.Data;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace DevToolbox.Services.Services
@@ -17,10 +18,9 @@ namespace DevToolbox.Services.Services
 
         public SqliteLogStorageService(string? dbPath = null)
         {
-            _dbPath = dbPath ?? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "DevToolbox", "logs.db"
-            );
+            // LogDatabase owns the location, because something other than this class has to be able
+            // to delete the file at startup - see LogDatabase for why it is thrown away.
+            _dbPath = dbPath ?? LogDatabase.Path;
             Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
         }
 
@@ -44,9 +44,94 @@ namespace DevToolbox.Services.Services
                 walCmd.CommandText = "PRAGMA journal_mode=WAL;";
                 await walCmd.ExecuteNonQueryAsync();
             }
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = sb.ToString();
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            // Indexes on the split columns. Without them, switching tabs and
+            // recomputing per-tab counts are full scans of a table that routinely
+            // holds millions of rows. Created only when the column exists, so a
+            // template producing neither is unaffected.
+            foreach (var column in cols.Where(LogSplitColumns.IsAllowed))
+            {
+                using var indexCmd = conn.CreateCommand();
+                indexCmd.CommandText =
+                    $"CREATE INDEX IF NOT EXISTS [ix_{tableName}_{column}] ON [{tableName}] ([{column}]);";
+                await indexCmd.ExecuteNonQueryAsync();
+            }
+        }
+
+        public async Task<List<LogSplitGroup>> GetGroupCountsAsync(
+            string tableName, string column, LogQuery query, CancellationToken cancellationToken = default)
+        {
+            // The column is an identifier, not a parameter, so it is whitelisted
+            // rather than escaped.
+            if (!LogSplitColumns.IsAllowed(column))
+                throw new ArgumentException($"'{column}' is not a groupable column.", nameof(column));
+
+            var parameters = new List<SqliteParameter>();
+            string sql;
+
+            if (!string.IsNullOrWhiteSpace(query.RawQuery))
+            {
+                // Advanced mode: group over the user's own SELECT. If their query
+                // does not project the column the statement fails, and the caller
+                // reports it — better than silently showing one empty tab.
+                var inner = query.RawQuery!.Trim().TrimEnd(';').Trim();
+                sql = $"SELECT [{column}] AS v, COUNT(*) AS n FROM ({inner}) GROUP BY [{column}] ORDER BY v;";
+            }
+            else
+            {
+                var columns = await GetColumnNamesAsync(tableName, cancellationToken);
+                if (!columns.Contains(column, StringComparer.OrdinalIgnoreCase))
+                    return new List<LogSplitGroup>();
+
+                var where = new List<string>();
+                if (query.Criteria != null)
+                {
+                    var criteriaSql = LogCriteriaTranslator.Build(query.Criteria, columns, parameters);
+                    if (!string.IsNullOrEmpty(criteriaSql)) where.Add(criteriaSql);
+                }
+
+                var whereSql = where.Any() ? "WHERE " + string.Join(" AND ", where) : "";
+                sql = $"SELECT [{column}] AS v, COUNT(*) AS n FROM [{tableName}] {whereSql} GROUP BY [{column}] ORDER BY v;";
+            }
+
+            var groups = new List<LogSplitGroup>();
+
+            using var conn = GetConnection();
+            await conn.OpenAsync(cancellationToken);
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = sb.ToString();
-            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = sql;
+            cmd.Parameters.AddRange(parameters.ToArray());
+
+            using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                groups.Add(new LogSplitGroup
+                {
+                    Value = reader.IsDBNull(0) ? "" : reader.GetValue(0).ToString() ?? "",
+                    Count = reader.IsDBNull(1) ? 0 : Convert.ToInt32(reader.GetValue(1))
+                });
+            }
+
+            return groups;
+        }
+
+        private async Task<List<string>> GetColumnNamesAsync(string tableName, CancellationToken cancellationToken)
+        {
+            using var conn = GetConnection();
+            await conn.OpenAsync(cancellationToken);
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"PRAGMA table_info([{tableName}]);";
+            using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
+            var columns = new List<string>();
+            while (await reader.ReadAsync(cancellationToken))
+                columns.Add(reader.GetString(1));
+            return columns;
         }
 
         public async Task<bool> TableExistsAsync(string tableName)
@@ -60,7 +145,7 @@ namespace DevToolbox.Services.Services
             return await reader.ReadAsync();
         }
 
-        public async Task InsertLogLinesAsync(string tableName, IEnumerable<Dictionary<string, string>> lines)
+        public async Task InsertLogLinesAsync(string tableName, IEnumerable<Dictionary<string, string>> lines, CancellationToken cancellationToken = default)
         {
             var logLines = lines as IList<Dictionary<string, string>> ?? lines.ToList();
             if (logLines.Count == 0) return;
@@ -69,12 +154,12 @@ namespace DevToolbox.Services.Services
             var columns = logLines.SelectMany(d => d.Keys).Distinct().ToList();
 
             using var conn = GetConnection();
-            await conn.OpenAsync();
+            await conn.OpenAsync(cancellationToken);
 
             using (var pragma = conn.CreateCommand())
             {
                 pragma.CommandText = "PRAGMA synchronous=NORMAL;";
-                await pragma.ExecuteNonQueryAsync();
+                await pragma.ExecuteNonQueryAsync(cancellationToken);
             }
 
             using var tx = conn.BeginTransaction();
@@ -98,9 +183,12 @@ namespace DevToolbox.Services.Services
             {
                 for (int i = 0; i < columns.Count; i++)
                     parameters[i].Value = line.TryGetValue(columns[i], out var val) ? (val ?? "") : "";
-                await cmd.ExecuteNonQueryAsync();
+                await cmd.ExecuteNonQueryAsync(cancellationToken);
             }
 
+            // Not passing the token: once the rows are written, rolling back on a
+            // late cancellation would waste the work for no benefit. The table is
+            // dropped and rebuilt by the next search anyway.
             await tx.CommitAsync();
         }
 

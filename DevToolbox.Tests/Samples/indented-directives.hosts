@@ -1,0 +1,6 @@
+  ##key:Indented
+	##value:On
+127.0.0.1        indented.example.com
+   ##value:Off:warn
+# 203.0.113.5     indented.example.com
+##clear

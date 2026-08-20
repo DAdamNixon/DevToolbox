@@ -5,7 +5,7 @@
     
     <!-- Modal Container -->
     <div class="modal-container" @onclick:stopPropagation="true">
-        <div class="modal-content">
+        <div class="modal-content @SizeClass">
             <!-- Header -->
             <div class="flex items-center justify-between p-6 border-b border-dark-border">
                 <h2 class="text-xl font-semibold text-dark-text">@Title</h2>
@@ -29,6 +29,12 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public bool IsVisible { get; set; }
     [Parameter] public EventCallback<bool> IsVisibleChanged { get; set; }
+
+    /// <summary>
+    /// Extra class for the panel. <c>is-wide</c> relaxes the default reading width, for content that
+    /// is a table or a diff rather than a question — see dashboard.css.
+    /// </summary>
+    [Parameter] public string? SizeClass { get; set; }
 
     private Task Close()
     {

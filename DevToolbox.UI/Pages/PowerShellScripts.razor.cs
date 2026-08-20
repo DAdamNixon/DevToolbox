@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Components;
+﻿using Microsoft.AspNetCore.Components;
 using DevToolbox.Services.Services;
 using DevToolbox.Services.Models;
 using System;
@@ -157,10 +157,9 @@ namespace DevToolbox.UI.Pages
 # Created: " + DateTime.Now.ToString("g") + @"
 
 # Script logic goes here
+# Report progress with Write-Host; the Scripts tab and the terminal window both show it.
 
-# Keep window open for viewing
-Write-Host ""`nPress any key to close this window...""
-$null = $Host.UI.RawUI.ReadKey(""NoEcho,IncludeKeyDown"")";
+Write-Host ""Done.""";
             }
             
             selectedScript = "NewScript" + DateTime.Now.ToString("yyyyMMddHHmmss");
@@ -181,15 +180,40 @@ $null = $Host.UI.RawUI.ReadKey(""NoEcho,IncludeKeyDown"")";
             }
         }
         
+        /// <summary>The mandatory parameters of the script in the editor, so the form can say so up front.</summary>
+        private IReadOnlyList<string> RequiredParameters =>
+            PowerShellService.RequiredParameters(scriptText);
+
+        /// <summary>
+        /// Runs what is in the editor, passing the path box as ProjectPath.
+        /// <para>
+        /// It used to run the text with no parameters at all, which could not work: every bundled
+        /// script declares ProjectPath as mandatory, so PowerShell tried to prompt for it and there is
+        /// no console here to prompt on.
+        /// </para>
+        /// </summary>
         private async Task ExecuteScript()
         {
-            if (string.IsNullOrWhiteSpace(scriptText))
-                return;
-                
+            if (string.IsNullOrWhiteSpace(scriptText)) return;
+
             isExecuting = true;
+            output = "";
+            error = "";
+
             try
             {
-                (output, error) = await powerShellService.ExecuteScriptAsync(scriptText);
+                var parameters = new Dictionary<string, object>();
+                if (!string.IsNullOrWhiteSpace(projectPath))
+                {
+                    parameters["ProjectPath"] = projectPath.Trim();
+                }
+
+                (output, error) = await powerShellService.ExecuteScriptWithParametersAsync(scriptText, parameters);
+
+                if (string.IsNullOrWhiteSpace(output) && string.IsNullOrWhiteSpace(error))
+                {
+                    output = "Finished. The script produced no output.";
+                }
             }
             catch (Exception ex)
             {
@@ -201,30 +225,6 @@ $null = $Host.UI.RawUI.ReadKey(""NoEcho,IncludeKeyDown"")";
             }
         }
         
-        private async Task ExecuteScriptWithParams()
-        {
-            if (string.IsNullOrWhiteSpace(scriptText) || string.IsNullOrWhiteSpace(projectPath))
-                return;
-                
-            isExecuting = true;
-            try
-            {
-                var parameters = new Dictionary<string, object>
-                {
-                    { "ProjectPath", projectPath }
-                };
-                
-                (output, error) = await powerShellService.ExecuteScriptWithParametersAsync(scriptText, parameters);
-            }
-            catch (Exception ex)
-            {
-                error = ex.ToString();
-            }
-            finally
-            {
-                isExecuting = false;
-            }
-        }
         
         private void ClearOutput()
         {

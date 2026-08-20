@@ -1,0 +1,15 @@
+##key:Local Sites
+
+##value:Me
+127.0.0.1        local.example.com
+127.0.0.1        local.demo.example.com
+
+##key:DB Server
+##value:Test (db02)
+203.0.113.80    db01.example.com
+203.0.113.80    db01
+##value:Live:warn
+# 203.0.113.11        db01.example.com
+# 203.0.113.11        db01
+
+##clear

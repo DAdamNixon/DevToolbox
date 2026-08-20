@@ -1,0 +1,100 @@
+﻿##key:Local Sites
+
+##value:Me
+127.0.0.1        local.example.com
+127.0.0.1        local-api.example.com
+127.0.0.1        local.demo.example.com
+127.0.0.1        local.web.example.com
+127.0.0.1        local.demo.web.example.com
+127.0.0.1        local.services.example.com
+127.0.0.1        services-local.demo.example.com
+127.0.0.1        local.demo.slang.example.net
+127.0.0.1        local.slang.example.net
+127.0.0.1        modern2.example.com
+127.0.0.1        yarp.example.com
+127.0.0.1        blue.example.com
+127.0.0.1        green.example.com
+127.0.0.1        gateway.example.com
+127.0.0.1        blue-gateway.example.com
+127.0.0.1        green-gateway.example.com
+
+127.0.0.1        local.next.example.com
+127.0.0.1        local.apps.example.com
+127.0.0.1        local.green.example.com
+127.0.0.1        local.blue.example.com
+
+127.0.0.1        vnext.example.com
+127.0.0.1        metrics.example.com
+
+##value:Adam
+#198.51.100.58     local-next.example.com
+#198.51.100.58     local.web.example.com
+#198.51.100.58        local.next.example.com
+#198.51.100.58        local.apps.example.com
+#198.51.100.58        local.green.example.com
+#198.51.100.58        local.blue.example.com
+
+##value:Marsh
+#198.51.100.124     local.web.example.com
+#198.51.100.124     local.demo.web.example.com
+
+##key:DB Server
+##value:Test (db02)
+203.0.113.80    db01.example.com
+203.0.113.80    db01
+##value:Live:warn
+#203.0.113.11        db01.example.com
+#203.0.113.11        db01
+
+##key:Public Web
+##value:web01:web
+# 192.0.2.143   www.example.com (all traffic)
+# 192.0.2.104   demo.example.com (all traffic)
+# 192.0.2.102   www.example.net
+# 192.0.2.102   demo.example.net
+# 192.0.2.102   slang.example.net
+##value:web02:web
+# 192.0.2.22    www.example.com (all traffic)
+# 192.0.2.38    demo.example.com (all traffic)
+
+##key:Services
+##value:LoadBalancer:web
+# 192.0.2.250   services.example.com
+# 192.0.2.250   services-demo.example.com
+##value:web01:warn
+# 192.0.2.113   services.example.com
+# 192.0.2.113   services-demo.example.com
+##value:web02:warn
+# 192.0.2.184    services.example.com (external traffic load balanced)
+# 192.0.2.184    services-demo.example.com
+##value:websr01:warn
+# 192.0.2.82    services.example.com
+# 192.0.2.82    services-demo.example.com
+##value:websr02:warn
+# 192.0.2.87    services.example.com
+# 192.0.2.87    services-demo.example.com
+
+##key:Intranet
+##value:web01:web
+# 192.0.2.101   www.intranet.example.com (internal traffic)
+# 192.0.2.99   demo.intranet.example.com (internal traffic)
+##value:web02:web
+# 192.0.2.39    www.intranet.example.com (internal traffic)
+# 192.0.2.39    demo.intranet.example.com (internal traffic)
+# Added by Docker Desktop
+# 198.51.100.58 host.docker.internal
+# 198.51.100.58 gateway.docker.internal
+# To allow the same kube context to work on the host and the container:
+# 127.0.0.1 kubernetes.docker.internal
+# End of section
+
+
+
+
+
+
+
+127.0.0.1 locations.example.com
+
+# Example Metrics Monitoring
+127.0.0.1        metrics.example.com

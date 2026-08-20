@@ -16,17 +16,26 @@ namespace DevToolbox.UI.Services
         }
 
         /// <summary>
-        /// Creates a WorkspaceViewModel from a Workspace domain model
+        /// Creates a WorkspaceViewModel from a Workspace domain model.
+        /// <paramref name="groupName"/> is what makes the card key unique — workspace ids
+        /// repeat across groups, so it cannot be derived from the workspace alone.
         /// </summary>
-        public WorkspaceViewModel CreateWorkspaceViewModel(Workspace workspace)
+        public WorkspaceViewModel CreateWorkspaceViewModel(Workspace workspace, string groupName)
         {
+            var stateKey = BuildStateKey(groupName, workspace.Name);
+
             return new WorkspaceViewModel
             {
                 Workspace = workspace,
-                IsExpanded = _cardStateService.IsExpanded("workspace", workspace.Id.ToString()),
+                StateKey = stateKey,
+                IsExpanded = _cardStateService.IsExpanded("workspace", stateKey),
                 IsSelected = false
             };
         }
+
+        /// <summary>Card identity: group + workspace name.</summary>
+        public static string BuildStateKey(string groupName, string workspaceName) =>
+            $"{groupName}/{workspaceName}";
 
         /// <summary>
         /// Creates a WorkspaceGroupViewModel from a WorkspaceGroup domain model
@@ -43,7 +52,7 @@ namespace DevToolbox.UI.Services
             // Convert all workspaces in the group to view models
             foreach (var workspace in group.Workspaces)
             {
-                viewModel.Workspaces.Add(CreateWorkspaceViewModel(workspace));
+                viewModel.Workspaces.Add(CreateWorkspaceViewModel(workspace, group.Name));
             }
 
             return viewModel;
@@ -68,7 +77,7 @@ namespace DevToolbox.UI.Services
         /// </summary>
         public void UpdateWorkspaceExpandedState(WorkspaceViewModel viewModel)
         {
-            viewModel.IsExpanded = _cardStateService.IsExpanded("workspace", viewModel.Workspace.Id.ToString());
+            viewModel.IsExpanded = _cardStateService.IsExpanded("workspace", viewModel.StateKey);
         }
 
         /// <summary>

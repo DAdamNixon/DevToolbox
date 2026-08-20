@@ -1,0 +1,181 @@
+@using DevToolbox.Services.Models.Hosts
+@using DevToolbox.UI.Models
+
+@*
+    One switchable group — which database server to point at, whose machine local sites resolve to.
+    Its options are mutually exclusive, so this reads as a list of choices with at most one active.
+
+    The leading glyph says what the group is and its colour says what state it is in, which is why
+    it replaced the plain dot: the same pixel now carries both. Where the glyph comes from is
+    HostsGroupIcons' problem, and deliberately never this component's — a card that picked an icon
+    by looking at a group's name would be the one place Elliott vocabulary got into the code.
+*@
+
+<div class="modern-card @BorderClass()">
+    <div class="ws-card-header mb-4">
+        <div class="ws-card-title">
+            <button type="button" class="hosts-group-icon @HeaderStyle().Text"
+                    title="@($"{Group.Name} — click to change this icon")"
+                    @onclick="() => OnPickIcon.InvokeAsync(Group.Name)">
+                <i class="bi @Icon"></i>
+            </button>
+
+            <span class="ws-card-name text-lg font-semibold text-dark-text" title="@Group.Name">@Group.Name</span>
+
+            <button type="button" class="hosts-inline-edit" disabled="@Busy"
+                    title="@($"Rename or delete {Group.Name}")"
+                    @onclick="() => OnEditGroup.InvokeAsync(Group.Name)">
+                <i class="bi bi-pencil"></i>
+            </button>
+        </div>
+
+        <span class="hosts-active-label @(Group.ActiveOptions.Count == 0 ? "text-dark-text-muted" : HeaderStyle().Text)">
+            @Group.Describe()
+        </span>
+    </div>
+
+    <div class="hosts-options">
+        @foreach (var option in Group.Options)
+        {
+            var style = HostsSeverityStyles.For(option.Severity);
+
+            <div class="hosts-option-row">
+                <button type="button"
+                        class="hosts-option @(option.IsOn ? "is-on" : null)"
+                        disabled="@Busy"
+                        title="@Tooltip(option)"
+                        @onclick="() => OnSelect.InvokeAsync((Group.Name, option.Name))">
+
+                    <i class="bi @(option.IsOn ? "bi-record-circle" : "bi-circle") hosts-option-mark"></i>
+
+                    <span class="hosts-option-name">@option.Name</span>
+
+                    @if (option.Severity != HostsSeverityLevel.Normal)
+                    {
+                        <span class="hosts-chip @style.Chip">
+                            <i class="bi @style.Icon"></i>@style.Label
+                        </span>
+                    }
+
+                    @if (option.IsPartiallyOn)
+                    {
+                        <span class="hosts-chip bg-amber-500/20 text-amber-300" title="Some of this option's lines are enabled and some are not.">
+                            @option.PartialLabel
+                        </span>
+                    }
+
+                    @if (option.HasSuspectContent)
+                    {
+                        <span class="hosts-chip bg-red-500/20 text-red-300"
+                              title="@option.SuspectLines.Count lines inside this option do not look like they belong to it, and are left out of the count and out of a switch.">
+                            <i class="bi bi-exclamation-octagon-fill"></i>@option.SuspectLines.Count unscoped
+                        </span>
+                    }
+
+                    <span class="hosts-option-count text-dark-text-muted">@option.ActiveCount / @option.TotalCount</span>
+                </button>
+
+                @if (option.DirectiveLine > 0)
+                {
+                    <button type="button" class="hosts-option-act" disabled="@Busy"
+                            title="@($"Copy {option.Name} — same hostnames, one new address")"
+                            @onclick="() => OnCopyOption.InvokeAsync((Group.Name, option.Name))">
+                        <i class="bi bi-copy"></i>
+                    </button>
+
+                    <button type="button" class="hosts-option-act" disabled="@Busy"
+                            title="@($"Edit {option.Name} — its name, its flag and its {option.TotalCount} entries")"
+                            @onclick="() => OnEditOption.InvokeAsync((Group.Name, option.Name))">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                }
+                else
+                {
+                    @* Tagged line by line rather than as a block, so there is no block to edit. *@
+                    <span class="hosts-option-act is-placeholder"></span>
+                    <span class="hosts-option-act is-placeholder"></span>
+                }
+            </div>
+        }
+
+        <div class="hosts-option-row">
+            <button type="button"
+                    class="hosts-option hosts-option-off @(Group.ActiveOptions.Count == 0 ? "is-on" : null)"
+                    disabled="@Busy"
+                    title="Comment out every option in this group."
+                    @onclick="() => OnSelect.InvokeAsync((Group.Name, null))">
+
+                <i class="bi @(Group.ActiveOptions.Count == 0 ? "bi-record-circle" : "bi-circle") hosts-option-mark"></i>
+                <span class="hosts-option-name">Off</span>
+            </button>
+
+            <span class="hosts-option-act is-placeholder"></span>
+            <span class="hosts-option-act is-placeholder"></span>
+        </div>
+    </div>
+
+    <div class="hosts-card-actions">
+        <button type="button" class="btn-ghost btn-sm" disabled="@Busy"
+                @onclick="() => OnAddOption.InvokeAsync(Group.Name)">
+            <i class="bi bi-plus-lg me-2"></i>Add option
+        </button>
+    </div>
+
+    @if (Group.EndKind == HostsScopeEnd.EndOfFile)
+    {
+        <p class="hosts-card-footnote">
+            <i class="bi bi-scissors"></i>
+            Nothing closes this group, so it owns everything below it to the end of the file.
+        </p>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public HostsGroup Group { get; set; } = null!;
+
+    /// <summary>Resolved upstream, because it needs settings the card has no business reading.</summary>
+    [Parameter] public string Icon { get; set; } = HostsGroupIcons.Fallback;
+
+    /// <summary>Raised with the group and the option to switch to. A null option turns the group off.</summary>
+    [Parameter] public EventCallback<(string Group, string? Option)> OnSelect { get; set; }
+
+    /// <summary>Raised with the group an option should be added to.</summary>
+    [Parameter] public EventCallback<string> OnAddOption { get; set; }
+
+    /// <summary>Raised with the group and option whose whole contents should be opened for editing.</summary>
+    [Parameter] public EventCallback<(string Group, string Option)> OnEditOption { get; set; }
+
+    /// <summary>Raised with the group and option a new one should be seeded from.</summary>
+    [Parameter] public EventCallback<(string Group, string Option)> OnCopyOption { get; set; }
+
+    /// <summary>Raised with the group that should be renamed or deleted.</summary>
+    [Parameter] public EventCallback<string> OnEditGroup { get; set; }
+
+    /// <summary>Raised with the group whose icon should be chosen.</summary>
+    [Parameter] public EventCallback<string> OnPickIcon { get; set; }
+
+    [Parameter] public bool Busy { get; set; }
+
+    private HostsSeverityStyle HeaderStyle() => HostsSeverityStyles.For(Group.ActiveSeverity);
+
+    private string BorderClass() =>
+        Group.ActiveSeverity == HostsSeverityLevel.Normal ? string.Empty : HeaderStyle().CardBorder;
+
+    private string Tooltip(HostsOption option)
+    {
+        var parts = new List<string>();
+
+        if (option.IsOn) parts.Add($"{option.ActiveCount} of {option.TotalCount} lines enabled.");
+        else parts.Add($"{option.TotalCount} lines, all commented out.");
+
+        var severity = HostsSeverityStyles.Describe(option.Severity);
+        if (severity.Length > 0) parts.Add(severity);
+
+        if (option.ParkedLines.Count > 0)
+        {
+            parts.Add($"{option.ParkedLines.Count} parked line(s) are never touched.");
+        }
+
+        return string.Join(" ", parts);
+    }
+}

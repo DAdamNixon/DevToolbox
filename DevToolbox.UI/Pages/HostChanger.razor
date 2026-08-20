@@ -1,0 +1,145 @@
+@page "/host-changer"
+@using DevToolbox.Services.Models.Hosts
+@using DevToolbox.UI.Components.Dialogs
+@using DevToolbox.UI.Components.Hosts
+@using DevToolbox.UI.Models
+
+<div class="mb-8">
+    <div class="flex items-center justify-between">
+        <div class="min-w-0">
+            <h1 class="text-4xl font-bold text-gradient">Host Changer</h1>
+            <p class="text-dark-text-muted mt-2">
+                Switch which block of entries your hosts file has enabled.
+                <span class="hosts-path" title="@HostsPath">@HostsPath</span>
+            </p>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <button class="btn-primary" disabled="@Busy" @onclick="() => BeginAddGroup()"
+                    title="Add a new switchable group to the hosts file.">
+                <i class="bi bi-plus-lg me-2"></i>New group
+            </button>
+            <button class="btn-secondary" disabled="@Busy" @onclick="RefreshAsync" title="Re-read the file from disk.">
+                <i class="bi bi-arrow-clockwise me-2"></i>Reload
+            </button>
+            <button class="btn-secondary" @onclick="OpenFileAsync">
+                <i class="bi bi-pencil-square me-2"></i>Open file
+            </button>
+            <button class="btn-secondary" @onclick="OpenFolderAsync">
+                <i class="bi bi-folder2-open me-2"></i>Open folder
+            </button>
+        </div>
+    </div>
+</div>
+
+@if (LoadError is not null)
+{
+    <div class="ws-notice mb-6">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        <span><strong>The hosts file could not be read.</strong> @LoadError</span>
+    </div>
+}
+
+@if (Status is not null)
+{
+    <div class="ws-notice @StatusClass mb-6">
+        <i class="bi @StatusIcon"></i>
+        <span>@Status</span>
+        <button type="button" class="btn-ghost btn-sm" @onclick="() => Status = null" title="Dismiss">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </div>
+}
+
+@if (Snapshot is null)
+{
+    <p class="text-dark-text-muted">Reading @HostsPath…</p>
+}
+else
+{
+    <div class="hosts-summary mb-6">
+        <span class="status-dot @HostsSeverityStyles.For(Snapshot.Map.ActiveSeverity).Dot"></span>
+        <span class="text-sm text-dark-text">@SummaryLine()</span>
+
+        @if (!Snapshot.IsWritableInProcess)
+        {
+            <span class="hosts-chip bg-amber-500/20 text-amber-300"
+                  title="Changing the file will ask for administrator rights each time. Settings can grant your account write access once instead.">
+                <i class="bi bi-shield-lock-fill"></i>needs elevation
+            </span>
+        }
+    </div>
+
+    <HostsAnomalyBanner Anomalies="Snapshot.Map.Anomalies" Busy="Busy" OnInsertClear="InsertClearAsync" />
+
+    @if (!Snapshot.Map.HasAnnotations)
+    {
+        <div class="modern-card">
+            <h2 class="text-lg font-semibold text-dark-text mb-2">No switchable groups in this file</h2>
+            <p class="text-sm text-dark-text-muted mb-4">
+                Host Changer reads groups from comment markers in the hosts file itself, so nothing here
+                is stored anywhere else. Add one and it appears as a card — or write a block like this
+                by hand and it will be picked up just the same:
+            </p>
+            <pre class="hosts-sample">@SampleAnnotation</pre>
+
+            <button class="btn-primary mt-4" disabled="@Busy" @onclick="() => BeginAddGroup()">
+                <i class="bi bi-plus-lg me-2"></i>Create the first group
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="ws-grid">
+            @foreach (var group in Snapshot.Map.Groups)
+            {
+                <HostGroupCard @key="group.Name"
+                               Group="group"
+                               Icon="@IconFor(group)"
+                               Busy="Busy"
+                               OnSelect="RequestSwitchAsync"
+                               OnAddOption="BeginAddOption"
+                               OnEditOption="BeginEditOption"
+                               OnCopyOption="BeginCopyOption"
+                               OnEditGroup="BeginEditGroup"
+                               OnPickIcon="BeginPickIcon" />
+            }
+        </div>
+    }
+}
+
+<HostsApplyConfirmDialog Preview="PendingPreview"
+                         Severity="PendingSeverity"
+                         Busy="Busy"
+                         @bind-IncludeSuspect:get="IncludeSuspect"
+                         @bind-IncludeSuspect:set="SetIncludeSuspectAsync"
+                         OnConfirm="ApplyPendingAsync"
+                         OnCancel="CancelPending" />
+
+<HostsAddDialog IsVisible="AddVisible"
+                Mode="AddMode"
+                GroupName="@AddGroupName"
+                CopyFromOption="@CopyFromOption"
+                Busy="Busy"
+                OnConfirm="AddAsync"
+                OnCancel="CancelAdd" />
+
+<HostsEditOptionDialog IsVisible="EditOptionVisible"
+                       GroupName="@(EditGroupName ?? string.Empty)"
+                       OptionName="@(EditOptionName ?? string.Empty)"
+                       Busy="Busy"
+                       OnConfirm="EditAsync"
+                       OnCancel="CancelEdit" />
+
+<HostsEditGroupDialog IsVisible="EditGroupVisible"
+                      GroupName="@(EditGroupName ?? string.Empty)"
+                      Busy="Busy"
+                      OnConfirm="EditAsync"
+                      OnCancel="CancelEdit" />
+
+<HostsIconPickerDialog IsVisible="IconPickerVisible"
+                       GroupName="@(IconPickerGroup ?? string.Empty)"
+                       Current="@IconPickerCurrent()"
+                       IsPinned="IconPickerIsPinned()"
+                       OnChoose="ChooseIconAsync"
+                       OnCancel="CancelPickIcon" />

@@ -24,9 +24,15 @@ namespace DevToolbox.UI.Models
         public bool IsSelected { get; set; }
 
         /// <summary>
-        /// Gets the ID string used for CardStateService
+        /// Identity used for expand state and modal keys.
+        /// <para>
+        /// Deliberately not the workspace id: ids in workspaceGroups.yaml are only unique
+        /// within a group, so several cards share one. Keying on it made expanding one card
+        /// expand its id-twins in other groups and made their dialogs open together.
+        /// Group + name is what actually identifies a card, and it survives a rescan.
+        /// </para>
         /// </summary>
-        public string StateKey => $"workspace_{Workspace.Id}";
+        public string StateKey { get; set; } = string.Empty;
 
         /// <summary>
         /// Gets a shortcut to the workspace name

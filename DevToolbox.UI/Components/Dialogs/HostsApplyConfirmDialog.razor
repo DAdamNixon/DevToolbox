@@ -1,0 +1,116 @@
+@using DevToolbox.Services.Models.Hosts
+@using DevToolbox.UI.Components.Hosts
+@using DevToolbox.UI.Models
+
+@*
+    Shows exactly what a switch would do before it does it.
+
+    The diff is generated from the same change set that gets applied and then validated, so what a
+    developer approves here is literally what gets written.
+*@
+
+<Modal Title="@Title()" IsVisible="Preview is not null" IsVisibleChanged="OnVisibleChanged">
+    @if (Preview is not null)
+    {
+        @if (Severity != HostsSeverityLevel.Normal)
+        {
+            <div class="ws-notice @(Severity == HostsSeverityLevel.Caution ? "is-caution" : null) mb-4">
+                <i class="bi @HostsSeverityStyles.For(Severity).Icon"></i>
+                <span>
+                    <strong>@HostsSeverityStyles.Describe(Severity)</strong>
+                    Check this is really where you want to point before switching.
+                </span>
+            </div>
+        }
+
+        @if (Preview.IsBlocked)
+        {
+            <div class="ws-notice mb-4">
+                <i class="bi bi-exclamation-octagon-fill"></i>
+                <span>
+                    <strong>This group claims lines that do not look like its own.</strong>
+                    Switching it would comment or uncomment them too. Closing the group is the better
+                    fix — the banner on the page offers it in one click.
+                    @foreach (var anomaly in Preview.Blocking)
+                    {
+                        <br />
+                        @anomaly.Message
+                    }
+                </span>
+            </div>
+
+            @* Ticking this recomputes the preview upstream, so the diff below always shows what
+               would actually be written rather than the narrower version. *@
+            <label class="hosts-sweep-toggle">
+                <input type="checkbox" checked="@IncludeSuspect" disabled="@Busy" @onchange="ToggleSweep" />
+                <span>
+                    Switch them anyway, including the @SuspectCount() lines I was warned about.
+                </span>
+            </label>
+        }
+
+        <div class="mt-4">
+            <h3 class="text-sm font-semibold text-dark-text mb-2">
+                @(Preview.Changes.Count) line@(Preview.Changes.Count == 1 ? "" : "s") will change
+            </h3>
+            <HostsDiffPreview Changes="Preview.Changes" />
+        </div>
+
+        <div class="flex items-center justify-end gap-3 mt-6">
+            <button type="button" class="btn-secondary" disabled="@Busy" @onclick="Cancel">Cancel</button>
+            <button type="button"
+                    class="@(Severity == HostsSeverityLevel.Danger ? "btn-danger" : "btn-primary")"
+                    disabled="@(Busy || !CanApply())"
+                    @onclick="Apply">
+                @if (Busy)
+                {
+                    <i class="bi bi-hourglass-split me-2"></i><text>Applying…</text>
+                }
+                else
+                {
+                    <i class="bi bi-check-lg me-2"></i>
+                    <text>@ApplyLabel()</text>
+                }
+            </button>
+        </div>
+    }
+</Modal>
+
+@code {
+    [Parameter] public HostsChangePreview? Preview { get; set; }
+
+    [Parameter] public HostsSeverityLevel Severity { get; set; }
+
+    [Parameter] public bool Busy { get; set; }
+
+    [Parameter] public EventCallback OnConfirm { get; set; }
+
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    /// <summary>
+    /// Whether quarantined lines are being swept in. Owned by the page rather than here, because
+    /// changing it has to recompute the preview — a diff that does not match what will be written
+    /// would defeat the point of showing one.
+    /// </summary>
+    [Parameter] public bool IncludeSuspect { get; set; }
+
+    [Parameter] public EventCallback<bool> IncludeSuspectChanged { get; set; }
+
+    private string Title() => Preview?.Option is null
+        ? $"Turn off {Preview?.Group}"
+        : $"Switch {Preview.Group} to {Preview.Option}";
+
+    private string ApplyLabel() => Preview?.Option is null ? "Turn it off" : "Switch";
+
+    private int SuspectCount() => Preview?.Blocking.Sum(a => a.Lines.Count) ?? 0;
+
+    private bool CanApply() => Preview is not null && (!Preview.IsBlocked || IncludeSuspect);
+
+    private Task ToggleSweep(ChangeEventArgs e) => IncludeSuspectChanged.InvokeAsync(e.Value is true);
+
+    private Task Apply() => OnConfirm.InvokeAsync();
+
+    private Task Cancel() => OnCancel.InvokeAsync();
+
+    private Task OnVisibleChanged(bool visible) => visible ? Task.CompletedTask : Cancel();
+}

@@ -35,16 +35,22 @@ namespace DevToolbox.Services.Services
             return await _yamlStorage.LoadAsync<LogTemplate>(Path.GetFileNameWithoutExtension(fileName));
         }
 
-        public Task<string> PrepareLogTableAsync(string logFile, IReadOnlyList<LogLocation> locations, DateTime startDate, DateTime endDate, string templateName, CancellationToken cancellationToken = default)
+        public Task<List<DiscoveredLogName>> DiscoverLogFileNamesAsync(IReadOnlyList<LogLocation> locations, string templateName, CancellationToken cancellationToken = default)
             => throw new NotSupportedException("Use DbLogService.");
 
-        public Task<List<Dictionary<string, string>>> QueryLogPageAsync(string tableName, string templateName, int pageNumber, int pageSize, List<SortColumn>? sortColumns, LogSearchCriteria? criteria, CancellationToken cancellationToken = default)
+        public Task<List<LogSplitGroup>> GetSplitGroupsAsync(string tableName, LogSplitMode mode, LogSearchCriteria? criteria, CancellationToken cancellationToken = default)
             => throw new NotSupportedException("Use DbLogService.");
 
-        public Task<int> CountLogEntriesAsync(string tableName, LogSearchCriteria? criteria, CancellationToken cancellationToken = default)
+        public Task<string> PrepareLogTableAsync(string logFile, IReadOnlyList<LogLocation> locations, DateTime startDate, DateTime endDate, string templateName, IProgress<LogIngestProgress>? progress = null, CancellationToken cancellationToken = default)
             => throw new NotSupportedException("Use DbLogService.");
 
-        public Task<string> DownloadLogCsvAsync(string tableName, string templateName, List<SortColumn>? sortColumns, LogSearchCriteria? criteria, string? outputPath = null, CancellationToken cancellationToken = default)
+        public Task<List<Dictionary<string, string>>> QueryLogPageAsync(string tableName, string templateName, int pageNumber, int pageSize, List<SortColumn>? sortColumns, LogSearchCriteria? criteria, LogSplitFilter? split = null, CancellationToken cancellationToken = default)
+            => throw new NotSupportedException("Use DbLogService.");
+
+        public Task<int> CountLogEntriesAsync(string tableName, LogSearchCriteria? criteria, LogSplitFilter? split = null, CancellationToken cancellationToken = default)
+            => throw new NotSupportedException("Use DbLogService.");
+
+        public Task<string> DownloadLogCsvAsync(string tableName, string templateName, List<SortColumn>? sortColumns, LogSearchCriteria? criteria, string? outputPath = null, LogSplitFilter? split = null, CancellationToken cancellationToken = default)
             => throw new NotSupportedException("Use DbLogService.");
     }
 }

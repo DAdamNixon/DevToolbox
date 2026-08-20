@@ -1,9 +1,11 @@
 ﻿using DevToolbox.Services.Interfaces;
 using DevToolbox.Services.Models;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -18,6 +20,12 @@ namespace DevToolbox.Services.Services
 
         // Single active search table; dropped and recreated on every Search.
         private const string TableName = "logs";
+
+        /// <summary>
+        /// Column holding each row's originating file path. Public so the UI can
+        /// both find it and know to keep it out of the visible grid.
+        /// </summary>
+        public const string SourcePathColumn = "SourcePath";
 
         public DbLogService(IYamlStorageService yamlStorage, ILogStorageService logStorage)
         {
@@ -67,18 +75,136 @@ namespace DevToolbox.Services.Services
             }
         }
 
+        /// <summary>
+        /// Cache of discovery results, keyed by location path + extension.
+        /// <para>
+        /// Static and process-wide because this runs on every template or location
+        /// change while someone is setting up a search, and walking a 238,000-file
+        /// share each time would make the form unusable. The TTL is short because a
+        /// new day's log appearing is exactly what someone would be looking for.
+        /// </para>
+        /// </summary>
+        private static readonly ConcurrentDictionary<string, (DateTime At, List<DiscoveredLogName> Names)> _nameCache = new();
+
+        /// <summary>
+        /// Measured: a full walk of the archive share — 238,000 files — takes about
+        /// 17 seconds and yields 194 names. That is fine once, and unacceptable on
+        /// every location toggle, so the window is wide enough to cover setting up a
+        /// search but short enough that a log rolling over during the day appears.
+        /// </summary>
+        private static readonly TimeSpan NameCacheTtl = TimeSpan.FromMinutes(5);
+
+        public async Task<List<DiscoveredLogName>> DiscoverLogFileNamesAsync(
+            IReadOnlyList<LogLocation> locations,
+            string templateName,
+            CancellationToken cancellationToken = default)
+        {
+            var templateEntry = (await GetAvailableLogFileTemplatesAsync())
+                .FirstOrDefault(t => t.Name == templateName);
+            if (templateEntry is null) return new List<DiscoveredLogName>();
+
+            var template = await LoadTemplateAsync(templateEntry.File);
+            var extension = template?.Extension ?? ".txt";
+
+            // Counts are summed across locations, so the same project seen on four
+            // servers reads as one entry rather than four.
+            var totals = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var loc in locations)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (string.IsNullOrWhiteSpace(loc.NamePattern) || string.IsNullOrWhiteSpace(loc.Path))
+                    continue;
+
+                foreach (var found in await DiscoverInLocationAsync(loc, extension, cancellationToken))
+                {
+                    totals.TryGetValue(found.Name, out var running);
+                    totals[found.Name] = running + found.FileCount;
+                }
+            }
+
+            return totals
+                .Select(kv => new DiscoveredLogName { Name = kv.Key, FileCount = kv.Value })
+                .OrderBy(n => n.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        private static async Task<List<DiscoveredLogName>> DiscoverInLocationAsync(
+            LogLocation loc,
+            string extension,
+            CancellationToken cancellationToken)
+        {
+            var cacheKey = $"{loc.Path}|{extension}|{loc.NamePattern}";
+            if (_nameCache.TryGetValue(cacheKey, out var cached) && DateTime.UtcNow - cached.At < NameCacheTtl)
+                return cached.Names;
+
+            Regex regex;
+            try
+            {
+                // Compiled: this pattern runs against every file name in the
+                // directory, which on the archive share is six figures.
+                regex = new Regex(loc.NamePattern!, RegexOptions.IgnoreCase | RegexOptions.Compiled);
+            }
+            catch (ArgumentException)
+            {
+                // A bad pattern in hand-edited YAML disables discovery for that
+                // location and nothing else; free text still works.
+                return new List<DiscoveredLogName>();
+            }
+
+            var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+            await Task.Run(() =>
+            {
+                try
+                {
+                    if (!Directory.Exists(loc.Path)) return;
+
+                    foreach (var path in Directory.EnumerateFiles(loc.Path, $"*{extension}"))
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+
+                        var match = regex.Match(Path.GetFileName(path));
+                        if (!match.Success) continue;
+
+                        var group = match.Groups["name"];
+                        if (!group.Success || group.Value.Length == 0) continue;
+
+                        counts.TryGetValue(group.Value, out var running);
+                        counts[group.Value] = running + 1;
+                    }
+                }
+                catch (IOException)
+                {
+                    // Share went away mid-walk. Whatever was counted still stands.
+                }
+                catch (UnauthorizedAccessException)
+                {
+                }
+            }, cancellationToken).ConfigureAwait(false);
+
+            var names = counts
+                .Select(kv => new DiscoveredLogName { Name = kv.Key, FileCount = kv.Value })
+                .ToList();
+
+            _nameCache[cacheKey] = (DateTime.UtcNow, names);
+            return names;
+        }
+
         private async Task<List<string>> GetAllColumnsFromFilesAsync(
-            IEnumerable<string> files, 
-            LogTemplate template, 
+            IEnumerable<string> files,
+            LogTemplate template,
+            LogIngestProgressReporter reporter,
             CancellationToken cancellationToken = default)
         {
             var baseColumns = await ResolveColumnsAsync(template);
             int maxMessageColumns = 0;
-            
+
             foreach (var file in files)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                
+                reporter.FileStarted(Path.GetFileName(file));
+
                 try
                 {
                     using var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
@@ -93,7 +219,7 @@ namespace DevToolbox.Services.Services
                     {
                         cancellationToken.ThrowIfCancellationRequested();
                         
-                        var parts = line.Split(template.Delimiter);
+                        var parts = SplitLine(line, template.Delimiter);
                         int extra = parts.Length - baseColumns.Count;
                         if (extra > maxMessageColumns)
                             maxMessageColumns = extra;
@@ -105,8 +231,14 @@ namespace DevToolbox.Services.Services
                     // Log warning but continue with other files
                     continue;
                 }
+                finally
+                {
+                    // In finally so a file that could not be opened still advances the
+                    // bar; otherwise one unreadable file makes progress appear stuck.
+                    reporter.FileCompleted();
+                }
             }
-            
+
             var columns = new List<string>(baseColumns);
             for (int i = 1; i <= maxMessageColumns; i++)
                 columns.Add($"Message {i}");
@@ -115,7 +247,23 @@ namespace DevToolbox.Services.Services
             columns.Add("Location");
             columns.Add("SourceFile");
             columns.Add("Sequence");
+
+            // Full path, so a row can be opened in an editor without having to
+            // reconstruct where it came from. SourceFile is only the file name, and
+            // Location is the location's *name* rather than its path, so between
+            // them the original file is not actually recoverable. Kept last and
+            // hidden by the grid — it is provenance, not something to read.
+            columns.Add(SourcePathColumn);
             return columns;
+        }
+
+        private static string[] SplitLine(string line, string? delimiter)
+        {
+            // Empty delimiter means "row mode": keep the full line in one field.
+            if (string.IsNullOrEmpty(delimiter))
+                return new[] { line };
+
+            return line.Split(delimiter);
         }
 
         public async Task<string> PrepareLogTableAsync(
@@ -124,8 +272,12 @@ namespace DevToolbox.Services.Services
             DateTime startDate,
             DateTime endDate,
             string templateName,
+            IProgress<LogIngestProgress>? progress = null,
             CancellationToken cancellationToken = default)
         {
+            var reporter = new LogIngestProgressReporter(progress);
+            reporter.EnterPhase(LogIngestPhase.Listing);
+
             await _loadSemaphore.WaitAsync(cancellationToken);
             try
             {
@@ -138,43 +290,29 @@ namespace DevToolbox.Services.Services
                 if (template == null)
                     throw new InvalidOperationException($"Template file '{templateEntry.File}' could not be loaded.");
 
-                // Gather matching files from every selected location, tagged with the location name.
-                var taggedFiles = new List<(string LocationName, string FilePath)>();
-                foreach (var loc in locations)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    if (string.IsNullOrWhiteSpace(loc.Path) || !Directory.Exists(loc.Path))
-                        continue; // Tolerate missing/offline locations.
+                var taggedFiles = EnumerateMatchingFiles(
+                    logFile, locations, startDate, endDate, template, reporter, cancellationToken);
 
-                    var matched = Directory.GetFiles(loc.Path, $"{logFile}*{template.Extension}")
-                        .Where(f =>
-                        {
-                            try
-                            {
-                                var fileDate = new System.IO.FileInfo(f).LastWriteTime;
-                                return fileDate.Date >= startDate.Date && fileDate.Date <= endDate.Date;
-                            }
-                            catch
-                            {
-                                return false; // Skip files we can't read metadata from
-                            }
-                        })
-                        .OrderBy(f => f, StringComparer.OrdinalIgnoreCase);
+                reporter.EnterPhase(LogIngestPhase.Scanning);
 
-                    foreach (var f in matched)
-                        taggedFiles.Add((loc.Name, f));
-                }
+                // Scanning is measured in files, not bytes: it reads only the head of
+                // each one, so a byte total would make the bar crawl and stop.
+                reporter.SetTotals(taggedFiles.Count, bytesTotal: 0);
 
                 // Determine columns (works with an empty file set: template + provenance columns).
-                var columns = await GetAllColumnsFromFilesAsync(taggedFiles.Select(t => t.FilePath), template, cancellationToken);
+                var columns = await GetAllColumnsFromFilesAsync(
+                    taggedFiles.Select(t => t.FilePath), template, reporter, cancellationToken);
 
                 // Always recreate so each Search reflects the current selection.
                 if (await _logStorage.TableExistsAsync(TableName))
                     await _logStorage.DropTableAsync(TableName);
                 await _logStorage.EnsureTableAsync(TableName, columns);
 
-                await IngestFilesAsync(taggedFiles, template, TableName, columns, cancellationToken);
+                reporter.EnterPhase(LogIngestPhase.Ingesting);
+                reporter.SetTotals(taggedFiles.Count, taggedFiles.Sum(f => f.Length));
+                await IngestFilesAsync(taggedFiles, template, TableName, columns, reporter, cancellationToken);
 
+                reporter.Complete(LogIngestPhase.Querying);
                 return TableName;
             }
             finally
@@ -183,12 +321,103 @@ namespace DevToolbox.Services.Services
             }
         }
 
+        /// <summary>
+        /// Finds the files to ingest, tagged with their location name and size.
+        /// <para>
+        /// <see cref="Directory.EnumerateFiles(string, string)"/>, not <c>GetFiles</c>.
+        /// GetFiles builds the entire array before it returns, and against the
+        /// archive share — 238,000 files — that is a blocking call lasting the better
+        /// part of a minute during which nothing can be reported and the
+        /// cancellation token cannot be observed. Cancel genuinely did nothing until
+        /// it returned. Streaming the walk makes both work: the counter moves, and
+        /// the token is checked per entry.
+        /// </para>
+        /// <para>
+        /// Sizes are captured here rather than re-read later, because a second stat
+        /// of every file over a slow share costs as much as the walk itself.
+        /// </para>
+        /// </summary>
+        private static List<(string LocationName, string FilePath, long Length)> EnumerateMatchingFiles(
+            string logFile,
+            IReadOnlyList<LogLocation> locations,
+            DateTime startDate,
+            DateTime endDate,
+            LogTemplate template,
+            LogIngestProgressReporter reporter,
+            CancellationToken cancellationToken)
+        {
+            var taggedFiles = new List<(string LocationName, string FilePath, long Length)>();
+
+            foreach (var loc in locations)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (string.IsNullOrWhiteSpace(loc.Path) || !Directory.Exists(loc.Path))
+                    continue; // Tolerate missing/offline locations.
+
+                reporter.FileStarted(loc.Name);
+
+                var matchedHere = new List<(string Path, long Length)>();
+                IEnumerable<System.IO.FileInfo> entries;
+                try
+                {
+                    // DirectoryInfo.EnumerateFiles, not Directory.EnumerateFiles: this
+                    // yields FileInfo objects already populated from the directory
+                    // walk, because the underlying FindFirstFile/FindNextFile returns
+                    // size and timestamps in the same call. Enumerating paths and then
+                    // constructing a FileInfo per path costs an extra round trip each,
+                    // which over SMB against thousands of matches is most of the wait.
+                    entries = new DirectoryInfo(loc.Path).EnumerateFiles($"{logFile}*{template.Extension}");
+                }
+                catch (DirectoryNotFoundException)
+                {
+                    continue; // Vanished between the Exists check and the walk.
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    continue;
+                }
+
+                foreach (var info in entries)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    var keep = false;
+                    long length = 0;
+                    try
+                    {
+                        var written = info.LastWriteTime.Date;
+                        if (written >= startDate.Date && written <= endDate.Date)
+                        {
+                            keep = true;
+                            length = info.Length;
+                        }
+                    }
+                    catch (IOException)
+                    {
+                        // Unreadable metadata: skip the file rather than the search.
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                    }
+
+                    reporter.ItemExamined(keep);
+                    if (keep) matchedHere.Add((info.FullName, length));
+                }
+
+                foreach (var f in matchedHere.OrderBy(f => f.Path, StringComparer.OrdinalIgnoreCase))
+                    taggedFiles.Add((loc.Name, f.Path, f.Length));
+            }
+
+            return taggedFiles;
+        }
+
         // Parses files in parallel and inserts on a single writer to respect SQLite's single-writer model.
         private async Task IngestFilesAsync(
-            List<(string LocationName, string FilePath)> taggedFiles,
+            List<(string LocationName, string FilePath, long Length)> taggedFiles,
             LogTemplate template,
             string tableName,
             List<string> columns,
+            LogIngestProgressReporter reporter,
             CancellationToken cancellationToken)
         {
             if (taggedFiles.Count == 0)
@@ -200,7 +429,13 @@ namespace DevToolbox.Services.Services
             var writerTask = Task.Run(async () =>
             {
                 await foreach (var batch in channel.Reader.ReadAllAsync(cancellationToken))
-                    await _logStorage.InsertLogLinesAsync(tableName, batch);
+                {
+                    await _logStorage.InsertLogLinesAsync(tableName, batch, cancellationToken);
+
+                    // Counted here rather than at parse time so the figure means rows
+                    // actually committed, not rows queued.
+                    reporter.AddRows(batch.Count);
+                }
             }, cancellationToken);
 
             int maxParallelism = Math.Max(1, Math.Min(Environment.ProcessorCount, 4));
@@ -211,7 +446,7 @@ namespace DevToolbox.Services.Services
                 await throttler.WaitAsync(cancellationToken);
                 try
                 {
-                    await ParseFileToChannelAsync(tf.FilePath, tf.LocationName, template, columns, channel.Writer, cancellationToken);
+                    await ParseFileToChannelAsync(tf.FilePath, tf.LocationName, template, columns, channel.Writer, reporter, cancellationToken);
                 }
                 finally
                 {
@@ -237,6 +472,7 @@ namespace DevToolbox.Services.Services
             LogTemplate template,
             List<string> allColumns,
             ChannelWriter<List<Dictionary<string, string>>> writer,
+            LogIngestProgressReporter reporter,
             CancellationToken cancellationToken)
         {
             const int baseBatchSize = 1000;
@@ -250,16 +486,33 @@ namespace DevToolbox.Services.Services
                 var templateColumns = await ResolveColumnsAsync(template);
                 string sourceFileName = Path.GetFileName(filePath);
                 long sequence = 0;
+                long reportedBytes = 0;
                 string? line;
+
+                reporter.FileStarted(sourceFileName);
 
                 while ((line = await reader.ReadLineAsync()) != null)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     sequence++; // 1-based line number; advances even for skipped lines to preserve order.
 
+                    // Progress comes from the underlying stream position rather than
+                    // the characters handed back, so multi-byte encodings and line
+                    // endings are accounted for without decoding them twice. It moves
+                    // in reader-buffer steps, which is fine for a progress bar.
+                    if (reporter.IsActive)
+                    {
+                        var position = fs.Position;
+                        if (position > reportedBytes)
+                        {
+                            reporter.AddBytes(position - reportedBytes);
+                            reportedBytes = position;
+                        }
+                    }
+
                     try
                     {
-                        var parts = line.Split(template.Delimiter);
+                        var parts = SplitLine(line, template.Delimiter);
                         var dict = new Dictionary<string, string>(allColumns.Count);
 
                         for (int i = 0; i < templateColumns.Count; i++)
@@ -271,6 +524,7 @@ namespace DevToolbox.Services.Services
                         dict["Location"] = locationName;
                         dict["SourceFile"] = sourceFileName;
                         dict["Sequence"] = sequence.ToString();
+                        dict[SourcePathColumn] = filePath;
 
                         batch.Add(dict);
 
@@ -289,6 +543,8 @@ namespace DevToolbox.Services.Services
 
                 if (batch.Count > 0)
                     await writer.WriteAsync(batch, cancellationToken);
+
+                reporter.FileCompleted();
             }
             catch (Exception ex) when (!(ex is OperationCanceledException))
             {
@@ -299,12 +555,14 @@ namespace DevToolbox.Services.Services
         public async Task<List<Dictionary<string, string>>> QueryLogPageAsync(
             string tableName, string templateName, int pageNumber, int pageSize,
             List<SortColumn>? sortColumns, LogSearchCriteria? criteria,
+            LogSplitFilter? split = null,
             CancellationToken cancellationToken = default)
         {
             var query = new LogQuery
             {
                 Page = pageNumber,
-                PageSize = pageSize
+                PageSize = pageSize,
+                Filters = split?.ToFilters()
             };
             ApplyCriteria(query, criteria);
             if (query.RawQuery == null)
@@ -322,9 +580,10 @@ namespace DevToolbox.Services.Services
         }
 
         public async Task<int> CountLogEntriesAsync(
-            string tableName, LogSearchCriteria? criteria, CancellationToken cancellationToken = default)
+            string tableName, LogSearchCriteria? criteria, LogSplitFilter? split = null,
+            CancellationToken cancellationToken = default)
         {
-            var query = new LogQuery();
+            var query = new LogQuery { Filters = split?.ToFilters() };
             ApplyCriteria(query, criteria);
 
             try
@@ -335,6 +594,26 @@ namespace DevToolbox.Services.Services
             catch (Exception ex)
             {
                 throw ToUserFacing(ex, query, "Failed to count log entries");
+            }
+        }
+
+        public async Task<List<LogSplitGroup>> GetSplitGroupsAsync(
+            string tableName, LogSplitMode mode, LogSearchCriteria? criteria,
+            CancellationToken cancellationToken = default)
+        {
+            if (!LogSplitColumns.TryResolve(mode, out var column))
+                return new List<LogSplitGroup>();
+
+            var query = new LogQuery();
+            ApplyCriteria(query, criteria);
+
+            try
+            {
+                return await _logStorage.GetGroupCountsAsync(tableName, column, query, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                throw ToUserFacing(ex, query, "Failed to group log entries");
             }
         }
 
@@ -415,11 +694,14 @@ namespace DevToolbox.Services.Services
             List<SortColumn>? sortColumns,
             LogSearchCriteria? criteria,
             string? outputPath = null,
+            LogSplitFilter? split = null,
             CancellationToken cancellationToken = default)
         {
             try
             {
-                var query = new LogQuery();
+                // Exports what is on screen, so a CSV taken from a split tab holds
+                // that tab's rows rather than the whole result set.
+                var query = new LogQuery { Filters = split?.ToFilters() };
                 ApplyCriteria(query, criteria);
                 if (query.RawQuery == null)
                     query.Sort = await ResolveEffectiveSortAsync(sortColumns, templateName);

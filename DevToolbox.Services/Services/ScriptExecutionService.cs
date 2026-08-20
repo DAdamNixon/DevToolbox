@@ -1,4 +1,4 @@
-using DevToolbox.Services.Interfaces;
+﻿using DevToolbox.Services.Interfaces;
 using DevToolbox.Services.Models;
 using Microsoft.PowerShell;
 using System.Management.Automation;
@@ -14,7 +14,9 @@ public class ScriptExecutionService : IScriptExecutionService
     public ScriptExecutionService(IConfigurationService configurationService)
     {
         _configurationService = configurationService;
-        _scriptsDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts");
+        // The same folder the Scripts tab writes to - a script saved there has to be the script that
+        // runs here, and two independently computed paths is how that stops being true.
+        _scriptsDirectory = ScriptLibrary.EnsureUserDirectory();
     }
 
     public async Task<string> ExecuteScriptAsync(string scriptPath, string filePath)

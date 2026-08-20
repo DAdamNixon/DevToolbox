@@ -5,7 +5,10 @@
     <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @onclick="Cancel"></div>
     
     <!-- Modal -->
-    <div class="relative bg-dark-card border border-dark-border rounded-xl shadow-2xl w-full max-w-md mx-4 max-h-[80vh] overflow-y-auto">
+    @* bg-dark-surface, not bg-dark-card: there is no 'dark-card' colour in
+       tailwind.config.js, so this panel had no background at all and the
+       backdrop showed straight through it. *@
+    <div class="relative bg-dark-surface border border-dark-border rounded-xl shadow-2xl w-full max-w-md mx-4 max-h-[80vh] overflow-y-auto">
         <!-- Header -->
         <div class="flex items-center justify-between p-6 border-b border-dark-border">
             <h3 class="text-xl font-semibold text-dark-text">
@@ -66,6 +69,52 @@
                 <input type="checkbox" id="isEnabled" @bind="IsEnabled" class="w-4 h-4 text-accent-blue bg-dark-surface border-dark-border rounded focus:ring-accent-blue focus:ring-2" />
                 <label for="isEnabled" class="text-sm text-dark-text">Enable monitoring for this service</label>
             </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-dark-text mb-2">History Retention</label>
+                    <select class="input-modern w-full" @bind="HistoryRetention">
+                        <option value="OneHour">1 hour</option>
+                        <option value="EightHours">8 hours</option>
+                        <option value="TwelveHours">12 hours</option>
+                        <option value="TwentyFourHours">24 hours</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-dark-text mb-2">History Bars</label>
+                    <select class="input-modern w-full" @bind="HistoryBarsText">
+                        <option value="30">30</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                        <option value="All">All (no aggregation)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="border-t border-dark-border pt-4">
+                <div class="flex items-center space-x-3">
+                    <input type="checkbox" id="alertsEnabled" @bind="AlertsEnabled" class="w-4 h-4 text-accent-blue bg-dark-surface border-dark-border rounded focus:ring-accent-blue focus:ring-2" />
+                    <label for="alertsEnabled" class="text-sm text-dark-text">Notify when this service goes down</label>
+                </div>
+
+                @if (AlertsEnabled)
+                {
+                    <div class="grid grid-cols-2 gap-4 mt-4">
+                        <div>
+                            <label class="block text-sm font-medium text-dark-text mb-2">Alert after N failed pings</label>
+                            <input type="number" class="input-modern w-full" @bind="AlertThreshold" min="1" max="100" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-dark-text mb-2">Repeat Alerts</label>
+                            <select class="input-modern w-full" @bind="AlertRepeat">
+                                <option value="OnceUntilRecovery">Once, until it recovers</option>
+                                <option value="EveryNFailures">Every N failures</option>
+                            </select>
+                        </div>
+                    </div>
+                }
+            </div>
         </div>
         
         <!-- Footer -->
@@ -93,14 +142,44 @@
     private string Description = "";
     private string TagsText = "";
     private bool IsEnabled = true;
+    private HistoryRetention HistoryRetention = HistoryRetention.OneHour;
+
+    /// <summary>Proxy for <see cref="ServiceEndpoint.HistoryBars"/> — a plain <c>&lt;select&gt;</c>
+    /// can't bind an <c>int?</c> straight through "All" without one.</summary>
+    private string HistoryBarsText = "50";
+
+    private bool AlertsEnabled;
+    private int AlertThreshold = 3;
+    private AlertRepeatMode AlertRepeat = AlertRepeatMode.OnceUntilRecovery;
+
+    /// <summary>The dialog stays mounted while hidden, so "opened" is a change in <see cref="IsVisible"/>.</summary>
+    private bool _wasVisible;
 
     private bool IsValid => !string.IsNullOrWhiteSpace(ServiceName) && 
                            !string.IsNullOrWhiteSpace(Endpoint) &&
                            Uri.TryCreate(Endpoint, UriKind.Absolute, out _);
 
+    /// <summary>
+    /// Seeds the form when the dialog opens, and at no other time.
+    /// <para>
+    /// It used to fill every field on every <c>OnParametersSet</c> — which runs on each re-render of
+    /// the page, not each opening of the dialog. Service Pulse re-renders once a second to redraw its
+    /// "3s ago" labels, and again on every health event, so a field committed on blur was overwritten
+    /// within about a second: in add mode with an empty string, in edit mode with the stored value.
+    /// That is the whole of "the text just keeps disappearing when you unfocus from it".
+    /// </para>
+    /// <para>
+    /// Same shape as the Hosts dialogs, which already do this.
+    /// </para>
+    /// </summary>
     protected override void OnParametersSet()
     {
-        if (IsEditMode && ExistingService != null)
+        if (IsVisible == _wasVisible) return;
+
+        _wasVisible = IsVisible;
+        if (!IsVisible) return;
+
+        if (IsEditMode && ExistingService is not null)
         {
             ServiceName = ExistingService.Name;
             Endpoint = ExistingService.Endpoint;
@@ -110,40 +189,57 @@
             Description = ExistingService.Description ?? "";
             TagsText = string.Join(", ", ExistingService.Tags);
             IsEnabled = ExistingService.IsEnabled;
+            HistoryRetention = ExistingService.HistoryRetention;
+            HistoryBarsText = ExistingService.HistoryBars?.ToString() ?? "All";
+            AlertsEnabled = ExistingService.AlertsEnabled;
+            AlertThreshold = ExistingService.AlertThreshold;
+            AlertRepeat = ExistingService.AlertRepeat;
+            return;
         }
-        else if (!IsEditMode)
-        {
-            // Reset for new service
-            ServiceName = "";
-            Endpoint = "";
-            PingIntervalSeconds = 30;
-            TimeoutSeconds = 10;
-            Environment = "";
-            Description = "";
-            TagsText = "";
-            IsEnabled = true;
-        }
+
+        ServiceName = "";
+        Endpoint = "";
+        PingIntervalSeconds = 30;
+        TimeoutSeconds = 10;
+        Environment = "";
+        Description = "";
+        TagsText = "";
+        IsEnabled = true;
+        HistoryRetention = HistoryRetention.OneHour;
+        HistoryBarsText = "50";
+        AlertsEnabled = false;
+        AlertThreshold = 3;
+        AlertRepeat = AlertRepeatMode.OnceUntilRecovery;
     }
 
     private async Task Save()
     {
         if (!IsValid) return;
 
-        var service = new ServiceEndpoint
-        {
-            Id = IsEditMode ? ExistingService!.Id : Guid.NewGuid().ToString(),
-            Name = ServiceName.Trim(),
-            Endpoint = Endpoint.Trim(),
-            PingIntervalSeconds = PingIntervalSeconds,
-            TimeoutSeconds = TimeoutSeconds,
-            Environment = Environment,
-            Description = string.IsNullOrWhiteSpace(Description) ? null : Description.Trim(),
-            Tags = TagsText.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                          .Select(t => t.Trim())
-                          .Where(t => !string.IsNullOrEmpty(t))
-                          .ToList(),
-            IsEnabled = IsEnabled
-        };
+        // Edits mutate the existing endpoint rather than building a replacement.
+        // A fresh ServiceEndpoint would silently drop expectStatus, degradedAboveMs
+        // and details — the hand-authored YAML fields this dialog has no inputs for
+        // — so opening a service and pressing Update deleted them.
+        var service = IsEditMode && ExistingService is not null
+            ? ExistingService
+            : new ServiceEndpoint { Id = Guid.NewGuid().ToString() };
+
+        service.Name = ServiceName.Trim();
+        service.Endpoint = Endpoint.Trim();
+        service.PingIntervalSeconds = PingIntervalSeconds;
+        service.TimeoutSeconds = TimeoutSeconds;
+        service.Environment = Environment;
+        service.Description = string.IsNullOrWhiteSpace(Description) ? null : Description.Trim();
+        service.Tags = TagsText.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                               .Select(t => t.Trim())
+                               .Where(t => !string.IsNullOrEmpty(t))
+                               .ToList();
+        service.IsEnabled = IsEnabled;
+        service.HistoryRetention = HistoryRetention;
+        service.HistoryBars = int.TryParse(HistoryBarsText, out var bars) ? bars : null;
+        service.AlertsEnabled = AlertsEnabled;
+        service.AlertThreshold = AlertThreshold;
+        service.AlertRepeat = AlertRepeat;
 
         await OnSave.InvokeAsync(service);
     }

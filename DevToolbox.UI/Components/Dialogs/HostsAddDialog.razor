@@ -1,0 +1,357 @@
+@using DevToolbox.Services.Interfaces
+@using DevToolbox.Services.Models.Hosts
+@using DevToolbox.Services.Services.Hosts
+@using DevToolbox.UI.Components.Hosts
+@using DevToolbox.UI.Models
+
+@inject IHostsFileService Hosts
+
+@*
+    Adding a group, an option, or a copy of an option — three shapes of the same thing, so one
+    dialog. A copy is not a separate operation: it is an ordinary new option whose form starts out
+    already filled in from an existing one, which is why it needs nothing of its own below the UI.
+
+    The block at the bottom is not a mock-up of what will be written: it is produced by asking the
+    service for a preview, which runs the same mutator the Add button will. If the two could differ,
+    showing one would be worse than showing nothing.
+*@
+
+<Modal Title="@Title()" SizeClass="is-wide" IsVisible="IsVisible" IsVisibleChanged="OnVisibleChanged">
+    @if (IsVisible)
+    {
+        <div class="hosts-add-form">
+            @if (Mode == HostsAddMode.Group)
+            {
+                <label class="hosts-field">
+                    <span class="hosts-field-label">Group name</span>
+                    <input class="input-modern" placeholder="DB Server" disabled="@Busy"
+                           value="@_groupName" @onchange="e => SetGroupName(e.Value?.ToString())" />
+                </label>
+
+                @foreach (var problem in HostsLineValidator.ValidateName(_groupName, Dialect(), "group"))
+                {
+                    <p class="hosts-field-error"><i class="bi bi-exclamation-circle"></i>@problem</p>
+                }
+            }
+            else if (Mode == HostsAddMode.Copy)
+            {
+                <p class="hosts-field-context">
+                    <i class="bi bi-copy"></i>
+                    <text>
+                        Copied from <strong>@CopyFromOption</strong> — the same
+                        @_sourceNameCount hostname@(_sourceNameCount == 1 ? "" : "s"), so the only thing
+                        left to change is where they point. Added to <strong>@GroupName</strong>
+                        switched off.
+                    </text>
+                </p>
+
+                <label class="hosts-field">
+                    <span class="hosts-field-label">Point every entry at</span>
+                    <input class="input-modern" placeholder="198.51.100.7" disabled="@Busy"
+                           value="@_bulkAddress" @onchange="e => SetBulkAddress(e.Value?.ToString())" />
+                </label>
+            }
+            else
+            {
+                <p class="hosts-field-context">
+                    <i class="bi bi-diagram-2"></i>
+                    <text>Adding an option to <strong>@GroupName</strong>. It is added switched off — turn it on afterwards from the card.</text>
+                </p>
+            }
+
+            @foreach (var option in _options)
+            {
+                <div class="hosts-option-block">
+                        <div class="hosts-option-block-head">
+                            <label class="hosts-field flex-1">
+                                <span class="hosts-field-label">Option name</span>
+                                <input class="input-modern" placeholder="Test" disabled="@Busy"
+                                       value="@option.Name" @onchange="e => SetOptionName(option, e.Value?.ToString())" />
+                            </label>
+
+                            <label class="hosts-field">
+                                <span class="hosts-field-label">Flag</span>
+                                <select class="input-modern" disabled="@Busy"
+                                        value="@option.Severity"
+                                        @onchange="e => SetSeverity(option, e.Value?.ToString())">
+                                    @foreach (var level in Severities)
+                                    {
+                                        <option value="@level">@SeverityLabel(level)</option>
+                                    }
+                                </select>
+                            </label>
+
+                            @if (Mode == HostsAddMode.Group && _options.Count > 1)
+                            {
+                                <button type="button" class="btn-ghost btn-sm" title="Remove this option"
+                                        disabled="@Busy" @onclick="() => RemoveOption(option)">
+                                    <i class="bi bi-trash3"></i>
+                                </button>
+                            }
+                        </div>
+
+                        @foreach (var problem in HostsLineValidator.ValidateName(option.Name, Dialect(), "option"))
+                        {
+                            <p class="hosts-field-error"><i class="bi bi-exclamation-circle"></i>@problem</p>
+                        }
+
+                    <HostsEntryRows Entries="option.Entries" Dialect="Dialect()" Disabled="Busy" OnChanged="Recompute" />
+                </div>
+            }
+
+            @if (Mode == HostsAddMode.Group)
+            {
+                <button type="button" class="btn-secondary btn-sm self-start" disabled="@Busy" @onclick="AddOption">
+                    <i class="bi bi-plus-lg me-2"></i>Another option
+                </button>
+            }
+
+            @if (_error is not null)
+            {
+                <div class="ws-notice">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <span>@_error</span>
+                </div>
+            }
+
+            @if (_preview is not null)
+            {
+                <div>
+                    <h3 class="text-sm font-semibold text-dark-text mb-2">
+                        @_preview.Changes.Count line@(_preview.Changes.Count == 1 ? "" : "s") will be added
+                    </h3>
+                    <HostsDiffPreview Changes="_preview.Changes" />
+                </div>
+            }
+        </div>
+
+        <div class="flex items-center justify-end gap-3 mt-6">
+            <button type="button" class="btn-secondary" disabled="@Busy" @onclick="Cancel">Cancel</button>
+            <button type="button" class="btn-primary" disabled="@(Busy || _preview is null)" @onclick="Confirm">
+                @if (Busy)
+                {
+                    <i class="bi bi-hourglass-split me-2"></i><text>Adding…</text>
+                }
+                else
+                {
+                    <i class="bi bi-plus-lg me-2"></i><text>@ConfirmLabel()</text>
+                }
+            </button>
+        </div>
+    }
+</Modal>
+
+@code {
+    [Parameter] public bool IsVisible { get; set; }
+
+    [Parameter] public HostsAddMode Mode { get; set; }
+
+    /// <summary>The group being added to. Ignored when a whole group is being created.</summary>
+    [Parameter] public string? GroupName { get; set; }
+
+    /// <summary>The option to seed the form from, for <see cref="HostsAddMode.Copy"/>.</summary>
+    [Parameter] public string? CopyFromOption { get; set; }
+
+    [Parameter] public bool Busy { get; set; }
+
+    [Parameter] public EventCallback<HostsAddition> OnConfirm { get; set; }
+
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private static readonly HostsSeverityLevel[] Severities = Enum.GetValues<HostsSeverityLevel>();
+
+    private string _groupName = string.Empty;
+    private List<HostsOptionForm> _options = [new()];
+
+    /// <summary>The address applied to every copied row at once — the whole point of copying.</summary>
+    private string _bulkAddress = string.Empty;
+
+    /// <summary>How many names came across, so the dialog can say so rather than just implying it.</summary>
+    private int _sourceNameCount;
+
+    private HostsChangePreview? _preview;
+    private string? _error;
+
+    /// <summary>Rebuilt from scratch each time the dialog opens, so nothing carries over from last time.</summary>
+    private bool _wasVisible;
+
+    protected override void OnParametersSet()
+    {
+        if (IsVisible == _wasVisible) return;
+
+        _wasVisible = IsVisible;
+        if (!IsVisible) return;
+
+        _groupName = string.Empty;
+        _options = [new()];
+        _bulkAddress = string.Empty;
+        _sourceNameCount = 0;
+        _preview = null;
+        _error = null;
+
+        if (Mode == HostsAddMode.Copy) SeedFromSource();
+
+        Recompute();
+    }
+
+    private HostsDialect Dialect() => Hosts.Current?.Map.Dialect ?? HostsDialect.Default;
+
+    /// <summary>
+    /// Fills the form in from the option being copied. The name is deliberately left blank — naming
+    /// it is the one decision a copy genuinely requires, and prefilling something plausible invites
+    /// a file full of "Me (copy)".
+    /// </summary>
+    private void SeedFromSource()
+    {
+        var snapshot = Hosts.Current;
+        if (snapshot is null || GroupName is null || CopyFromOption is null) return;
+
+        var source = snapshot.Map.Find(GroupName, CopyFromOption);
+        if (source is null) return;
+
+        var entries = HostsOptionCopy.EntriesOf(snapshot.Document, source);
+
+        _sourceNameCount = entries.Sum(entry => HostsLineValidator.SplitHostnames(entry.Hostnames).Length);
+        _bulkAddress = HostsOptionCopy.SharedAddress(snapshot.Document, source) ?? string.Empty;
+
+        var form = _options[0];
+        form.Severity = source.Severity;
+        form.Entries.Clear();
+
+        foreach (var entry in entries)
+        {
+            form.Entries.Add(HostsEntryForm.From(0, entry));
+        }
+
+        // The trailing blank row is how another entry gets added, here as anywhere else.
+        form.Entries.Add(new HostsEntryForm());
+    }
+
+    // ── editing ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Rewrites every filled row's address at once. Rows stay individually editable underneath, so
+    /// this is a shortcut rather than a mode.
+    /// </summary>
+    private void SetBulkAddress(string? value)
+    {
+        _bulkAddress = (value ?? string.Empty).Trim();
+
+        foreach (var row in _options[0].Entries.Where(row => !row.IsBlank))
+        {
+            row.Address = _bulkAddress;
+        }
+
+        Recompute();
+    }
+
+    private void SetGroupName(string? value)
+    {
+        _groupName = value ?? string.Empty;
+        Recompute();
+    }
+
+    private void SetOptionName(HostsOptionForm option, string? value)
+    {
+        option.Name = value ?? string.Empty;
+        Recompute();
+    }
+
+    private void SetSeverity(HostsOptionForm option, string? value)
+    {
+        option.Severity = Enum.TryParse<HostsSeverityLevel>(value, out var level) ? level : HostsSeverityLevel.Normal;
+        Recompute();
+    }
+
+    private void AddOption()
+    {
+        _options.Add(new HostsOptionForm());
+        Recompute();
+    }
+
+    private void RemoveOption(HostsOptionForm option)
+    {
+        _options.Remove(option);
+        Recompute();
+    }
+
+    // ── the preview ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Asks the service what this would do. A rejection here is the same rejection the Add button
+    /// would get, so it disables the button and says why rather than waiting to fail on click.
+    /// </summary>
+    private void Recompute()
+    {
+        _preview = null;
+        _error = null;
+
+        var snapshot = Hosts.Current;
+        if (snapshot is null) return;
+
+        var addition = Build();
+        if (addition is null) return;
+
+        try
+        {
+            var preview = Hosts.PreviewAddition(snapshot, addition);
+            if (preview.Changes.Count > 0) _preview = preview;
+        }
+        catch (Exception ex) when (ex is ArgumentException or KeyNotFoundException or InvalidOperationException)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    /// <summary>The addition as it currently stands, or null while it is still too incomplete to judge.</summary>
+    private HostsAddition? Build()
+    {
+        switch (Mode)
+        {
+            case HostsAddMode.Group:
+                if (_groupName.Trim().Length == 0) return null;
+                if (_options.All(option => option.Name.Trim().Length == 0)) return null;
+
+                var named = _options.Where(option => option.Name.Trim().Length > 0).Select(o => o.ToModel()).ToArray();
+                return new HostsAddition.Group(new NewHostsGroup(_groupName.Trim(), named));
+
+            // Option and Copy are the same addition; only the starting state of the form differed.
+            default:
+                if (GroupName is null || _options[0].Name.Trim().Length == 0) return null;
+                return new HostsAddition.Option(GroupName, _options[0].ToModel());
+        }
+    }
+
+    // ── wording ──────────────────────────────────────────────────────────────
+
+    private string Title() => Mode switch
+    {
+        HostsAddMode.Group => "New group",
+        HostsAddMode.Copy => $"Copy {CopyFromOption}",
+        _ => $"New option in {GroupName}",
+    };
+
+    private string ConfirmLabel() => Mode == HostsAddMode.Group ? "Add group" : "Add option";
+
+    /// <summary>
+    /// Shows the word that will actually be written, not the level's own name — the dialect decides
+    /// the spelling, and a developer reading the file later will see that word, not "Danger".
+    /// </summary>
+    private string SeverityLabel(HostsSeverityLevel level)
+    {
+        var flag = Dialect().FlagFor(level);
+        return flag is null ? "none" : $"{flag} ({level.ToString().ToLowerInvariant()})";
+    }
+
+    // ── finishing ────────────────────────────────────────────────────────────
+
+    private async Task Confirm()
+    {
+        var addition = Build();
+        if (addition is not null) await OnConfirm.InvokeAsync(addition);
+    }
+
+    private Task Cancel() => OnCancel.InvokeAsync();
+
+    private Task OnVisibleChanged(bool visible) => visible ? Task.CompletedTask : Cancel();
+}

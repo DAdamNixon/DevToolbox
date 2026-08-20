@@ -1,0 +1,84 @@
+@using DevToolbox.Services.Models.Hosts
+
+@*
+    What the parser noticed about the file. Findings, not errors — the file still works, but a
+    couple of these mean a switch would touch lines that do not belong to the option, and those
+    come with a one-click repair.
+*@
+
+@if (Anomalies.Count > 0)
+{
+    <div class="space-y-2 mb-6">
+        @foreach (var anomaly in Ordered())
+        {
+            <div class="ws-notice @NoticeClass(anomaly)">
+                <i class="bi @IconFor(anomaly)"></i>
+                <span>
+                    <strong>@Headline(anomaly)</strong>
+                    @anomaly.Message
+                    @if (anomaly.Lines.Count > 0)
+                    {
+                        <span class="hosts-anomaly-lines">@anomaly.DescribeLines()</span>
+                    }
+                </span>
+
+                @if (anomaly.SuggestedClearLine is int line && OnInsertClear.HasDelegate)
+                {
+                    <button type="button"
+                            class="btn-secondary btn-sm"
+                            disabled="@Busy"
+                            title="Inserts a scope-closing directive before line @line so this group stops at its own entries."
+                            @onclick="() => OnInsertClear.InvokeAsync(line)">
+                        <i class="bi bi-scissors me-1"></i>Close the group at line @line
+                    </button>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<HostsAnomaly> Anomalies { get; set; } = [];
+
+    /// <summary>Raised with the line a scope-closing directive should go before.</summary>
+    [Parameter] public EventCallback<int> OnInsertClear { get; set; }
+
+    [Parameter] public bool Busy { get; set; }
+
+    /// <summary>Most serious first, so what could cost an entry is read before the housekeeping.</summary>
+    private IEnumerable<HostsAnomaly> Ordered() =>
+        Anomalies.OrderByDescending(a => a.BlocksApply).ThenByDescending(a => a.Severity);
+
+    // Complete literal class strings: Tailwind cannot see a name built at runtime.
+    private static string NoticeClass(HostsAnomaly anomaly) => anomaly.Severity switch
+    {
+        HostsSeverityLevel.Danger => string.Empty,
+        HostsSeverityLevel.Caution => "is-caution",
+        _ => "is-info",
+    };
+
+    private static string IconFor(HostsAnomaly anomaly) => anomaly.Kind switch
+    {
+        HostsAnomalyKind.ForeignContentInOption => "bi-exclamation-octagon-fill",
+        HostsAnomalyKind.UnterminatedTrailingScope => "bi-scissors",
+        HostsAnomalyKind.DuplicateActiveHost => "bi-files",
+        HostsAnomalyKind.TrailingTextAfterHostnames => "bi-braces",
+        HostsAnomalyKind.NonUtf8Encoding or HostsAnomalyKind.MixedNewLines => "bi-file-earmark-binary",
+        _ => "bi-info-circle-fill",
+    };
+
+    private static string Headline(HostsAnomaly anomaly) => anomaly.Kind switch
+    {
+        HostsAnomalyKind.ForeignContentInOption => "Lines that do not look like they belong. ",
+        HostsAnomalyKind.UnterminatedTrailingScope => "The last group is never closed. ",
+        HostsAnomalyKind.DuplicateActiveHost => "A hostname is enabled twice. ",
+        HostsAnomalyKind.TrailingTextAfterHostnames => "Notes in brackets are not comments. ",
+        HostsAnomalyKind.OptionBeforeGroup => "An option with no group. ",
+        HostsAnomalyKind.DuplicateOptionName => "Two options with the same name. ",
+        HostsAnomalyKind.UnknownDirective => "Unrecognised directive. ",
+        HostsAnomalyKind.MalformedEntry => "Not a valid host entry. ",
+        HostsAnomalyKind.MixedNewLines => "Mixed line endings. ",
+        HostsAnomalyKind.NonUtf8Encoding => "Not valid UTF-8. ",
+        _ => string.Empty,
+    };
+}

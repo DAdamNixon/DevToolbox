@@ -1,39 +1,60 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  // .cs is scanned as well as .razor: class names decided in a code-behind are
+  // just as real as ones in markup, and Tailwind only ever emits strings that
+  // match a known utility, so scanning code costs nothing but a little build time.
+  //
+  // Directories are listed individually rather than using ./**/ so the glob never
+  // walks bin/ and obj/, which contain generated copies of every razor file.
   content: [
-    "./Pages/**/*.{razor,html,cshtml}",
-    "./Components/**/*.{razor,html,cshtml}",
-    "./Shared/**/*.{razor,html,cshtml}",
+    "./Pages/**/*.{razor,html,cshtml,cs}",
+    "./Components/**/*.{razor,html,cshtml,cs}",
+    "./Shared/**/*.{razor,html,cshtml,cs}",
+    "./Services/**/*.cs",
+    "./Models/**/*.cs",
     "./wwwroot/**/*.{html,js}",
     "./*.razor"
   ],
   theme: {
     extend: {
+      // Every colour resolves through a CSS variable declared in
+      // wwwroot/css/theme.css, so a theme switch is a variable swap at runtime
+      // and needs no rebuild. `<alpha-value>` is the placeholder Tailwind
+      // substitutes for opacity modifiers — without it `bg-dark-surface/50`
+      // (used by .glass-effect and .search-input) would silently lose its
+      // transparency.
+      //
+      // The names are historical: 'dark-bg' now means "the page background",
+      // which is white under the light theme. Renaming them to semantic names
+      // would touch every razor file and is left for its own pass.
       colors: {
-        'dark-bg': '#1a1a1a',
-        'dark-surface': '#2d2d30',
-        'dark-surface-hover': '#3e3e42',
-        'dark-border': '#3f3f46',
-        'dark-text': '#e4e4e7',
-        'dark-text-muted': '#a1a1aa',
-        'accent-blue': '#3b82f6',
-        'accent-blue-hover': '#2563eb',
-        'accent-purple': '#8b5cf6',
-        'accent-purple-hover': '#7c3aed',
-        'success': '#10b981',
-        'warning': '#f59e0b',
-        'danger': '#ef4444',
+        'dark-bg': 'rgb(var(--c-bg) / <alpha-value>)',
+        'dark-surface': 'rgb(var(--c-surface) / <alpha-value>)',
+        'dark-surface-hover': 'rgb(var(--c-surface-hover) / <alpha-value>)',
+        'dark-border': 'rgb(var(--c-border) / <alpha-value>)',
+        'dark-text': 'rgb(var(--c-text) / <alpha-value>)',
+        'dark-text-muted': 'rgb(var(--c-text-muted) / <alpha-value>)',
+        'accent-blue': 'rgb(var(--c-accent-blue) / <alpha-value>)',
+        'accent-blue-hover': 'rgb(var(--c-accent-blue-hover) / <alpha-value>)',
+        'accent-purple': 'rgb(var(--c-accent-purple) / <alpha-value>)',
+        'accent-purple-hover': 'rgb(var(--c-accent-purple-hover) / <alpha-value>)',
+        'success': 'rgb(var(--c-success) / <alpha-value>)',
+        'warning': 'rgb(var(--c-warning) / <alpha-value>)',
+        'danger': 'rgb(var(--c-danger) / <alpha-value>)',
       },
       fontFamily: {
         'sans': ['Inter', 'system-ui', 'sans-serif'],
         'mono': ['JetBrains Mono', 'Monaco', 'Consolas', 'monospace'],
       },
+      // Glows follow the accent so they stay in step with the theme. The black
+      // drop shadows are scaled by --shadow-strength because the same opacity
+      // that reads as depth over #1a1a1a reads as grime over white.
       boxShadow: {
-        'glow-sm': '0 0 5px rgba(59, 130, 246, 0.3)',
-        'glow-md': '0 0 15px rgba(59, 130, 246, 0.4)',
-        'glow-lg': '0 0 30px rgba(59, 130, 246, 0.5)',
-        'dark-lg': '0 10px 25px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2)',
-        'dark-xl': '0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.3)',
+        'glow-sm': '0 0 5px rgb(var(--c-accent-blue) / 0.3)',
+        'glow-md': '0 0 15px rgb(var(--c-accent-blue) / 0.4)',
+        'glow-lg': '0 0 30px rgb(var(--c-accent-blue) / 0.5)',
+        'dark-lg': '0 10px 25px -3px rgb(0 0 0 / calc(0.3 * var(--shadow-strength))), 0 4px 6px -2px rgb(0 0 0 / calc(0.2 * var(--shadow-strength)))',
+        'dark-xl': '0 20px 25px -5px rgb(0 0 0 / calc(0.4 * var(--shadow-strength))), 0 10px 10px -5px rgb(0 0 0 / calc(0.3 * var(--shadow-strength)))',
       },
       animation: {
         'fade-in': 'fadeIn 0.3s ease-in-out',
@@ -55,8 +76,8 @@ module.exports = {
           '100%': { transform: 'scale(1)', opacity: '1' },
         },
         glowPulse: {
-          '0%, 100%': { boxShadow: '0 0 5px rgba(59, 130, 246, 0.3)' },
-          '50%': { boxShadow: '0 0 20px rgba(59, 130, 246, 0.6)' },
+          '0%, 100%': { boxShadow: '0 0 5px rgb(var(--c-accent-blue) / 0.3)' },
+          '50%': { boxShadow: '0 0 20px rgb(var(--c-accent-blue) / 0.6)' },
         },
       },
     },

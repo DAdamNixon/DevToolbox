@@ -1,0 +1,1495 @@
+﻿/*
+ * Dashboard (Projects tab) layout.
+ *
+ * Written as plain CSS on purpose: the Tailwind build is a separate npm step, so
+ * anything defined here works without regenerating output.css.
+ *
+ * Colours come from the variables in theme.css and must keep coming from there.
+ * This file used to hold 43 hardcoded hex values copied by hand out of
+ * tailwind.config.js, which is exactly why the app could not have a light theme:
+ * every one of them had to be found and changed. Writing a literal colour here
+ * again re-breaks that, so use rgb(var(--c-…)) even when you know the hex.
+ *
+ * The overflow bug this file fixes: flex and grid children default to
+ * `min-width: auto`, which means they refuse to shrink below the width of their
+ * longest unbreakable string. A full Windows path is exactly that, so every card
+ * holding one was forced wider than its container and the text ran off the card.
+ * The rule is min-width: 0 on every ancestor between the card and the path.
+ */
+
+/*
+ * Utilities the committed output.css does not contain. Tailwind only emits classes
+ * it saw at build time, and these were never used before, so the markup that asks
+ * for them would silently get nothing. Values match Tailwind's, so regenerating
+ * output.css later is a no-op rather than a visual change.
+ * (btn-sm predates this file — it lived in app.css, which index.html never loads.)
+ */
+.btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+}
+
+.mb-3 { margin-bottom: 0.75rem; }
+.mt-3 { margin-top: 0.75rem; }
+
+/* ── Group card ──────────────────────────────────────────────────────────── */
+
+.ws-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.ws-group-title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.ws-group-title > .ws-icon {
+    flex: 0 0 auto;
+}
+
+.ws-group-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.ws-group-meta {
+    flex: 0 0 auto;
+    font-size: 0.8125rem;
+    font-weight: 400;
+    color: rgb(var(--c-text-muted));
+    white-space: nowrap;
+}
+
+.ws-badge {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.1rem 0.45rem;
+    border: 1px solid rgb(var(--c-border));
+    border-radius: 9999px;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: rgb(var(--c-text-muted));
+    white-space: nowrap;
+}
+
+/* ── Workspace grid ──────────────────────────────────────────────────────── */
+
+.ws-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+    gap: 1rem;
+    margin-top: 1.5rem;
+    min-width: 0;
+    /* Without this, grid's default stretch makes every collapsed card as tall as the
+       one expanded card in its row — a row of empty boxes with a title floating at
+       the top of each. */
+    align-items: start;
+}
+
+/* Grid items must be allowed to shrink; otherwise one long path widens the column. */
+.ws-grid > * {
+    min-width: 0;
+}
+
+.workspace-card,
+.modern-card {
+    min-width: 0;
+}
+
+.ws-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.ws-card-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.ws-card-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.ws-icon {
+    flex: 0 0 auto;
+    line-height: 1;
+}
+
+/* Actions used to fade in only on hover, which made them undiscoverable and let the
+   header reflow on hover. They stay put now and only brighten. */
+.ws-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex: 0 0 auto;
+    opacity: 0.45;
+    transition: opacity 0.15s ease-out;
+}
+
+.workspace-card:hover .ws-actions,
+.glow-card:hover .ws-actions,
+.ws-actions:focus-within {
+    opacity: 1;
+}
+
+/* ── Location row ────────────────────────────────────────────────────────── */
+
+.ws-locations {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    min-width: 0;
+}
+
+.ws-loc {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    min-width: 0;
+    padding: 0.5rem 0.625rem;
+    border: 1px solid rgb(var(--c-border));
+    border-radius: 0.5rem;
+    background-color: rgb(var(--c-bg) / 0.55);
+    transition: border-color 0.15s ease-out, background-color 0.15s ease-out;
+}
+
+.ws-loc:hover {
+    border-color: rgb(var(--c-accent-blue) / 0.55);
+    background-color: rgb(var(--c-surface-hover) / 0.45);
+}
+
+.ws-loc-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.ws-loc-name {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: rgb(var(--c-text));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ws-loc-desc {
+    font-size: 0.75rem;
+    color: rgb(var(--c-text-muted));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ws-loc-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex: 0 0 auto;
+}
+
+/*
+ * Middle-truncated path: "C:\tfs\elliottelectric_com\demo\wwwr…Account.Demo.slnf".
+ * The head shrinks and ellipsises, the tail is pinned, so the file name — the part
+ * that actually distinguishes two locations — is always readable.
+ */
+.ws-path {
+    display: flex;
+    min-width: 0;
+    font-family: 'JetBrains Mono', Monaco, Consolas, monospace;
+    font-size: 0.6875rem;
+    line-height: 1.4;
+    color: rgb(var(--c-text-muted));
+    cursor: default;
+}
+
+.ws-path-head {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex: 0 1 auto;
+}
+
+.ws-path-tail {
+    white-space: nowrap;
+    flex: 0 0 auto;
+    color: rgb(var(--c-text));
+}
+
+.ws-loc.is-missing {
+    border-color: rgb(var(--c-danger) / 0.45);
+}
+
+.ws-loc.is-missing .ws-loc-name {
+    color: rgb(var(--c-danger-text));
+}
+
+/* ── Dropdowns ───────────────────────────────────────────────────────────── */
+
+/* What a card menu hangs off. Marked data-menu-anchor in the markup so the click-outside listener in
+   js/menu.js can tell "inside a menu" from "anywhere else"; deliberately carries no z-index, because
+   the cards raise stacking contexts on hover and focus and nothing here can reliably outrank them. */
+.ws-menu-anchor {
+    position: relative;
+    display: inline-block;
+    text-align: left;
+}
+
+/* The card as a whole is clickable and says so with a pointer, but not everything inside it is:
+   the expanded lists and the menu panel stop the click rather than expanding the card, and a cursor
+   claiming otherwise is simply wrong. The items inside the menu set their own pointer back. */
+.ws-locations,
+.ws-grid,
+.ws-menu {
+    cursor: default;
+}
+
+/* Menus were clipping inside the card and running off the right edge of narrow cards. */
+.ws-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 0.25rem);
+    z-index: 30;
+    min-width: 13rem;
+    max-width: min(20rem, 80vw);
+    max-height: 22rem;
+    overflow-y: auto;
+    background-color: rgb(var(--c-surface));
+    border: 1px solid rgb(var(--c-border));
+    border-radius: 0.75rem;
+    box-shadow: 0 10px 25px -3px rgb(0 0 0 / calc(0.5 * var(--shadow-strength))), 0 4px 6px -2px rgb(0 0 0 / calc(0.35 * var(--shadow-strength)));
+    padding: 0.375rem;
+}
+
+.ws-menu .dropdown-item {
+    width: 100%;
+    text-align: left;
+    border-radius: 0.5rem;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.875rem;
+    min-width: 0;
+}
+
+.ws-menu .dropdown-item > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ws-menu-heading {
+    padding: 0.4rem 0.6rem 0.2rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgb(var(--c-text-muted));
+}
+
+.ws-menu-sep {
+    height: 1px;
+    margin: 0.375rem 0.25rem;
+    background-color: rgb(var(--c-border));
+}
+
+/* ── Header toolbar ──────────────────────────────────────────────────────── */
+
+.ws-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.ws-scan-note {
+    font-size: 0.75rem;
+    color: rgb(var(--c-text-muted));
+}
+
+.ws-scan-note.is-error {
+    color: rgb(var(--c-danger-text));
+}
+
+/* Failed opens used to vanish into Console.WriteLine; this is where they land now. */
+.ws-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.625rem 0.75rem;
+    border: 1px solid rgb(var(--c-danger) / 0.45);
+    border-radius: 0.5rem;
+    background-color: rgb(var(--c-danger) / 0.08);
+    color: rgb(var(--c-danger-text));
+    font-size: 0.8125rem;
+    line-height: 1.4;
+}
+
+.ws-notice > span {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.ws-notice > i {
+    flex: 0 0 auto;
+    margin-top: 0.1rem;
+}
+
+.ws-notice > button {
+    flex: 0 0 auto;
+}
+
+/* ── Icon picker ─────────────────────────────────────────────────────────── */
+
+.icon-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(2.75rem, 1fr));
+    gap: 0.375rem;
+    max-height: 15rem;
+    overflow-y: auto;
+    padding: 0.25rem;
+    border: 1px solid rgb(var(--c-border));
+    border-radius: 0.5rem;
+    background-color: rgb(var(--c-bg) / 0.5);
+}
+
+.icon-choice {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1;
+    border: 1px solid transparent;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: rgb(var(--c-text));
+    font-size: 1.1rem;
+    cursor: pointer;
+    transition: background-color 0.12s ease-out, border-color 0.12s ease-out;
+}
+
+.icon-choice:hover {
+    background-color: rgb(var(--c-surface-hover));
+}
+
+.icon-choice.is-selected {
+    border-color: rgb(var(--c-accent-blue));
+    background-color: rgb(var(--c-accent-blue) / 0.15);
+}
+
+.color-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+}
+
+.color-choice {
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    cursor: pointer;
+    padding: 0;
+}
+
+.color-choice.is-selected {
+    border-color: rgb(var(--c-text));
+}
+
+.icon-preview {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid rgb(var(--c-border));
+    border-radius: 0.5rem;
+    background-color: rgb(var(--c-bg) / 0.5);
+}
+
+.icon-preview i {
+    font-size: 1.5rem;
+}
+
+/* ── Form controls (Bootstrap's stylesheet is not loaded; these stand in) ─── */
+
+.ws-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    margin-bottom: 0.875rem;
+    min-width: 0;
+}
+
+.ws-label {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: rgb(var(--c-text));
+}
+
+.ws-hint {
+    font-size: 0.75rem;
+    color: rgb(var(--c-text-muted));
+}
+
+.ws-error {
+    font-size: 0.8125rem;
+    color: rgb(var(--c-danger-text));
+}
+
+.ws-input {
+    width: 100%;
+    background-color: rgb(var(--c-bg));
+    border: 1px solid rgb(var(--c-border));
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.625rem;
+    color: rgb(var(--c-text));
+    font-size: 0.875rem;
+}
+
+.ws-input:focus {
+    outline: none;
+    border-color: rgb(var(--c-accent-blue));
+    box-shadow: 0 0 0 2px rgb(var(--c-accent-blue) / 0.3);
+}
+
+.ws-check {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    color: rgb(var(--c-text));
+}
+
+.ws-dialog-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1.25rem;
+}
+
+.ws-empty {
+    padding: 2rem 1rem;
+    text-align: center;
+    color: rgb(var(--c-text-muted));
+    font-size: 0.875rem;
+}
+
+/* ── Host Changer ────────────────────────────────────────────────────────── */
+
+/*
+   Plain CSS rather than Tailwind utilities, for the same reason the rest of this
+   file is: output.css only contains classes Tailwind literally saw at build time,
+   so a new utility silently does nothing until someone reruns the npm step.
+*/
+
+.hosts-path {
+    display: inline-block;
+    margin-left: 0.5rem;
+    padding: 0.0625rem 0.375rem;
+    border-radius: 0.25rem;
+    background-color: rgb(var(--c-bg) / 0.6);
+    border: 1px solid rgb(var(--c-border));
+    font-family: ui-monospace, Consolas, "Courier New", monospace;
+    font-size: 0.75rem;
+    color: rgb(var(--c-text-muted));
+}
+
+.hosts-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    flex-wrap: wrap;
+    padding: 0.625rem 0.875rem;
+    border: 1px solid rgb(var(--c-border));
+    border-radius: 0.5rem;
+    background-color: rgb(var(--c-surface) / 0.6);
+}
+
+.status-dot {
+    flex: 0 0 auto;
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 9999px;
+}
+
+.hosts-active-label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* ── options ─────────────────────────────────────────────────────────────── */
+
+.hosts-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.hosts-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    min-width: 0;
+    padding: 0.4375rem 0.625rem;
+    border: 1px solid transparent;
+    border-radius: 0.375rem;
+    background: none;
+    color: rgb(var(--c-text));
+    font-size: 0.875rem;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.hosts-option:hover:not(:disabled) {
+    background-color: rgb(var(--c-surface-hover));
+}
+
+.hosts-option:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.hosts-option.is-on {
+    border-color: rgb(var(--c-accent-blue) / 0.5);
+    background-color: rgb(var(--c-accent-blue) / 0.1);
+}
+
+.hosts-option-mark {
+    flex: 0 0 auto;
+    color: rgb(var(--c-text-muted));
+}
+
+.hosts-option.is-on .hosts-option-mark {
+    color: rgb(var(--c-accent-blue));
+}
+
+.hosts-option-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.hosts-option-count {
+    flex: 0 0 auto;
+    font-family: ui-monospace, Consolas, "Courier New", monospace;
+    font-size: 0.6875rem;
+}
+
+.hosts-option-off {
+    margin-top: 0.25rem;
+    border-top: 1px solid rgb(var(--c-border));
+    border-radius: 0 0 0.375rem 0.375rem;
+    color: rgb(var(--c-text-muted));
+}
+
+.hosts-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex: 0 0 auto;
+    padding: 0.0625rem 0.375rem;
+    border-radius: 9999px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.hosts-card-footnote {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.375rem;
+    margin-top: 0.75rem;
+    padding-top: 0.625rem;
+    border-top: 1px solid rgb(var(--c-border));
+    font-size: 0.75rem;
+    color: rgb(var(--c-text-muted));
+}
+
+/* ── notices ─────────────────────────────────────────────────────────────── */
+
+/*
+   ws-notice is red by default. These two are the same shape in other colours, so a
+   finding that is merely worth knowing does not read as a failure.
+*/
+.ws-notice.is-caution {
+    border-color: rgb(var(--c-warning) / 0.45);
+    background-color: rgb(var(--c-warning) / 0.08);
+    color: rgb(var(--c-warning));
+}
+
+.ws-notice.is-info {
+    border-color: rgb(var(--c-border));
+    background-color: rgb(var(--c-surface) / 0.7);
+    color: rgb(var(--c-text));
+}
+
+.hosts-anomaly-lines {
+    display: inline-block;
+    margin-left: 0.375rem;
+    font-family: ui-monospace, Consolas, "Courier New", monospace;
+    font-size: 0.75rem;
+    opacity: 0.85;
+}
+
+/* ── diff ────────────────────────────────────────────────────────────────── */
+
+.hosts-diff {
+    max-height: 22rem;
+    overflow: auto;
+    padding: 0.5rem;
+    border: 1px solid rgb(var(--c-border));
+    border-radius: 0.5rem;
+    background-color: rgb(var(--c-bg) / 0.6);
+    font-family: ui-monospace, Consolas, "Courier New", monospace;
+    font-size: 0.75rem;
+    line-height: 1.5;
+}
+
+.hosts-diff-row {
+    display: grid;
+    grid-template-columns: 3rem 1fr;
+    column-gap: 0.5rem;
+}
+
+.hosts-diff-line {
+    text-align: right;
+    color: rgb(var(--c-text-muted));
+    user-select: none;
+}
+
+.hosts-diff-sign {
+    display: inline-block;
+    width: 1rem;
+    user-select: none;
+}
+
+/* Long entries scroll inside the diff rather than widening the dialog. */
+.hosts-diff-removed,
+.hosts-diff-added {
+    min-width: 0;
+    white-space: pre;
+    border-radius: 0.1875rem;
+    padding-right: 0.25rem;
+}
+
+.hosts-diff-removed {
+    background-color: rgb(var(--c-danger) / 0.12);
+    color: rgb(var(--c-danger-text));
+}
+
+.hosts-diff-added {
+    background-color: rgb(var(--c-success) / 0.14);
+    color: rgb(var(--c-success));
+}
+
+.hosts-sweep-toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.5rem 0.625rem;
+    border: 1px solid rgb(var(--c-danger) / 0.35);
+    border-radius: 0.375rem;
+    font-size: 0.8125rem;
+    color: rgb(var(--c-text));
+    cursor: pointer;
+}
+
+.hosts-sample {
+    padding: 0.75rem;
+    border: 1px solid rgb(var(--c-border));
+    border-radius: 0.5rem;
+    background-color: rgb(var(--c-bg) / 0.6);
+    font-family: ui-monospace, Consolas, "Courier New", monospace;
+    font-size: 0.75rem;
+    line-height: 1.6;
+    color: rgb(var(--c-text-muted));
+    overflow-x: auto;
+}
+
+/* ── group icon ──────────────────────────────────────────────────────────── */
+
+/* The glyph doubles as the button that changes it, so it needs no chrome of its
+   own until you are over it. Colour comes from the severity class the card puts
+   alongside this one. */
+.hosts-group-icon {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 0.375rem;
+    background: none;
+    font-size: 1.125rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.hosts-group-icon:hover {
+    border-color: rgb(var(--c-border));
+    background-color: rgb(var(--c-surface-hover));
+}
+
+/* ── option rows ─────────────────────────────────────────────────────────── */
+
+.hosts-option-row {
+    display: flex;
+    align-items: center;
+    gap: 0.125rem;
+}
+
+.hosts-option-row > .hosts-option {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+}
+
+/* Kept out of the way until the row is under the pointer: every row would
+   otherwise carry a pair of buttons that have nothing to do with switching. */
+.hosts-option-act {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
+    border: none;
+    border-radius: 0.25rem;
+    background: none;
+    color: rgb(var(--c-text-muted));
+    font-size: 0.75rem;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.12s ease, background-color 0.12s ease, color 0.12s ease;
+}
+
+.hosts-option-row:hover .hosts-option-act:not(.is-placeholder):not(:disabled),
+.hosts-option-act:focus-visible {
+    opacity: 1;
+}
+
+.hosts-option-act:hover:not(:disabled) {
+    background-color: rgb(var(--c-surface-hover));
+    color: rgb(var(--c-text));
+}
+
+.hosts-option-act.is-placeholder {
+    cursor: default;
+}
+
+.hosts-card-actions {
+    display: flex;
+    justify-content: flex-start;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid rgb(var(--c-border));
+}
+
+/* ── modal panels ────────────────────────────────────────────────────────────
+   Every modal is bounded by the viewport and scrolls its own body. Without
+   this a tall dialog just grew past the screen — and because the container
+   centres its panel, it overflowed off both ends at once, which is how Scan
+   Folders ended up with an unreachable "Save and rescan" button. These rules
+   used to live on .is-wide alone; they belong on every panel, because any
+   dialog can outgrow a short window. */
+.modal-content {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100dvh - 2rem);
+    overflow: hidden;
+}
+
+/* Header stays put, body takes the remaining height and scrolls. min-height:0
+   because a flex child otherwise refuses to shrink below its content, which
+   would defeat the whole arrangement. */
+.modal-content > div:first-child {
+    flex: 0 0 auto;
+}
+
+.modal-content > div:last-child {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+/* A question fits in a column; a form with a diff under it does not. */
+.modal-content.is-wide {
+    max-width: 56rem;
+}
+
+.hosts-add-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.hosts-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.hosts-field-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: rgb(var(--c-text-muted));
+}
+
+.hosts-field-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.375rem;
+    font-size: 0.75rem;
+    color: rgb(var(--c-danger));
+}
+
+.hosts-field-context {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.5rem 0.625rem;
+    border: 1px solid rgb(var(--c-border));
+    border-radius: 0.375rem;
+    background-color: rgb(var(--c-bg) / 0.6);
+    font-size: 0.8125rem;
+    color: rgb(var(--c-text-muted));
+}
+
+.hosts-option-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    border: 1px solid rgb(var(--c-border));
+    border-radius: 0.5rem;
+}
+
+.hosts-option-block-head {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.75rem;
+}
+
+/* ── entry rows ──────────────────────────────────────────────────────────── */
+
+.hosts-entry-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+}
+
+.hosts-entry-head,
+.hosts-entry-row {
+    display: grid;
+    grid-template-columns: 12rem 1fr 12rem 2rem;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.hosts-entry-head {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: rgb(var(--c-text-muted));
+}
+
+.hosts-entry-row .input-modern {
+    width: 100%;
+    font-family: ui-monospace, Consolas, "Courier New", monospace;
+    font-size: 0.8125rem;
+}
+
+/* ── icon picker ─────────────────────────────────────────────────────────── */
+
+.hosts-icon-auto {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    width: 100%;
+    margin-bottom: 0.75rem;
+    padding: 0.625rem;
+    border: 1px solid rgb(var(--c-border));
+    border-radius: 0.5rem;
+    background: none;
+    color: rgb(var(--c-text));
+    font-size: 0.8125rem;
+    text-align: left;
+    cursor: pointer;
+}
+
+.hosts-icon-auto > span {
+    display: flex;
+    flex-direction: column;
+}
+
+.hosts-icon-auto:hover,
+.hosts-icon-choice:hover {
+    background-color: rgb(var(--c-surface-hover));
+}
+
+.hosts-icon-auto.is-on,
+.hosts-icon-choice.is-on {
+    border-color: rgb(var(--c-accent-blue) / 0.6);
+    background-color: rgb(var(--c-accent-blue) / 0.12);
+    color: rgb(var(--c-accent-blue));
+}
+
+.hosts-icon-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
+    gap: 0.375rem;
+    max-height: 22rem;
+    overflow-y: auto;
+}
+
+.hosts-icon-choice {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.625rem 0.25rem;
+    border: 1px solid transparent;
+    border-radius: 0.5rem;
+    background: none;
+    color: rgb(var(--c-text-muted));
+    font-size: 0.6875rem;
+    cursor: pointer;
+    transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.hosts-icon-choice > i {
+    font-size: 1.25rem;
+}
+
+/* ── editing ─────────────────────────────────────────────────────────────── */
+
+/* Sits beside a group's name. Faint until the card is under the pointer, so a
+   row of cards reads as names rather than as a row of buttons. */
+.hosts-inline-edit {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
+    border: none;
+    border-radius: 0.25rem;
+    background: none;
+    color: rgb(var(--c-text-muted));
+    font-size: 0.75rem;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.12s ease, background-color 0.12s ease, color 0.12s ease;
+}
+
+.modern-card:hover .hosts-inline-edit,
+.hosts-inline-edit:focus-visible {
+    opacity: 1;
+}
+
+.hosts-inline-edit:hover:not(:disabled) {
+    background-color: rgb(var(--c-surface-hover));
+    color: rgb(var(--c-text));
+}
+
+/* Lines shown for context in the option editor but never offered for editing. */
+.hosts-readonly-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    max-height: 12rem;
+    overflow-y: auto;
+    padding: 0.5rem;
+    border: 1px solid rgb(var(--c-border));
+    border-radius: 0.375rem;
+    background-color: rgb(var(--c-bg) / 0.6);
+}
+
+.hosts-readonly-line {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    min-width: 0;
+    font-size: 0.75rem;
+}
+
+.hosts-readonly-line > code {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: ui-monospace, Consolas, "Courier New", monospace;
+    color: rgb(var(--c-text-muted));
+}
+
+.hosts-readonly-why {
+    flex: 0 0 auto;
+    font-style: italic;
+    color: rgb(var(--c-text-muted));
+    opacity: 0.8;
+}
+
+/* ── Log Viewer ──────────────────────────────────────────────────────────────
+   Plain CSS on purpose, like the rest of this file: the Tailwind build is
+   optional, and the Log Viewer's density work leans on calc() and :nth-child
+   that utilities cover poorly anyway. */
+
+/* The collapsed source card: one line saying what would be searched. */
+.log-source-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.log-source-summary-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: rgb(var(--c-text-muted));
+    font-size: 0.875rem;
+}
+
+.log-source-summary-text strong {
+    color: rgb(var(--c-text));
+    font-weight: 500;
+}
+
+/* Chevron button that expands/collapses the source card. */
+.log-collapse-btn {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.5rem;
+    color: rgb(var(--c-text-muted));
+    transition: background-color 0.15s ease-out, color 0.15s ease-out;
+}
+
+.log-collapse-btn:hover {
+    background-color: rgb(var(--c-surface-hover));
+    color: rgb(var(--c-text));
+}
+
+/* Compact filter bar. Sits between the source card and the results, always
+   visible: the keyword groups are the thing you touch while reading results. */
+.log-card-compact {
+    padding: 0.625rem 1rem;
+}
+
+/* ── results table, dense ─────────────────────────────────────────────────── */
+
+/* Fills the window rather than a hardcoded 600px. The subtracted constant is
+   header + toolbars + pagination; when the source card is expanded the page
+   scrolls, which is fine — density matters most once it is collapsed. */
+.log-results-scroll {
+    overflow: auto;
+    min-height: 20rem;
+    max-height: calc(100dvh - 28rem);
+}
+
+.log-table-dense {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+}
+
+.log-table-dense th {
+    font-size: 0.6875rem;
+}
+
+.log-table-dense td {
+    padding: 0.1875rem 0.5rem;
+    font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+    font-size: 0.75rem;
+    line-height: 1.45;
+    color: rgb(var(--c-text));
+    border-right: 1px solid rgb(var(--c-border) / 0.5);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: top;
+}
+
+/* Zebra striping carries the eye across a wide row better than per-cell
+   borders do at this density. */
+.log-table-dense tbody tr:nth-child(even) {
+    background-color: rgb(var(--c-surface) / 0.35);
+}
+
+.log-table-dense tbody tr:hover {
+    background-color: rgb(var(--c-surface-hover) / 0.6);
+}
+
+/* The expander cell: a fixed-width affordance, not a data column. */
+.log-expander {
+    width: 1.75rem;
+    text-align: center;
+    cursor: pointer;
+    color: rgb(var(--c-text-muted));
+    user-select: none;
+}
+
+.log-expander:hover {
+    color: rgb(var(--c-accent-blue));
+}
+
+/* An expanded row trades the one-line ellipsis for full wrapped content. */
+tr.log-row-expanded td {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+}
+
+/* ── plain text mode ─────────────────────────────────────────────────────── */
+
+.log-textview {
+    font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    background-color: rgb(var(--c-bg));
+}
+
+.log-textline {
+    display: block;
+    white-space: pre;
+    padding: 0 0.75rem;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.log-textline:nth-child(even) {
+    background-color: rgb(var(--c-surface) / 0.35);
+}
+
+.log-textline:hover {
+    background-color: rgb(var(--c-surface-hover) / 0.6);
+}
+
+/* Wrapped variant, toggled from the toolbar: trades one-line-per-row scanning
+   for reading long messages without horizontal scrolling. */
+.log-textview-wrap .log-textline {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+/* ── toolbar & pagination ────────────────────────────────────────────────── */
+
+.log-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.75rem 1rem;
+    margin-bottom: 1rem;
+}
+
+.log-toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.log-toolbar-label {
+    font-size: 0.875rem;
+    color: rgb(var(--c-text-muted));
+}
+
+/* Same look as the Split by segmented control, shared instead of repeated. */
+.log-segmented {
+    display: flex;
+    border: 1px solid rgb(var(--c-border));
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+.log-segmented button {
+    padding: 0.25rem 0.75rem;
+    font-size: 0.875rem;
+    background-color: rgb(var(--c-surface));
+    color: rgb(var(--c-text-muted));
+    transition: background-color 0.15s ease-out, color 0.15s ease-out;
+}
+
+.log-segmented button:hover {
+    background-color: rgb(var(--c-surface-hover));
+}
+
+.log-segmented button.active {
+    background-color: rgb(var(--c-accent-blue));
+    color: #fff;
+}
+
+.log-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.log-page-range {
+    font-size: 0.875rem;
+    color: rgb(var(--c-text-muted));
+}
+
+.log-page-range strong {
+    color: rgb(var(--c-text));
+    font-weight: 600;
+}
+/* ── nav bar at narrow widths ────────────────────────────────────────────────
+   Items never wrap (a two-line "Log Viewer" once bulged past the h-12 row),
+   and below the breakpoint the strip gives way to a hamburger drawer — a
+   scrollable strip with a hidden scrollbar left Settings undiscoverable.
+   Loaded after output.css, so these override the Tailwind-built .nav-item. */
+.nav-item {
+    white-space: nowrap;
+}
+
+.nav-links {
+    min-width: 0;
+}
+
+.nav-burger {
+    display: none;
+    width: 2.25rem;
+    height: 2.25rem;
+    margin-left: 0.5rem;
+    border-radius: 0.5rem;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    color: rgb(var(--c-text-muted));
+    transition: background-color 0.15s ease-out, color 0.15s ease-out;
+}
+
+.nav-burger:hover {
+    background-color: rgb(var(--c-surface-hover));
+    color: rgb(var(--c-text));
+}
+
+/* 1240px, and the number is measured rather than picked: the six tabs need
+   904px, the brand 116px, the health pill up to ~110px at its longest label
+   ("Not Monitoring"), plus 64px of gutter — about 1195px before anything is
+   squeezed. Below that the strip loses items to truncation, so it hands over
+   to the drawer while every tab is still whole. Re-measure this if a tab is
+   added or renamed. */
+@media (max-width: 1240px) {
+    .nav-links {
+        display: none;
+    }
+
+    .nav-burger {
+        display: inline-flex;
+    }
+}
+
+/* Solid, not the nav's translucent blur: it overlays page content. */
+.nav-drawer {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.5rem 1rem 0.75rem;
+    background-color: rgb(var(--c-surface));
+    border-bottom: 1px solid rgb(var(--c-border));
+    box-shadow: 0 10px 25px -3px rgb(0 0 0 / calc(var(--shadow-strength) * 0.3));
+}
+
+/* A drawer left open across a widen-out must not linger over the page. */
+@media (min-width: 1241px) {
+    .nav-drawer {
+        display: none;
+    }
+}
+
+/* ── PowerShell tab: script editor ───────────────────────────────────────────
+   The editor pane holds a label and a textarea that fills what is left. Plain
+   CSS because Tailwind's min-h-0 is not in the committed output.css, and a
+   flex child without it refuses to shrink below its content — which is the
+   other half of why this section used to overflow. */
+.ps-editor-pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.ps-editor-pane > textarea {
+    flex: 1 1 auto;
+    min-height: 300px;
+    /* Long unbroken lines scroll the editor, never the card. */
+    overflow: auto;
+}
+
+/* ── Scan Folders dialog ─────────────────────────────────────────────────────
+   Eight stacked fields per source made a card taller than most screens, and
+   with several sources configured the dialog had no chance of fitting. Pairing
+   them into two columns roughly halves that; the long ones still span. */
+.ws-source-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 1rem;
+}
+
+.ws-source-grid > .ws-span {
+    grid-column: 1 / -1;
+}
+
+/* One column again when the panel is too narrow to pair anything usefully. */
+@media (max-width: 700px) {
+    .ws-source-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+/* Add and Save ride at the bottom of the scrolling body rather than after the
+   last source, so neither walks off the screen as sources are added. The
+   negative margins let the bar span the body's padding and sit flush. */
+.ws-sources-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin: 1rem -1.5rem -1.5rem;
+    padding: 0.875rem 1.5rem;
+    background-color: rgb(var(--c-surface));
+    border-top: 1px solid rgb(var(--c-border));
+}
+
+/* A bare checkbox in a grid row of labelled fields would centre against the
+   label; this drops it to sit level with the inputs next to it. */
+.ws-source-grid > .ws-check-inline {
+    align-self: start;
+    margin-top: 1.65rem;
+    margin-bottom: 0.875rem;
+}
+
+/* ── app shell ───────────────────────────────────────────────────────────────
+   The window is the shell: nav and status bar are pinned, and the region
+   between them is the only thing that scrolls. Plain CSS because Tailwind's
+   min-h-0 is absent from the committed output.css, and without it the main
+   region refuses to shrink below its content and pushes the footer off the
+   bottom of the window. */
+.app-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    overflow: hidden;
+}
+
+.app-shell > header,
+.app-shell > footer {
+    flex: 0 0 auto;
+}
+
+.app-shell > main {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+/* ── status bar ──────────────────────────────────────────────────────────── */
+
+.app-statusbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.375rem;
+    height: 1.25rem;
+    padding: 0 0.75rem;
+    background-color: rgb(var(--c-surface));
+    font-size: 0.6875rem;
+    line-height: 1;
+}
+
+.app-statusbar-label {
+    color: rgb(var(--c-text-muted));
+}
+
+.app-statusbar-value {
+    color: rgb(var(--c-text));
+    font-weight: 500;
+}
+
+.app-statusbar-channel {
+    padding: 0.05rem 0.3rem;
+    border-radius: 0.25rem;
+    background-color: rgb(var(--c-accent-purple) / 0.2);
+    color: rgb(var(--c-accent-purple));
+    font-size: 0.625rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+
+/* ── hover: lift only what you can actually click ────────────────────────────
+   .modern-card is the generic panel — the Log Viewer's results, Service
+   Pulse's stat tiles, the PowerShell editor, Settings sections. All of them
+   inherited a hover that lifted the card 4px and deepened its shadow, which
+   is a promise of a click that never comes. The border highlight stays; it
+   reads as "you are here" rather than "press me".
+
+   Loaded after output.css, so these win over the Tailwind-built rules. The
+   shadow is restated rather than unset because Tailwind's hover rule swaps
+   --tw-shadow, and the box-shadow on the base class re-evaluates it. */
+.modern-card:hover {
+    transform: none;
+    --tw-shadow: 0 10px 25px -3px rgb(0 0 0 / calc(var(--shadow-strength) * 0.3)),
+                 0 4px 6px -2px rgb(0 0 0 / calc(var(--shadow-strength) * 0.2));
+}
+
+/* The exception, and the reason this keys off cursor-pointer rather than the
+   page: the dashed "add workspace" tile is a modern-card you really do click,
+   so it keeps the full lift. Every other modern-card in the app is static. */
+.modern-card.cursor-pointer:hover {
+    transform: translateY(-0.25rem);
+    --tw-shadow: 0 20px 25px -5px rgb(0 0 0 / calc(var(--shadow-strength) * 0.4)),
+                 0 10px 10px -5px rgb(0 0 0 / calc(var(--shadow-strength) * 0.3));
+}

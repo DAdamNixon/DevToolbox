@@ -1,7 +1,7 @@
-using System.Management.Automation;
+﻿using System.Management.Automation;
+using System.Management.Automation.Language;
 using System.Management.Automation.Runspaces;
 using System.Text;
-using System.Reflection;
 using DevToolbox.Services.Models;
 using DevToolbox.Services.Services;
 
@@ -10,20 +10,19 @@ namespace DevToolbox.Services.Services;
 public class PowerShellService
 {
     private readonly string _scriptsDirectory;
+
+    /// <summary>
+    /// UTF-8 <em>with</em> a byte order mark. Windows PowerShell reads a .ps1 that has no BOM as ANSI,
+    /// so an em dash or a smart quote in a comment becomes three characters, one of which can close a
+    /// string and break parsing. Saving without one has already cost this project an afternoon.
+    /// </summary>
+    private static readonly UTF8Encoding ScriptEncoding = new(encoderShouldEmitUTF8Identifier: true);
     
     public PowerShellService()
     {
-        // Get the base directory of the application
-        string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
-        
-        // Determine the location of scripts - defaults to Scripts folder in the same directory as the assembly
-        _scriptsDirectory = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? baseDirectory, "Scripts");
-        
-        // Create the directory if it doesn't exist
-        if (!Directory.Exists(_scriptsDirectory))
-        {
-            Directory.CreateDirectory(_scriptsDirectory);
-        }
+        // Under %LOCALAPPDATA%, not beside the executable: this service saves and deletes, and an
+        // installed package's own folder is read-only. See ScriptLibrary.
+        _scriptsDirectory = ScriptLibrary.EnsureUserDirectory();
     }
     
     /// <summary>
@@ -72,6 +71,23 @@ public class PowerShellService
     }
     
     /// <summary>
+    /// The parameters a script insists on being given. Exposed so the editor can say which values a
+    /// script needs before you press Run, rather than only afterwards.
+    /// </summary>
+    public static IReadOnlyList<string> RequiredParameters(string? scriptText)
+    {
+        if (string.IsNullOrWhiteSpace(scriptText)) return Array.Empty<string>();
+
+        var ast = Parser.ParseInput(scriptText, out _, out var errors);
+        if (errors.Length > 0 || ast.ParamBlock is null) return Array.Empty<string>();
+
+        return ast.ParamBlock.Parameters
+            .Where(IsMandatory)
+            .Select(p => p.Name.VariablePath.UserPath)
+            .ToList();
+    }
+
+    /// <summary>
     /// Executes a PowerShell script with parameters and returns the results as a string.
     /// </summary>
     /// <param name="scriptText">The PowerShell script to execute</param>
@@ -79,42 +95,112 @@ public class PowerShellService
     /// <returns>The script output and any errors</returns>
     public async Task<(string Output, string Error)> ExecuteScriptWithParametersAsync(string scriptText, Dictionary<string, object>? parameters = null)
     {
+        // Parsed before it is run, for two reasons: a syntax error becomes a message here instead of a
+        // silent nothing, and the parameters a script declares are the only ones that can be bound to
+        // it - passing one it does not declare is an error rather than a no-op.
+        var ast = Parser.ParseInput(scriptText, out _, out var parseErrors);
+        if (parseErrors.Length > 0)
+        {
+            return (string.Empty, string.Join(Environment.NewLine, parseErrors.Select(e => e.ToString())));
+        }
+
+        var declared = ast.ParamBlock?.Parameters ?? (IReadOnlyList<ParameterAst>)Array.Empty<ParameterAst>();
+        var supplied = parameters ?? new Dictionary<string, object>();
+
+        // A mandatory parameter with nothing bound to it makes PowerShell prompt, and there is no
+        // console here to prompt on: the run fails with a binding error that reads like an internal
+        // fault. Every script bundled with DevToolbox declares ProjectPath as mandatory, so this was
+        // the whole of "the Run button does nothing". Naming the missing value is the difference
+        // between "this is broken" and "this needs a path".
+        var missing = declared
+            .Where(IsMandatory)
+            .Select(p => p.Name.VariablePath.UserPath)
+            .Where(name => !supplied.ContainsKey(name))
+            .ToList();
+
+        if (missing.Count > 0)
+        {
+            return (string.Empty,
+                $"This script needs a value for {string.Join(", ", missing)}. " +
+                "Enter one in the path box and run it again.");
+        }
+
         var outputBuilder = new StringBuilder();
         var errorBuilder = new StringBuilder();
-        
+
+        // An explicit runspace, so SessionStateProxy exists before the first invoke.
+        using var runspace = RunspaceFactory.CreateRunspace();
+        runspace.Open();
+
         using var ps = PowerShell.Create();
-        
-        // Add parameters if provided
-        if (parameters != null && parameters.Count > 0)
+        ps.Runspace = runspace;
+        ps.AddScript(scriptText);
+
+        var declaredNames = declared
+            .Select(p => p.Name.VariablePath.UserPath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var parameter in supplied)
         {
-            foreach (var param in parameters)
+            if (declaredNames.Contains(parameter.Key))
             {
-                // Define variables in PowerShell before running the script
-                ps.AddScript($"${param.Key} = '{param.Value}'");
+                ps.AddParameter(parameter.Key, parameter.Value);
+            }
+            else
+            {
+                // Undeclared, so it cannot be bound - but a script may still read $ProjectPath
+                // directly. Setting a variable is what the old code did for *every* parameter, via a
+                // second AddScript, which is why nothing with a param block ever received one: two
+                // AddScript calls build a pipeline, not a preamble.
+                runspace.SessionStateProxy.SetVariable(parameter.Key, parameter.Value);
             }
         }
-        
-        // Add the script to the PowerShell object
-        ps.AddScript(scriptText);
-        
-        // Configure output handling
-        ps.Streams.Error.DataAdded += (object sender, DataAddedEventArgs e) =>
+
+        ps.Streams.Error.DataAdded += (sender, e) =>
+            errorBuilder.AppendLine(((PSDataCollection<ErrorRecord>)sender!)[e.Index].ToString());
+
+        ps.Streams.Warning.DataAdded += (sender, e) =>
+            outputBuilder.AppendLine("WARNING: " + ((PSDataCollection<WarningRecord>)sender!)[e.Index].Message);
+
+        // Write-Host goes to the information stream, not the pipeline. Every bundled script reports
+        // its progress with Write-Host, so without this one a script could do its entire job and
+        // still show an empty output pane.
+        ps.Streams.Information.DataAdded += (sender, e) =>
         {
-            var error = ((PSDataCollection<ErrorRecord>)sender)[e.Index];
-            errorBuilder.AppendLine(error.ToString());
+            var message = ((PSDataCollection<InformationRecord>)sender!)[e.Index].MessageData?.ToString();
+            if (!string.IsNullOrEmpty(message)) outputBuilder.AppendLine(message);
         };
-        
-        // Execute the script
-        var results = await ps.InvokeAsync();
-        
-        // Process the results
-        foreach (var item in results)
+
+        try
         {
-            outputBuilder.AppendLine(item.ToString());
+            foreach (var item in await ps.InvokeAsync())
+            {
+                outputBuilder.AppendLine(item?.ToString());
+            }
         }
-        
+        catch (RuntimeException ex)
+        {
+            // A terminating error never reaches the error stream, so without this the run ends with
+            // empty output and no explanation at all.
+            errorBuilder.AppendLine(ex.Message);
+        }
+
         return (outputBuilder.ToString(), errorBuilder.ToString());
     }
+
+    /// <summary>
+    /// Whether a declared parameter has to be supplied: <c>[Parameter(Mandatory=$true)]</c>, or the
+    /// <c>[Parameter(Mandatory)]</c> shorthand.
+    /// </summary>
+    private static bool IsMandatory(ParameterAst parameter) =>
+        parameter.Attributes
+            .OfType<AttributeAst>()
+            .Where(a => a.TypeName.GetReflectionAttributeType() == typeof(ParameterAttribute))
+            .SelectMany(a => a.NamedArguments)
+            .Any(argument =>
+                argument.ArgumentName.Equals("Mandatory", StringComparison.OrdinalIgnoreCase) &&
+                (argument.ExpressionOmitted ||
+                 argument.Argument is VariableExpressionAst { VariablePath.UserPath: "true" }));
     
     /// <summary>
     /// Executes a PowerShell script and returns the results as a string.
@@ -206,7 +292,7 @@ public class PowerShellService
             }
             
             string scriptPath = Path.Combine(_scriptsDirectory, $"{scriptName}.ps1");
-            await File.WriteAllTextAsync(scriptPath, scriptContent);
+            await File.WriteAllTextAsync(scriptPath, scriptContent, ScriptEncoding);
             
             result.Success = true;
             result.ScriptPath = scriptPath;

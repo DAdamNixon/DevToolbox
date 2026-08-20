@@ -1,4 +1,11 @@
-@page "/settings"
+﻿@page "/settings"
+@using DevToolbox.Services.Interfaces
+@using DevToolbox.Services.Models
+@using DevToolbox.Services.Services
+@using Microsoft.JSInterop
+@inject IUiSettingsService UiSettings
+@inject IYamlStorageService YamlStorage
+@inject IJSRuntime JS
 
 <!-- Page Header -->
 <div class="mb-8">
@@ -20,12 +27,16 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div class="space-y-2">
                     <label class="block text-sm font-medium text-dark-text">Theme</label>
-                    <select class="input-modern w-full" @bind="selectedTheme">
-                        <option value="system">System Default</option>
-                        <option value="dark">Dark Theme</option>
-                        <option value="light">Light Theme</option>
+                    <select class="input-modern w-full" value="@selectedTheme" @onchange="OnThemeChangedAsync">
+                        <option value="@ThemeOptions.System">System Default</option>
+                        <option value="@ThemeOptions.Dark">Dark Theme</option>
+                        <option value="@ThemeOptions.Light">Light Theme</option>
                     </select>
                     <p class="text-xs text-dark-text-muted">Choose your preferred color scheme</p>
+                    @if (themeError is not null)
+                    {
+                        <p class="text-xs text-danger">@themeError</p>
+                    }
                 </div>
                 
                 <div class="space-y-2">
@@ -81,10 +92,112 @@
         </div>
     </div>
 
+    <!-- Bundled configuration -->
+    @* An upgrade never overwrites a config file you already have, which is the right default and
+       also means there was no way to undo an experiment. This is the way back. *@
+    <div class="modern-card">
+        <div class="border-b border-dark-border pb-4 mb-6">
+            <h2 class="text-2xl font-semibold text-dark-text flex items-center space-x-2">
+                <i class="bi bi-arrow-counterclockwise text-accent-purple"></i>
+                <span>Bundled Configuration</span>
+            </h2>
+            <p class="text-sm text-dark-text-muted mt-2">
+                Configuration shipped with this install. Yours is never replaced automatically —
+                restoring is always deliberate, and always keeps a dated backup of what it replaced.
+            </p>
+        </div>
+
+        @if (bundled.Count == 0)
+        {
+            <p class="text-sm text-dark-text-muted">
+                This build has no bundled configuration, so there is nothing to restore from. That is
+                normal when running from source rather than from an installed package.
+            </p>
+        }
+        else
+        {
+            <div class="space-y-1">
+                @foreach (var file in bundled)
+                {
+                    <div class="flex items-center justify-between gap-4 py-2 px-3 rounded-lg hover:bg-dark-surface">
+                        <span class="font-mono text-sm text-dark-text truncate" title="@file.Name">@file.Name</span>
+
+                        <div class="flex items-center gap-3 flex-shrink-0">
+                            <span class="text-xs @StateClass(file.State)">@StateLabel(file.State)</span>
+                            <button class="btn-secondary btn-sm"
+                                    disabled="@(file.State == ConfigRestore.State.Unchanged || isRestoring)"
+                                    @onclick="() => RestoreOneAsync(file.Name)">
+                                Restore
+                            </button>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <div class="flex items-center justify-between mt-6 pt-4 border-t border-dark-border">
+                <span class="text-xs text-dark-text-muted">
+                    @RestorableCount of @bundled.Count differ from the shipped copy.
+                </span>
+                <button class="btn-ghost flex items-center space-x-2"
+                        disabled="@(RestorableCount == 0 || isRestoring)"
+                        @onclick="RestoreAllAsync">
+                    <i class="bi bi-arrow-counterclockwise"></i>
+                    <span>Restore all @RestorableCount</span>
+                </button>
+            </div>
+
+            @if (restoreMessage is not null)
+            {
+                <p class="text-xs mt-3 @(restoreFailed ? "text-danger" : "text-dark-text-muted")">@restoreMessage</p>
+            }
+        }
+    </div>
+
+    <!-- About -->
+    @* Here rather than in a dialog because the first thing a bug report needs is the version, and
+       the second is where the config it is complaining about actually lives. *@
+    <div class="modern-card">
+        <div class="border-b border-dark-border pb-4 mb-6">
+            <h2 class="text-2xl font-semibold text-dark-text flex items-center space-x-2">
+                <i class="bi bi-info-circle text-accent-blue"></i>
+                <span>About</span>
+            </h2>
+        </div>
+
+        <div class="space-y-4 text-sm">
+            <div class="flex items-center justify-between">
+                <span class="text-dark-text-muted">Version</span>
+                <span class="text-dark-text font-medium">
+                    @AppVersion.Display
+                    @if (AppVersion.ChannelLabel is string channel)
+                    {
+                        <span class="ml-2 px-1.5 py-0.5 text-xs rounded bg-accent-purple/20 text-accent-purple uppercase tracking-wide">@channel</span>
+                    }
+                </span>
+            </div>
+            <div class="flex items-center justify-between">
+                <span class="text-dark-text-muted">Package version</span>
+                <span class="text-dark-text font-mono">@AppVersion.Package</span>
+            </div>
+            <div class="flex items-start justify-between gap-4">
+                <span class="text-dark-text-muted whitespace-nowrap">Configuration</span>
+                <span class="text-dark-text font-mono text-xs break-all text-right">@ConfigDirectory</span>
+            </div>
+        </div>
+
+        @if (AppVersion.ReleaseChannel is not AppVersion.Channel.Release)
+        {
+            <p class="text-xs text-dark-text-muted mt-6 pt-4 border-t border-dark-border">
+                This is a pre-release build. Configuration files in the folder above are yours — an
+                upgrade never overwrites one that already exists.
+            </p>
+        }
+    </div>
+
     <!-- Action Buttons -->
     <div class="flex justify-between items-center p-6 bg-dark-surface rounded-lg border border-dark-border">
-        <div class="text-sm text-dark-text-muted">
-            Changes are saved automatically
+        <div class="text-sm @(statusIsError ? "text-danger" : "text-dark-text-muted")">
+            @(statusMessage ?? "Changes are saved automatically")
         </div>
         <div class="flex space-x-3">
             <button class="btn-ghost flex items-center space-x-2" @onclick="ResetToDefaults">
@@ -100,20 +213,155 @@
 </div>
 
 @code {
-    private string selectedTheme = "system";
-    
-    protected override async Task OnInitializedAsync()
+    private string ConfigDirectory => YamlStorage.StorageDirectory;
+
+    private List<ConfigRestore.Comparison> bundled = new();
+    private bool isRestoring;
+    private string? restoreMessage;
+    private bool restoreFailed;
+
+    private int RestorableCount => bundled.Count(f => f.State != ConfigRestore.State.Unchanged);
+
+    private static string StateLabel(ConfigRestore.State state) => state switch
     {
-        await base.OnInitializedAsync();
+        ConfigRestore.State.Unchanged => "matches shipped",
+        ConfigRestore.State.Missing => "not on this machine",
+        _ => "changed",
+    };
+
+    private static string StateClass(ConfigRestore.State state) => state switch
+    {
+        ConfigRestore.State.Unchanged => "text-dark-text-muted",
+        ConfigRestore.State.Missing => "text-accent-blue",
+        _ => "text-accent-purple",
+    };
+
+    private void RefreshBundled() =>
+        bundled = ConfigRestore.Compare(ConfigDefaults.SourceDirectory, ConfigDirectory).ToList();
+
+    private async Task RestoreOneAsync(string name)
+    {
+        isRestoring = true;
+        try
+        {
+            // One timestamp per action, so restoring several files groups their backups together.
+            var backup = ConfigRestore.Restore(name, ConfigDefaults.SourceDirectory, ConfigDirectory, DateTime.Now);
+            SetRestoreResult(
+                backup is null
+                    ? $"Restored {name}. There was nothing to back up."
+                    : $"Restored {name}. Your copy was kept as {Path.GetFileName(backup)}.",
+                failed: false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            SetRestoreResult($"Could not restore {name}: {ex.Message}", failed: true);
+        }
+        finally
+        {
+            isRestoring = false;
+        }
+
+        await Task.CompletedTask;
     }
 
-    private async Task SaveSettings()
+    private async Task RestoreAllAsync()
     {
+        isRestoring = true;
+        try
+        {
+            var stamp = DateTime.Now;
+            var restored = 0;
+            var backups = 0;
+
+            foreach (var file in bundled.Where(f => f.State != ConfigRestore.State.Unchanged).ToList())
+            {
+                var backup = ConfigRestore.Restore(file.Name, ConfigDefaults.SourceDirectory, ConfigDirectory, stamp);
+                restored++;
+                if (backup is not null) backups++;
+            }
+
+            SetRestoreResult(
+                $"Restored {restored} file(s); {backups} replaced copy(ies) kept as .bak-{stamp:yyyy-MM-dd-HHmmss}.",
+                failed: false);
+        }
+        finally
+        {
+            isRestoring = false;
+        }
+
         await Task.CompletedTask;
     }
-    
+
+    // Restored files are read on next use, not now — the pages that own them hold their own loaded
+    // state, and saying so is more honest than pretending a live reload happened.
+    private void SetRestoreResult(string message, bool failed)
+    {
+        restoreMessage = failed ? message : message + " Reopen the affected tab to see the change.";
+        restoreFailed = failed;
+        RefreshBundled();
+    }
+
+    private string selectedTheme = ThemeOptions.System;
+    private string? themeError;
+    private string? statusMessage;
+    private bool statusIsError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        RefreshBundled();
+
+        var settings = await UiSettings.GetAsync();
+        selectedTheme = settings.Theme;
+
+        // A malformed ui_settings.yaml leaves the dropdown showing defaults that
+        // are not what is in the file. Say so, rather than letting the next save
+        // quietly overwrite whatever the user was editing.
+        themeError = UiSettings.LoadError is null
+            ? null
+            : $"ui_settings.yaml could not be read, so defaults are shown: {UiSettings.LoadError}";
+    }
+
+    // Applied and persisted on selection rather than on Save — the theme is the
+    // one setting here where seeing it is the only way to judge it.
+    private async Task OnThemeChangedAsync(ChangeEventArgs e)
+    {
+        selectedTheme = ThemeOptions.Normalize(e.Value?.ToString());
+        await ApplyAndSaveThemeAsync();
+    }
+
+    private async Task SaveSettings() => await ApplyAndSaveThemeAsync();
+
     private async Task ResetToDefaults()
     {
-        await Task.CompletedTask;
+        selectedTheme = new UiSettings().Theme;
+        await ApplyAndSaveThemeAsync();
     }
-} 
+
+    private async Task ApplyAndSaveThemeAsync()
+    {
+        // Paint first so the change is instant even if the write is slow, then
+        // persist. If the write fails the screen and the file disagree, which is
+        // exactly what the error message needs to say.
+        await JS.InvokeVoidAsync("devtoolboxTheme.apply", selectedTheme);
+
+        try
+        {
+            var settings = await UiSettings.GetAsync();
+            settings.Theme = selectedTheme;
+            await UiSettings.SaveAsync(settings);
+
+            themeError = null;
+            SetStatus("Settings saved", isError: false);
+        }
+        catch (InvalidOperationException ex)
+        {
+            SetStatus($"Theme applied but not saved: {ex.Message}", isError: true);
+        }
+    }
+
+    private void SetStatus(string message, bool isError)
+    {
+        statusMessage = message;
+        statusIsError = isError;
+    }
+}

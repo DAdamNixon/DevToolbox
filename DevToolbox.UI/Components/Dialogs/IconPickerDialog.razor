@@ -1,0 +1,97 @@
+@using DevToolbox.Services.Interfaces
+@using DevToolbox.Services.Models
+@inject IIconService IconService
+
+<div class="icon-preview mb-4">
+    <i class="bi @(string.IsNullOrWhiteSpace(selectedIcon) ? "bi-question-square" : selectedIcon)"
+       style="color: @(selectedColor ?? "#e4e4e7")"></i>
+    <div>
+        <div class="ws-label">@Name</div>
+        <div class="ws-hint">@(string.IsNullOrWhiteSpace(selectedIcon) ? "No icon chosen" : selectedIcon)</div>
+    </div>
+</div>
+
+<div class="ws-field">
+    <label class="ws-label">Icon</label>
+    <div class="icon-grid">
+        @foreach (var icon in IconService.Catalog)
+        {
+            <button type="button"
+                    class="icon-choice @(icon == selectedIcon ? "is-selected" : "")"
+                    title="@icon"
+                    @onclick="() => selectedIcon = icon">
+                <i class="bi @icon"></i>
+            </button>
+        }
+    </div>
+    <span class="ws-hint">Any Bootstrap Icons name works — type one below if it is not in the list.</span>
+    <input type="text" class="ws-input" placeholder="bi-cart3" @bind="selectedIcon" @bind:event="oninput" />
+</div>
+
+<div class="ws-field">
+    <label class="ws-label">Colour</label>
+    <div class="color-row">
+        @foreach (var color in IconService.Palette)
+        {
+            <button type="button"
+                    class="color-choice @(string.Equals(color, selectedColor, StringComparison.OrdinalIgnoreCase) ? "is-selected" : "")"
+                    style="background-color: @color"
+                    title="@color"
+                    @onclick="() => selectedColor = color"></button>
+        }
+    </div>
+    <input type="text" class="ws-input" placeholder="#3b82f6" @bind="selectedColor" @bind:event="oninput" />
+</div>
+
+<div class="ws-dialog-actions">
+    <button type="button" class="btn-ghost" @onclick="ResetToDefault">Reset to default</button>
+    <button type="button" class="btn-primary" @onclick="Save">
+        <i class="bi bi-check-lg"></i> Save
+    </button>
+</div>
+
+@code {
+    [Parameter] public IconScope Scope { get; set; } = IconScope.Workspace;
+    [Parameter] public string Name { get; set; } = string.Empty;
+
+    /// <summary>Icon currently shown for the card, used to seed the picker.</summary>
+    [Parameter] public IconStyle? Current { get; set; }
+
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    private string? selectedIcon;
+    private string? selectedColor;
+
+    protected override void OnParametersSet()
+    {
+        selectedIcon ??= Current?.Icon;
+        selectedColor ??= Current?.Color;
+    }
+
+    private async Task Save()
+    {
+        await IconService.SetOverrideAsync(Scope, Name, new IconStyle
+        {
+            Icon = selectedIcon,
+            Color = selectedColor
+        });
+
+        await OnSaved.InvokeAsync();
+    }
+
+    private async Task ResetToDefault()
+    {
+        // Clearing the override lets the name rules and defaults take over again.
+        await IconService.SetOverrideAsync(Scope, Name, null);
+        selectedIcon = null;
+        selectedColor = null;
+        await OnSaved.InvokeAsync();
+    }
+
+    /// <summary>Called by the host so a reopened dialog re-seeds from the current card.</summary>
+    public void ResetForm()
+    {
+        selectedIcon = null;
+        selectedColor = null;
+    }
+}

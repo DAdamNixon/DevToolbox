@@ -1,0 +1,6 @@
+##value:Stray
+127.0.0.1        orphan.example.com
+##key:Real
+##value:On
+127.0.0.1        real.example.com
+##clear

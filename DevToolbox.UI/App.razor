@@ -1,7 +1,9 @@
 @using DevToolbox.UI.Components
+@using DevToolbox.Services.Interfaces
 @using DevToolbox.Services.Models
 @using Microsoft.JSInterop
 @inject IJSRuntime JS
+@inject IUiSettingsService UiSettings
 
 <Router AppAssembly="@typeof(App).Assembly">
     <Found Context="routeData">
@@ -48,3 +50,17 @@
         -ms-user-select: text !important;
     }
 </style>
+
+@code {
+    // The boot script in index.html has already painted from its localStorage
+    // cache by now. This reconciles that guess against ui_settings.yaml, which is
+    // the actual setting — it matters when the file was hand-edited, or when the
+    // cache was cleared and boot fell back to "system".
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        var settings = await UiSettings.GetAsync();
+        await JS.InvokeVoidAsync("devtoolboxTheme.apply", settings.Theme);
+    }
+}

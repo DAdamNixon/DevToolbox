@@ -1,4 +1,4 @@
-@page "/powershell"
+﻿@page "/powershell"
 @namespace DevToolbox.UI.Pages
 
 <!-- Page Header -->
@@ -107,21 +107,38 @@
                         </div>
                     }
                     <div class="flex-1 flex flex-col space-y-4">
-                        <div class="flex-1">
+                        @* The pane is a flex column and the textarea flexes inside it.
+                           It used to be h-full, which is 100% of the pane on top of the
+                           label above it — so the editor overflowed its own section by
+                           the label's height and ran over the Path field below. *@
+                        <div class="flex-1 ps-editor-pane">
                             <label class="block text-sm font-medium text-dark-text mb-2">Script Editor</label>
-                            <textarea @bind="scriptText" 
-                                rows="15" 
-                                class="input-modern w-full h-full font-mono text-sm resize-none"
-                                style="min-height: 300px;"
-                                placeholder="Enter your PowerShell script here...">
-                            </textarea>
+                            @* No whitespace before the closing tag: a textarea's content is
+                               its initial value, so a newline and indentation here is a
+                               blank first line in every script. *@
+                            <textarea @bind="scriptText"
+                                rows="15"
+                                class="input-modern w-full font-mono text-sm resize-none"
+                                placeholder="Enter your PowerShell script here..."></textarea>
                         </div>
 
                         <div>
-                            <label class="block text-sm font-medium text-dark-text mb-2">Test Path Parameters</label>
-                            <input type="text" @bind="projectPath" 
-                                   class="input-modern w-full" 
-                                   placeholder="Enter a path to use when testing the script" />
+                            <label class="block text-sm font-medium text-dark-text mb-2">
+                                Path to run against
+                                @if (RequiredParameters.Any())
+                                {
+                                    <span class="font-normal text-dark-text-muted">
+                                        &mdash; this script requires @string.Join(", ", RequiredParameters)
+                                    </span>
+                                }
+                            </label>
+                            <input type="text" @bind="projectPath"
+                                   class="input-modern w-full"
+                                   placeholder="C:\TFS\Tools\DevToolbox" />
+                            <p class="text-xs text-dark-text-muted mt-1">
+                                Passed to the script as <span class="font-mono">-ProjectPath</span>, the same way the
+                                Run Script menu on a workspace location passes it.
+                            </p>
                         </div>
 
                         @if (!string.IsNullOrEmpty(error))
@@ -155,13 +172,12 @@
                                 <i class="bi bi-save"></i>
                                 <span>Save</span>
                             </button>
+                            @* One Run button, not two. "Run Script" and "Run With Parameters" differed only in
+                               whether the path was passed, and the one that did not pass it could never work:
+                               every bundled script declares ProjectPath as mandatory. *@
                             <button class="btn-secondary flex items-center space-x-2" @onclick="ExecuteScript" disabled="@isExecuting">
                                 <i class="bi bi-play"></i>
                                 <span>@(isExecuting ? "Running..." : "Run Script")</span>
-                            </button>
-                            <button class="btn-accent flex items-center space-x-2" @onclick="ExecuteScriptWithParams" disabled="@isExecuting">
-                                <i class="bi bi-play-fill"></i>
-                                <span>Run With Parameters</span>
                             </button>
                             <button class="btn-danger flex items-center space-x-2" @onclick="DeleteScript" disabled="@isExecuting">
                                 <i class="bi bi-trash"></i>

@@ -13,6 +13,8 @@ public class YamlStorageService : IYamlStorageService
     private readonly ISerializer _yamlSerializer;
     private readonly IDeserializer _yamlDeserializer;
 
+    public string StorageDirectory => _storageDirectory;
+
     public YamlStorageService()
     {
         // Use AppData/Local directory for configuration storage
@@ -32,10 +34,18 @@ public class YamlStorageService : IYamlStorageService
 
         _yamlDeserializer = new DeserializerBuilder()
             .WithNamingConvention(CamelCaseNamingConvention.Instance)
+            // These files are meant to be hand-edited; an unknown key should be ignored
+            // rather than throw and take the whole page down.
+            .IgnoreUnmatchedProperties()
             .Build();
 
         // Migrate any existing files from the old location
         MigrateFromOldLocation();
+
+        // Then anything an installer bundled that this machine does not have yet. After the
+        // migration so a file the user already had always wins over a shipped default, and here
+        // rather than at startup so it cannot be skipped by whichever page reads config first.
+        ConfigDefaults.SeedInto(_storageDirectory);
     }
 
     private void MigrateFromOldLocation()
@@ -79,16 +89,46 @@ public class YamlStorageService : IYamlStorageService
     {
         try
         {
-            // Convert to YAML directly
             var yaml = _yamlSerializer.Serialize(data);
-
-            // Save to file
             var filePath = Path.Combine(_storageDirectory, $"{fileName}.yaml");
-            await File.WriteAllTextAsync(filePath, yaml);
+
+            KeepPreviousVersion(filePath);
+
+            // Write to a temp file and swap, so an interrupted write cannot leave a
+            // half-serialized config that the next load rejects as malformed.
+            var tempPath = filePath + ".tmp";
+            await File.WriteAllTextAsync(tempPath, yaml);
+            File.Move(tempPath, filePath, overwrite: true);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or YamlDotNet.Core.YamlException)
         {
             throw new InvalidOperationException($"Failed to save YAML file: {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// Copies the current file to <c>&lt;name&gt;.yaml.bak</c> before it is replaced.
+    /// <para>
+    /// These files are meant to be hand-edited and commented, and serialization
+    /// keeps neither comments nor key order — so any save from the UI rewrites a
+    /// carefully annotated config into bare generated YAML. The backup is what
+    /// makes that recoverable instead of final. One generation is kept
+    /// deliberately: the point is to survive the save you did not mean to make,
+    /// not to be a version history.
+    /// </para>
+    /// </summary>
+    private static void KeepPreviousVersion(string filePath)
+    {
+        try
+        {
+            if (File.Exists(filePath)) File.Copy(filePath, filePath + ".bak", overwrite: true);
+        }
+        catch (IOException)
+        {
+            // A backup that cannot be written must not block the save itself.
+        }
+        catch (UnauthorizedAccessException)
+        {
         }
     }
 
@@ -97,27 +137,21 @@ public class YamlStorageService : IYamlStorageService
         try
         {
             var filePath = Path.Combine(_storageDirectory, $"{fileName}.yaml");
-            Console.WriteLine($"Attempting to load YAML from: {filePath}");
-            
+
             if (!File.Exists(filePath))
             {
-                Console.WriteLine("File does not exist");
                 return default;
             }
 
-            // Read YAML file
             var yaml = await File.ReadAllTextAsync(filePath);
-            Console.WriteLine($"Read YAML content: {yaml}");
 
-            // Deserialize directly to target type
-            var result = _yamlDeserializer.Deserialize<T>(yaml);
-            Console.WriteLine($"Successfully deserialized to type {typeof(T).Name}");
-            return result;
+            // Deliberately not logging the content: workspaceGroups.yaml is ~190 KB and
+            // was being dumped to the console on every load, several times per page.
+            return _yamlDeserializer.Deserialize<T>(yaml);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error loading YAML: {ex.Message}");
-            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+            Console.WriteLine($"Error loading {fileName}.yaml: {ex.Message}");
             throw new InvalidOperationException($"Failed to load YAML file: {ex.Message}", ex);
         }
     }

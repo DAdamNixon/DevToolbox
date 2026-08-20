@@ -1,0 +1,174 @@
+@using DevToolbox.Services.Interfaces
+@using DevToolbox.Services.Models.Hosts
+@using DevToolbox.Services.Services.Hosts
+@using DevToolbox.UI.Components.Hosts
+
+@inject IHostsFileService Hosts
+
+@*
+    Renaming or removing a whole group.
+
+    Deleting one is the largest single thing this tab can do, so it asks twice and shows the diff
+    before either step — including the fact that it leaves quarantined lines behind, which is
+    deliberate: those lines are inside the group's scope by accident, not by intent.
+*@
+
+<Modal Title="@($"Edit {GroupName}")" SizeClass="is-wide" IsVisible="IsVisible" IsVisibleChanged="OnVisibleChanged">
+    @if (IsVisible && _group is not null)
+    {
+        <div class="hosts-add-form">
+            <label class="hosts-field">
+                <span class="hosts-field-label">Group name</span>
+                <input class="input-modern" disabled="@Busy" value="@_name"
+                       @onchange="e => SetName(e.Value?.ToString())" />
+            </label>
+
+            @foreach (var problem in HostsLineValidator.ValidateName(_name, Dialect(), "group"))
+            {
+                <p class="hosts-field-error"><i class="bi bi-exclamation-circle"></i>@problem</p>
+            }
+
+            <p class="hosts-field-context">
+                <i class="bi bi-info-circle"></i>
+                <span>
+                    @_group.Options.Count option@(_group.Options.Count == 1 ? "" : "s"), currently @_group.Describe().
+                    Renaming rewrites only the marker line; the entries are untouched.
+                </span>
+            </p>
+
+            @if (_error is not null)
+            {
+                <div class="ws-notice">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <span>@_error</span>
+                </div>
+            }
+
+            @if (_preview is not null)
+            {
+                <div>
+                    <h3 class="text-sm font-semibold text-dark-text mb-2">
+                        @_preview.Changes.Count line@(_preview.Changes.Count == 1 ? "" : "s") will change
+                    </h3>
+                    <HostsDiffPreview Changes="_preview.Changes" />
+                </div>
+            }
+        </div>
+
+        <div class="flex items-center justify-between gap-3 mt-6">
+            @if (_confirmingDelete)
+            {
+                <div class="flex items-center gap-2">
+                    <span class="text-sm text-dark-text">
+                        Delete @GroupName and all @_group.Options.Count of its options?
+                    </span>
+                    <button type="button" class="btn-danger btn-sm" disabled="@Busy" @onclick="DeleteGroup">Delete</button>
+                    <button type="button" class="btn-ghost btn-sm" disabled="@Busy" @onclick="CancelDelete">Keep it</button>
+                </div>
+            }
+            else
+            {
+                <button type="button" class="btn-ghost btn-sm" disabled="@Busy" @onclick="BeginDelete">
+                    <i class="bi bi-trash3 me-2"></i>Delete group
+                </button>
+            }
+
+            <div class="flex items-center gap-3">
+                <button type="button" class="btn-secondary" disabled="@Busy" @onclick="Cancel">Cancel</button>
+                <button type="button" class="btn-primary" disabled="@(Busy || _preview is null || _confirmingDelete)"
+                        @onclick="Rename">
+                    @if (Busy)
+                    {
+                        <i class="bi bi-hourglass-split me-2"></i><text>Saving…</text>
+                    }
+                    else
+                    {
+                        <i class="bi bi-check-lg me-2"></i><text>Rename</text>
+                    }
+                </button>
+            </div>
+        </div>
+    }
+</Modal>
+
+@code {
+    [Parameter] public bool IsVisible { get; set; }
+
+    [Parameter] public string GroupName { get; set; } = string.Empty;
+
+    [Parameter] public bool Busy { get; set; }
+
+    [Parameter] public EventCallback<HostsEdit> OnConfirm { get; set; }
+
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private HostsGroup? _group;
+    private string _name = string.Empty;
+
+    private HostsChangePreview? _preview;
+    private string? _error;
+    private bool _confirmingDelete;
+    private bool _wasVisible;
+
+    protected override void OnParametersSet()
+    {
+        if (IsVisible == _wasVisible) return;
+
+        _wasVisible = IsVisible;
+        if (!IsVisible) return;
+
+        _group = Hosts.Current?.Map.Find(GroupName);
+        _name = _group?.Name ?? GroupName;
+        _preview = null;
+        _error = null;
+        _confirmingDelete = false;
+    }
+
+    private HostsDialect Dialect() => Hosts.Current?.Map.Dialect ?? HostsDialect.Default;
+
+    private void SetName(string? value)
+    {
+        _name = value ?? string.Empty;
+        Preview(new HostsEdit.RenameGroup(GroupName, _name.Trim()));
+    }
+
+    private void BeginDelete()
+    {
+        _confirmingDelete = true;
+        Preview(new HostsEdit.DeleteGroup(GroupName));
+    }
+
+    private void CancelDelete()
+    {
+        _confirmingDelete = false;
+        Preview(new HostsEdit.RenameGroup(GroupName, _name.Trim()));
+    }
+
+    /// <summary>Shows what the pending action would do, using the same code that would do it.</summary>
+    private void Preview(HostsEdit edit)
+    {
+        _preview = null;
+        _error = null;
+
+        var snapshot = Hosts.Current;
+        if (snapshot is null) return;
+
+        try
+        {
+            var preview = Hosts.PreviewEdit(snapshot, edit);
+            if (preview.Changes.Count > 0) _preview = preview;
+        }
+        catch (Exception ex) when (ex is ArgumentException or KeyNotFoundException or InvalidOperationException)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private Task Rename() => OnConfirm.InvokeAsync(new HostsEdit.RenameGroup(GroupName, _name.Trim()));
+
+    private Task DeleteGroup() => OnConfirm.InvokeAsync(new HostsEdit.DeleteGroup(GroupName));
+
+    private Task Cancel() => OnCancel.InvokeAsync();
+
+    private Task OnVisibleChanged(bool visible) => visible ? Task.CompletedTask : Cancel();
+}
