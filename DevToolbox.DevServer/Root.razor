@@ -1,0 +1,59 @@
+@using Microsoft.AspNetCore.Components.Web
+
+@*
+    Mirrors DevToolbox.UI/wwwroot/index.html — the BlazorWebView host page — with the
+    differences .NET 10 hosting requires: the app is attached as an interactive server
+    island (classic MapBlazorHub/blazor.server.js hosting no longer serves its script in
+    .NET 10, see dotnet/aspnetcore#66059), and the boot script is blazor.web.js.
+    Prerendering is off so components initialize exactly once, the way they do in the
+    WebView. The WebView-only DPI viewport workaround is deliberately left out; browsers
+    manage their own zoom. If index.html gains a stylesheet or script, add it here too.
+*@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DevToolbox (dev server)</title>
+    <base href="/" />
+    <!-- Google Fonts for modern typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Colour tokens. Must come first: output.css and dashboard.css both
+         resolve their colours through the variables declared here. -->
+    <link href="css/theme.css" rel="stylesheet" />
+    <!-- Theme boot. Inline and before the body so the correct palette is in
+         place at first paint — a deferred script would flash the wrong theme. -->
+    <script src="js/theme.js"></script>
+    <script>window.devtoolboxTheme.boot();</script>
+    <!-- Tailwind CSS -->
+    <link href="css/output.css" rel="stylesheet" />
+    <!-- Keep Bootstrap Icons for now -->
+    <link href="css/bootstrap-icons.min.css" rel="stylesheet" />
+    <!-- Dashboard layout; plain CSS so it does not need the Tailwind npm build -->
+    <link href="css/dashboard.css" rel="stylesheet" />
+    <style>
+        /* Allow highlighting/copying text in the Log Viewer results (independent of Tailwind build). */
+        #logResultsTable,
+        #logResultsTable td,
+        #logResultsTable th span {
+            -webkit-user-select: text;
+            user-select: text;
+        }
+        #logResultsTable td { cursor: text; }
+    </style>
+    <script src="js/menu.js"></script>
+    <script src="js/search.js"></script>
+    <script src="js/logTools.js"></script>
+    <HeadOutlet @rendermode="new InteractiveServerRenderMode(prerender: false)" />
+</head>
+<body>
+    <div id="app">
+        <DevToolbox.UI.App @rendermode="new InteractiveServerRenderMode(prerender: false)" />
+    </div>
+    <div id="blazor-error-ui" class="fixed bottom-4 right-4 bg-danger text-white px-4 py-3 rounded-lg shadow-lg" style="display:none;">
+        An error has occurred. The application may no longer respond.
+    </div>
+
+    <script src="_framework/blazor.web.js"></script>
+</body>
+</html>

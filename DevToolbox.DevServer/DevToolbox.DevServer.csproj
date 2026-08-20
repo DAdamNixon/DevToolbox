@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <!-- Matches DevToolbox.UI, whose components and Windows-only services this hosts. -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!-- DevToolbox.UI builds self-contained, and NETSDK1151 forbids referencing a
+         self-contained executable from a framework-dependent one. -->
+    <SelfContained>true</SelfContained>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- A development tool, never shipped: it exists so the Blazor components can be viewed and
+         iterated on in an ordinary browser instead of inside the packaged WinForms WebView. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DevToolbox.UI\DevToolbox.UI.csproj" />
+    <!-- Flows in transitively through DevToolbox.UI, whose project reference already contributes
+         this package's static web assets (blazor.modules.json); letting the package's build
+         targets register them here a second time fails the build as a conflicting-assets error.
+         Only the build logic is excluded — compile and runtime assets still flow. -->
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebView" Version="10.0.0"
+                      ExcludeAssets="build;buildMultitargeting;buildTransitive" />
+  </ItemGroup>
+
+</Project>
