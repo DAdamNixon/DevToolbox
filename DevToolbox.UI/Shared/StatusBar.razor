@@ -1,4 +1,8 @@
-<div class="bg-dark-surface border-t border-dark-border h-8 flex items-center justify-end px-4 text-xs">
+@* Half its old height and no border of its own — the footer element in
+   MainLayout already draws one, so this was painting a second line under it.
+   It carries one short fact, and a status bar should cost the content as
+   little room as it can. *@
+<div class="app-statusbar">
     @* "Status: Ready" and "Active Workspace: None" were removed 2026-08-19 — both were
        hardcoded literals with no state behind them; nothing in the app ever set either,
        and a dashboard of many workspace cards has no single "active" one to report. The
@@ -7,15 +11,13 @@
     @* Was the literal "0.1.0", which had been wrong for months — there was no version property in
        the repo at all, so nothing could have kept it right. Now from Directory.Build.props via
        AppVersion. *@
-    <div class="flex items-center space-x-2">
-        <span class="text-dark-text-muted">Version:</span>
-        <span class="text-dark-text font-medium" title="Package version @AppVersion.Package">@AppVersion.Display</span>
-        @if (AppVersion.ChannelLabel is string channel)
-        {
-            <span class="px-1.5 py-0.5 rounded bg-accent-purple/20 text-accent-purple uppercase tracking-wide"
-                  title="Pre-release build — expect bugs, and please report them">@channel</span>
-        }
-    </div>
+    <span class="app-statusbar-label">Version:</span>
+    <span class="app-statusbar-value" title="Package version @AppVersion.Package">@AppVersion.Display</span>
+    @if (AppVersion.ChannelLabel is string channel)
+    {
+        <span class="app-statusbar-channel"
+              title="Pre-release build — expect bugs, and please report them">@channel</span>
+    }
 </div>
 
 @code {

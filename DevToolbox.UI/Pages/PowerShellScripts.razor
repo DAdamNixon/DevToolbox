@@ -107,14 +107,19 @@
                         </div>
                     }
                     <div class="flex-1 flex flex-col space-y-4">
-                        <div class="flex-1">
+                        @* The pane is a flex column and the textarea flexes inside it.
+                           It used to be h-full, which is 100% of the pane on top of the
+                           label above it — so the editor overflowed its own section by
+                           the label's height and ran over the Path field below. *@
+                        <div class="flex-1 ps-editor-pane">
                             <label class="block text-sm font-medium text-dark-text mb-2">Script Editor</label>
-                            <textarea @bind="scriptText" 
-                                rows="15" 
-                                class="input-modern w-full h-full font-mono text-sm resize-none"
-                                style="min-height: 300px;"
-                                placeholder="Enter your PowerShell script here...">
-                            </textarea>
+                            @* No whitespace before the closing tag: a textarea's content is
+                               its initial value, so a newline and indentation here is a
+                               blank first line in every script. *@
+                            <textarea @bind="scriptText"
+                                rows="15"
+                                class="input-modern w-full font-mono text-sm resize-none"
+                                placeholder="Enter your PowerShell script here..."></textarea>
                         </div>
 
                         <div>

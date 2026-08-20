@@ -8,23 +8,29 @@
 @using Microsoft.JSInterop
 @implements IDisposable
 
-<div class="min-h-screen bg-dark-bg flex flex-col">
+@* An app shell rather than a tall document: the window's height is the shell's
+   height, and only the content between the bars scrolls. The nav carried
+   `sticky top-0`, but a sticky element can only travel inside its own parent —
+   and that header box was exactly nav-height, so there was nowhere to travel
+   and it scrolled away like anything else. Owning the scroll container pins
+   both bars outright. *@
+<div class="app-shell bg-dark-bg">
     <!-- Navigation -->
-    <header class="flex-shrink-0">
+    <header>
         <NavMenu />
     </header>
 
-    <!-- Main Content -->
-    <main class="flex-1">
-        <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-            <div class="px-4 py-6 sm:px-0">
-                @Body
-            </div>
+    <!-- Main Content. Full width on purpose: the cap that used to sit here
+         (max-w-7xl) left dead gutters either side of the Log Viewer on a
+         maximised window, which is exactly where its table needs the room. -->
+    <main>
+        <div class="w-full px-4 sm:px-6 lg:px-8 py-3">
+            @Body
         </div>
     </main>
 
     <!-- Footer - Always at bottom -->
-    <footer class="flex-shrink-0 border-t border-dark-border">
+    <footer class="border-t border-dark-border">
         <StatusBar />
     </footer>
 </div>

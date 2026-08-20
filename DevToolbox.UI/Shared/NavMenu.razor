@@ -1,49 +1,55 @@
 <nav class="bg-dark-surface/80 backdrop-blur-md border-b border-dark-border sticky top-0 z-30">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex items-center justify-between h-16">
+    @* Full width and h-12, matching the layout's gutter removal: a utility app's
+       chrome should cost as little vertical space as it can get away with. *@
+    <div class="w-full px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between h-12">
             <!-- Logo/Brand -->
             <div class="flex items-center">
                 <div class="text-xl font-bold text-gradient">
                     DevToolbox
                 </div>
             </div>
-            
-            <!-- Navigation Links -->
-            <div class="flex items-center space-x-1">
-                <a class="nav-item @GetActiveClass("/")" href="/">
-                    <i class="bi bi-house me-2"></i>
-                    Dashboard
-                </a>
-                <a class="nav-item @GetActiveClass("/logs")" href="/logs">
-                    <i class="bi bi-journal-text me-2"></i>
-                    Log Viewer
-                </a>
-                <a class="nav-item @GetActiveClass("/powershell")" href="/powershell">
-                    <i class="bi bi-terminal me-2"></i>
-                    PowerShell
-                </a>
-                <a class="nav-item @GetActiveClass("/service-pulse")" href="/service-pulse">
-                    <i class="bi bi-heart-pulse me-2"></i>
-                    Service Pulse
-                </a>
-                <a class="nav-item @GetActiveClass("/host-changer")" href="/host-changer">
-                    <i class="bi bi-hdd-network me-2"></i>
-                    Host Changer
-                </a>
-                <a class="nav-item @GetActiveClass("/settings")" href="/settings">
-                    <i class="bi bi-gear me-2"></i>
-                    Settings
-                </a>
+
+            @* The inline strip, hidden below the breakpoint in favour of the
+               drawer — a scrollable strip technically held every tab, but with
+               its scrollbar hidden nothing said Settings was off-screen. *@
+            <div class="nav-links flex items-center space-x-1">
+                @foreach (var link in Links)
+                {
+                    <a class="nav-item @GetActiveClass(link.Route)" href="@link.Route">
+                        <i class="bi @link.Icon me-2"></i>
+                        @link.Label
+                    </a>
+                }
             </div>
-            
-            <!-- Service Pulse health, at a glance from any page — was a hardcoded "Online"
-                 dot that nothing ever set; see NavMenu.razor.cs. -->
-            <a class="flex items-center space-x-3" href="/service-pulse" title="Service Pulse — click for details">
-                <div class="flex items-center space-x-2">
-                    <div class="status-indicator @pill.Dot"></div>
-                    <span class="text-sm @pill.TextClass">@pill.Label</span>
-                </div>
-            </a>
+
+            <div class="flex items-center">
+                <!-- Service Pulse health, at a glance from any page — was a hardcoded "Online"
+                     dot that nothing ever set; see NavMenu.razor.cs. -->
+                <a class="flex items-center space-x-3" href="/service-pulse" title="Service Pulse — click for details">
+                    <div class="flex items-center space-x-2">
+                        <div class="status-indicator @pill.Dot"></div>
+                        <span class="text-sm @pill.TextClass">@pill.Label</span>
+                    </div>
+                </a>
+                <button type="button" class="nav-burger" @onclick="ToggleDrawer"
+                        aria-label="Menu" aria-expanded="@_drawerOpen">
+                    <i class="bi @(_drawerOpen ? "bi-x-lg" : "bi-list")"></i>
+                </button>
+            </div>
         </div>
     </div>
+
+    @if (_drawerOpen)
+    {
+        <div class="nav-drawer">
+            @foreach (var link in Links)
+            {
+                <a class="nav-item @GetActiveClass(link.Route)" href="@link.Route" @onclick="CloseDrawer">
+                    <i class="bi @link.Icon me-2"></i>
+                    @link.Label
+                </a>
+            }
+        </div>
+    }
 </nav>

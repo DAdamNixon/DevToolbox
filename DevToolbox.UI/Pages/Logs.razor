@@ -1,4 +1,4 @@
-﻿@page "/logs"
+@page "/logs"
 @using DevToolbox.Services.Interfaces
 @using DevToolbox.Services.Models
 @using DevToolbox.UI.Services
@@ -14,11 +14,8 @@
 @inject IOpenHandlerService OpenHandlers
 @implements IDisposable
 
-<!-- Page Header -->
-<div class="mb-8">
-    <h1 class="text-4xl font-bold text-gradient">Log Viewer</h1>
-    <p class="text-dark-text-muted mt-2">View and analyze application logs with powerful search and filtering capabilities.</p>
-</div>
+@* No page header at all: the nav bar already names the active tab, and every
+   pixel of chrome here comes out of the results table. *@
 
 @if (!string.IsNullOrWhiteSpace(State.ErrorMessage))
 {
@@ -36,192 +33,232 @@
     </div>
 }
 
-<!-- Search / Filters -->
-<div class="modern-card mb-6">
-    <div class="grid grid-cols-1 md:grid-cols-6 gap-4">
-        <div>
-            <label for="templateSelect" class="block text-sm font-medium text-dark-text mb-2">Template</label>
-            <select id="templateSelect" class="input-modern w-full" @bind="State.SelectedTemplateName" @bind:after="OnTemplateChanged">
-                @foreach (var template in State.AvailableTemplates)
-                {
-                    <option value="@template.Name">@template.Name</option>
-                }
-            </select>
-        </div>
-        <div class="md:col-span-2 relative">
-            <label class="block text-sm font-medium text-dark-text mb-2">Location</label>
-            <button type="button" class="input-modern w-full text-left flex items-center justify-between" @onclick="ToggleLocationMenu">
-                <span class="truncate">@State.LocationSummary</span>
-                <i class="bi bi-chevron-down text-dark-text-muted ml-2"></i>
+<!-- Search source. Collapses to a one-line summary after a search so the
+     results get the screen; the filter bar below stays out because it is the
+     part you keep touching while reading them. -->
+<div class="modern-card mb-4 @(State.SourceCollapsed ? "log-card-compact" : null)">
+    @if (State.SourceCollapsed)
+    {
+        <div class="log-source-summary">
+            <button type="button" class="log-collapse-btn" title="Edit search source" aria-expanded="false" @onclick="ToggleSourceCollapsed">
+                <i class="bi bi-chevron-down"></i>
             </button>
-            @if (State.ShowLocationMenu)
+            <span class="log-source-summary-text"><strong>Source:</strong> @State.SourceSummary</span>
+            <button class="btn-primary flex items-center space-x-2" @onclick="Search" disabled="@State.IsLoading" title="Run the search again">
+                @if (State.IsLoading)
+                {
+                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                }
+                else
+                {
+                    <i class="bi bi-search"></i>
+                }
+                <span>Search</span>
+            </button>
+            @if (State.IsLoading)
             {
-                <div class="absolute z-20 mt-1 w-full bg-dark-surface border border-dark-border rounded-lg shadow-lg max-h-64 overflow-auto">
-                    <label class="flex items-center space-x-2 px-3 py-2 hover:bg-dark-surface-hover cursor-pointer border-b border-dark-border">
-                        <input type="checkbox" checked="@State.AllLocationsSelected" @onchange="_ => State.ToggleAllLocationsAsync()" />
-                        <span class="text-sm text-dark-text font-medium">Select all</span>
-                    </label>
-                    @foreach (var location in State.LogLocations)
+                <button class="btn-danger flex items-center space-x-2" @onclick="CancelSearch" disabled="@State.IsCancelling" title="Stop the running search">
+                    <span>@(State.IsCancelling ? "Cancelling…" : "Cancel")</span>
+                </button>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="grid grid-cols-1 md:grid-cols-6 gap-4">
+            <div>
+                <label for="templateSelect" class="block text-sm font-medium text-dark-text mb-2">Template</label>
+                <select id="templateSelect" class="input-modern w-full" @bind="State.SelectedTemplateName" @bind:after="OnTemplateChanged">
+                    @foreach (var template in State.AvailableTemplates)
                     {
-                        <label class="flex items-center space-x-2 px-3 py-2 hover:bg-dark-surface-hover cursor-pointer">
-                            <input type="checkbox" checked="@State.IsLocationSelected(location)" @onchange="_ => State.ToggleLocationAsync(location)" />
-                            <span class="text-sm text-dark-text">@location.Name</span>
+                        <option value="@template.Name">@template.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="md:col-span-2 relative">
+                <label class="block text-sm font-medium text-dark-text mb-2">Location</label>
+                <button type="button" class="input-modern w-full text-left flex items-center justify-between" @onclick="ToggleLocationMenu">
+                    <span class="truncate">@State.LocationSummary</span>
+                    <i class="bi bi-chevron-down text-dark-text-muted ml-2"></i>
+                </button>
+                @if (State.ShowLocationMenu)
+                {
+                    <div class="absolute z-20 mt-1 w-full bg-dark-surface border border-dark-border rounded-lg shadow-lg max-h-64 overflow-auto">
+                        <label class="flex items-center space-x-2 px-3 py-2 hover:bg-dark-surface-hover cursor-pointer border-b border-dark-border">
+                            <input type="checkbox" checked="@State.AllLocationsSelected" @onchange="_ => State.ToggleAllLocationsAsync()" />
+                            <span class="text-sm text-dark-text font-medium">Select all</span>
                         </label>
+                        @foreach (var location in State.LogLocations)
+                        {
+                            <label class="flex items-center space-x-2 px-3 py-2 hover:bg-dark-surface-hover cursor-pointer">
+                                <input type="checkbox" checked="@State.IsLocationSelected(location)" @onchange="_ => State.ToggleLocationAsync(location)" />
+                                <span class="text-sm text-dark-text">@location.Name</span>
+                            </label>
+                        }
+                    </div>
+                }
+            </div>
+            <div>
+                <label for="startDate" class="block text-sm font-medium text-dark-text mb-2">Start Date</label>
+                <input id="startDate" type="date" class="input-modern w-full" @bind="State.StartDate" max="@DateTime.Today.ToString("yyyy-MM-dd")" />
+            </div>
+            <div>
+                <label for="endDate" class="block text-sm font-medium text-dark-text mb-2">End Date</label>
+                <input id="endDate" type="date" class="input-modern w-full" @bind="State.EndDate" max="@DateTime.Today.ToString("yyyy-MM-dd")" />
+            </div>
+            <div>
+                <label for="logFile" class="flex items-center justify-between text-sm font-medium text-dark-text mb-2">
+                    <span>Log File</span>
+                    @if (State.IsDiscoveringLogFiles)
+                    {
+                        <span class="flex items-center gap-1 text-xs font-normal text-dark-text-muted">
+                            <span class="animate-spin rounded-full h-3 w-3 border-b-2 border-accent-blue"></span>
+                            finding
+                        </span>
+                    }
+                    else if (State.LogFilesWereDiscovered)
+                    {
+                        <span class="text-xs font-normal text-dark-text-muted">@State.AvailableLogFiles.Count found</span>
+                    }
+                </label>
+                @* Still an input with a datalist rather than a select: the discovered
+                   list is a convenience, and typing a name that is not on it — because
+                   a share is offline, or the location has no name pattern — has to keep
+                   working exactly as before. *@
+                <input id="logFile" class="input-modern w-full" list="logFiles" placeholder="Log file..." @bind="State.LogFile" />
+                <datalist id="logFiles">
+                    @foreach (var file in State.AvailableLogFiles)
+                    {
+                        @* The count rides in the option label, which browsers show
+                           beside the value; the value itself stays the bare name. *@
+                        <option value="@file" label="@DescribeFileOption(file)"></option>
+                    }
+                </datalist>
+            </div>
+        </div>
+
+        <div class="flex items-end gap-4 mt-6">
+            <button class="btn-primary flex items-center space-x-2" @onclick="Search" disabled="@State.IsLoading" aria-describedby="searchHelp">
+                @if (State.IsLoading)
+                {
+                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                }
+                else
+                {
+                    <i class="bi bi-search"></i>
+                }
+                <span>Search</span>
+            </button>
+            @if (State.IsLoading)
+            {
+                <button class="btn-danger flex items-center space-x-2" @onclick="CancelSearch" disabled="@State.IsCancelling" title="Stop the running search">
+                    <i class="bi bi-x-circle"></i>
+                    <span>@(State.IsCancelling ? "Cancelling…" : "Cancel")</span>
+                </button>
+            }
+            @if (State.HasSearched)
+            {
+                <button type="button" class="btn-ghost flex items-center space-x-2 ml-auto" @onclick="ToggleSourceCollapsed" title="Collapse the source card">
+                    <i class="bi bi-chevron-up"></i>
+                    <span class="text-sm">Collapse</span>
+                </button>
+            }
+        </div>
+
+        @if (State.IsLoading)
+        {
+            <div class="mt-4">
+                <div class="flex items-center justify-between text-sm text-dark-text-muted mb-2">
+                    <span class="flex items-center space-x-2 min-w-0">
+                        <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-accent-blue flex-none"></div>
+                        <span class="truncate">@ProgressHeadline()</span>
+                    </span>
+                    <span class="flex-none ml-4">@ProgressEta()</span>
+                </div>
+
+                @* Determinate whenever there is something to be determinate about. The
+                   indeterminate stripe is for the gap before the first report arrives
+                   and for the final query, which has no measurable size. *@
+                <div class="w-full bg-dark-surface rounded-full h-2 overflow-hidden">
+                    @if (State.Progress is { } p && p.PercentComplete > 0)
+                    {
+                        <div class="bg-accent-blue h-2 rounded-full transition-all duration-200"
+                             style="width: @p.PercentComplete.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)%"></div>
+                    }
+                    else
+                    {
+                        <div class="bg-accent-blue h-2 rounded-full w-1/3 animate-pulse"></div>
+                    }
+                </div>
+
+                @if (State.Progress?.CurrentFile is { Length: > 0 } current)
+                {
+                    <p class="text-xs text-dark-text-muted mt-1 truncate font-mono">@current</p>
+                }
+            </div>
+        }
+    }
+</div>
+
+<!-- Filter bar. Always visible: keyword groups re-query the ingested table
+     live, so they belong next to the results, not folded away with the source. -->
+<div class="modern-card log-card-compact mb-4">
+    <div class="flex items-center justify-between mb-3">
+        <label class="flex items-center space-x-2 cursor-pointer">
+            <input type="checkbox" @bind="State.AdvancedRawMode" @bind:after="OnAdvancedToggled" />
+            <span class="text-sm font-medium text-dark-text">Advanced query mode (SQL)</span>
+        </label>
+        <span class="text-xs text-dark-text-muted">@(State.AdvancedRawMode ? "Full SQL against the table named logs." : "Type to filter as you go (Enter or 500ms). Rows combine with AND / OR / NOT.")</span>
+    </div>
+
+    @if (State.AdvancedRawMode)
+    {
+        <div>
+            <label for="advExpr" class="block text-sm font-medium text-dark-text mb-2">Custom SQL query</label>
+            <textarea id="advExpr" rows="3" class="input-modern w-full font-mono text-sm"
+                      placeholder="SELECT LEFT(DateTime,4) AS Year, COUNT(*) AS Hits FROM logs GROUP BY Year"
+                      @bind="State.AdvancedExpression" @bind:event="oninput" @bind:after="OnCriteriaInput"></textarea>
+            <div class="text-xs text-dark-text-muted mt-1">Full SQL against the table <code>logs</code>. Sorting and keyword groups are ignored in this mode. Run with Search or as you type (500ms).</div>
+        </div>
+    }
+    else
+    {
+        <div class="space-y-2">
+            @for (int i = 0; i < State.KeywordRows.Count; i++)
+            {
+                var index = i;
+                var row = State.KeywordRows[index];
+                <div class="flex items-center space-x-2">
+                    @if (index == 0)
+                    {
+                        <span class="w-20 text-xs text-dark-text-muted text-center">where</span>
+                    }
+                    else
+                    {
+                        <select class="input-modern w-20" @bind="row.Gate" @bind:after="RunLiveQueryAsync">
+                            <option value="AND">AND</option>
+                            <option value="OR">OR</option>
+                            <option value="NOT">NOT</option>
+                        </select>
+                    }
+                    <input class="input-modern flex-1" placeholder="Interchangeable terms (any match), comma-separated"
+                           @bind="row.Text" @bind:event="oninput" @bind:after="OnCriteriaInput" @onkeypress="OnCriteriaKeyPress" />
+                    <button type="button" class="btn-ghost p-2"
+                            title="@(State.KeywordRows.Count == 1 ? "Clear" : "Remove group")"
+                            @onclick="() => RemoveKeywordRow(index)"
+                            disabled="@(State.KeywordRows.Count == 1 && string.IsNullOrEmpty(row.Text))">
+                        <i class="bi bi-x-lg text-dark-text-muted"></i>
+                    </button>
+                    @if (index == State.KeywordRows.Count - 1)
+                    {
+                        <button type="button" class="btn-ghost p-2" title="Add group" @onclick="AddKeywordRow">
+                            <i class="bi bi-plus-lg text-dark-text-muted"></i>
+                        </button>
                     }
                 </div>
             }
         </div>
-        <div>
-            <label for="startDate" class="block text-sm font-medium text-dark-text mb-2">Start Date</label>
-            <input id="startDate" type="date" class="input-modern w-full" @bind="State.StartDate" max="@DateTime.Today.ToString("yyyy-MM-dd")" />
-        </div>
-        <div>
-            <label for="endDate" class="block text-sm font-medium text-dark-text mb-2">End Date</label>
-            <input id="endDate" type="date" class="input-modern w-full" @bind="State.EndDate" max="@DateTime.Today.ToString("yyyy-MM-dd")" />
-        </div>
-        <div>
-            <label for="logFile" class="flex items-center justify-between text-sm font-medium text-dark-text mb-2">
-                <span>Log File</span>
-                @if (State.IsDiscoveringLogFiles)
-                {
-                    <span class="flex items-center gap-1 text-xs font-normal text-dark-text-muted">
-                        <span class="animate-spin rounded-full h-3 w-3 border-b-2 border-accent-blue"></span>
-                        finding
-                    </span>
-                }
-                else if (State.LogFilesWereDiscovered)
-                {
-                    <span class="text-xs font-normal text-dark-text-muted">@State.AvailableLogFiles.Count found</span>
-                }
-            </label>
-            @* Still an input with a datalist rather than a select: the discovered
-               list is a convenience, and typing a name that is not on it — because
-               a share is offline, or the location has no name pattern — has to keep
-               working exactly as before. *@
-            <input id="logFile" class="input-modern w-full" list="logFiles" placeholder="Log file..." @bind="State.LogFile" />
-            <datalist id="logFiles">
-                @foreach (var file in State.AvailableLogFiles)
-                {
-                    @* The count rides in the option label, which browsers show
-                       beside the value; the value itself stays the bare name. *@
-                    <option value="@file" label="@DescribeFileOption(file)"></option>
-                }
-            </datalist>
-        </div>
-    </div>
-    
-    <div class="flex items-end gap-4 mt-6">
-        <button class="btn-primary flex items-center space-x-2" @onclick="Search" disabled="@State.IsLoading" aria-describedby="searchHelp">
-            @if (State.IsLoading)
-            {
-                <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-            }
-            else
-            {
-                <i class="bi bi-search"></i>
-            }
-            <span>Search</span>
-        </button>
-        <button class="btn-secondary flex items-center space-x-2" @onclick="DownloadCsv" disabled="@(State.IsLoading || State.FilteredLogLines.Count == 0)" title="Download as CSV">
-            <i class="bi bi-download"></i>
-            <span>CSV</span>
-        </button>
-        @if (State.IsLoading)
-        {
-            <button class="btn-danger flex items-center space-x-2" @onclick="CancelSearch" disabled="@State.IsCancelling" title="Stop the running search">
-                <i class="bi bi-x-circle"></i>
-                <span>@(State.IsCancelling ? "Cancelling…" : "Cancel")</span>
-            </button>
-        }
-    </div>
-
-    @if (State.IsLoading)
-    {
-        <div class="mt-4">
-            <div class="flex items-center justify-between text-sm text-dark-text-muted mb-2">
-                <span class="flex items-center space-x-2 min-w-0">
-                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-accent-blue flex-none"></div>
-                    <span class="truncate">@ProgressHeadline()</span>
-                </span>
-                <span class="flex-none ml-4">@ProgressEta()</span>
-            </div>
-
-            @* Determinate whenever there is something to be determinate about. The
-               indeterminate stripe is for the gap before the first report arrives
-               and for the final query, which has no measurable size. *@
-            <div class="w-full bg-dark-surface rounded-full h-2 overflow-hidden">
-                @if (State.Progress is { } p && p.PercentComplete > 0)
-                {
-                    <div class="bg-accent-blue h-2 rounded-full transition-all duration-200"
-                         style="width: @p.PercentComplete.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)%"></div>
-                }
-                else
-                {
-                    <div class="bg-accent-blue h-2 rounded-full w-1/3 animate-pulse"></div>
-                }
-            </div>
-
-            @if (State.Progress?.CurrentFile is { Length: > 0 } current)
-            {
-                <p class="text-xs text-dark-text-muted mt-1 truncate font-mono">@current</p>
-            }
-        </div>
     }
-
-    <!-- Advanced / keyword-group search -->
-    <div class="mt-6 border-t border-dark-border pt-4">
-        <div class="flex items-center justify-between mb-3">
-            <label class="flex items-center space-x-2 cursor-pointer">
-                <input type="checkbox" @bind="State.AdvancedRawMode" @bind:after="OnAdvancedToggled" />
-                <span class="text-sm font-medium text-dark-text">Advanced query mode (SQL)</span>
-            </label>
-            <span class="text-xs text-dark-text-muted">@(State.AdvancedRawMode ? "Full SQL against the table named logs." : "Type to filter as you go (Enter or 500ms). Rows combine with AND / OR / NOT.")</span>
-        </div>
-
-        @if (State.AdvancedRawMode)
-        {
-            <div>
-                <label for="advExpr" class="block text-sm font-medium text-dark-text mb-2">Custom SQL query</label>
-                <textarea id="advExpr" rows="3" class="input-modern w-full font-mono text-sm"
-                          placeholder="SELECT LEFT(DateTime,4) AS Year, COUNT(*) AS Hits FROM logs GROUP BY Year"
-                          @bind="State.AdvancedExpression" @bind:event="oninput" @bind:after="OnCriteriaInput"></textarea>
-                <div class="text-xs text-dark-text-muted mt-1">Full SQL against the table <code>logs</code>. Sorting and keyword groups are ignored in this mode. Run with Search or as you type (500ms).</div>
-            </div>
-        }
-        else
-        {
-            <div class="space-y-2">
-                @for (int i = 0; i < State.KeywordRows.Count; i++)
-                {
-                    var index = i;
-                    var row = State.KeywordRows[index];
-                    <div class="flex items-center space-x-2">
-                        @if (index == 0)
-                        {
-                            <span class="w-20 text-xs text-dark-text-muted text-center">where</span>
-                        }
-                        else
-                        {
-                            <select class="input-modern w-20" @bind="row.Gate" @bind:after="RunLiveQueryAsync">
-                                <option value="AND">AND</option>
-                                <option value="OR">OR</option>
-                                <option value="NOT">NOT</option>
-                            </select>
-                        }
-                        <input class="input-modern flex-1" placeholder="Interchangeable terms (any match), comma-separated"
-                               @bind="row.Text" @bind:event="oninput" @bind:after="OnCriteriaInput" @onkeypress="OnCriteriaKeyPress" />
-                        <button type="button" class="btn-ghost p-2" title="Remove group" @onclick="() => RemoveKeywordRow(index)" disabled="@(State.KeywordRows.Count == 1)">
-                            <i class="bi bi-x-lg text-dark-text-muted"></i>
-                        </button>
-                    </div>
-                }
-                <button type="button" class="btn-secondary flex items-center space-x-2" @onclick="AddKeywordRow">
-                    <i class="bi bi-plus-lg"></i>
-                    <span>Add Group</span>
-                </button>
-            </div>
-        }
-    </div>
 </div>
 
 @if (State.IsLoading)
@@ -260,37 +297,68 @@ else if (State.FilteredLogLines.Count == 0)
 }
 else
 {
+    EnsureColumnMetrics();
+
     <div class="modern-card">
-        <div class="flex justify-between items-center mb-6">
-            <h2 class="text-xl font-semibold text-dark-text flex items-center space-x-2">
+        <div class="log-toolbar">
+            <div class="log-toolbar-group">
                 <i class="bi bi-table text-accent-blue"></i>
-                <span>Log Results</span>
-            </h2>
-            <div class="flex items-center space-x-4">
-                <div class="flex items-center space-x-2">
-                    <label class="text-sm text-dark-text-muted">Split by:</label>
-                    <div class="flex rounded-lg border border-dark-border overflow-hidden" role="group" aria-label="Split results">
-                        @foreach (var option in SplitOptions)
-                        {
-                            <button type="button"
-                                    class="px-3 py-1 text-sm transition-colors @(State.SplitMode == option.Mode ? "bg-accent-blue text-white" : "bg-dark-surface text-dark-text-muted hover:bg-dark-surface-hover")"
-                                    @onclick="() => State.SetSplitModeAsync(option.Mode)"
-                                    disabled="@State.IsLoading"
-                                    aria-pressed="@(State.SplitMode == option.Mode)">
-                                @option.Label
-                            </button>
-                        }
+                <span class="log-page-range">Showing <strong>@PageRangeStart().ToString("N0")–@PageRangeEnd().ToString("N0")</strong> of <strong>@State.TotalRecords.ToString("N0")</strong></span>
+            </div>
+            <div class="log-toolbar-group">
+                <div class="log-segmented" role="group" aria-label="Results view">
+                    <button type="button" class="@(!State.PlainTextView ? "active" : null)" @onclick="() => SetPlainTextView(false)" aria-pressed="@(!State.PlainTextView)">
+                        <i class="bi bi-table"></i> Table
+                    </button>
+                    <button type="button" class="@(State.PlainTextView ? "active" : null)" @onclick="() => SetPlainTextView(true)" aria-pressed="@State.PlainTextView">
+                        <i class="bi bi-text-left"></i> Text
+                    </button>
+                </div>
+                @if (State.PlainTextView)
+                {
+                    <div class="log-segmented" role="group" aria-label="Line wrapping">
+                        <button type="button" class="@(State.PlainTextWrap ? "active" : null)" @onclick="ToggleTextWrap" aria-pressed="@State.PlainTextWrap" title="Wrap long lines">
+                            <i class="bi bi-arrow-return-left"></i> Wrap
+                        </button>
                     </div>
+                }
+                else if (_emptyColumns.Count > 0)
+                {
+                    <div class="log-segmented" role="group" aria-label="Empty columns">
+                        <button type="button" class="@(State.ShowEmptyColumns ? "active" : null)" @onclick="ToggleEmptyColumns" aria-pressed="@State.ShowEmptyColumns"
+                                title="@_emptyColumns.Count columns hold nothing on this page">
+                            <i class="bi bi-eye"></i> @_emptyColumns.Count empty
+                        </button>
+                    </div>
+                }
+            </div>
+            <div class="log-toolbar-group">
+                <span class="log-toolbar-label">Split by</span>
+                <div class="log-segmented" role="group" aria-label="Split results">
+                    @foreach (var option in SplitOptions)
+                    {
+                        <button type="button"
+                                class="@(State.SplitMode == option.Mode ? "active" : null)"
+                                @onclick="() => State.SetSplitModeAsync(option.Mode)"
+                                disabled="@State.IsLoading"
+                                aria-pressed="@(State.SplitMode == option.Mode)">
+                            @option.Label
+                        </button>
+                    }
                 </div>
-                <div class="flex items-center space-x-2">
-                    <label class="text-sm text-dark-text-muted">Page size:</label>
-                    <select class="input-modern w-auto" @bind="State.PageSize" @bind:after="OnPageSizeChanged">
-                        <option value="100">100</option>
-                        <option value="250">250</option>
-                        <option value="500">500</option>
-                        <option value="1000">1000</option>
-                    </select>
-                </div>
+            </div>
+            <div class="log-toolbar-group">
+                <span class="log-toolbar-label">Page size</span>
+                <select class="input-modern w-auto" @bind="State.PageSize" @bind:after="OnPageSizeChanged">
+                    <option value="100">100</option>
+                    <option value="250">250</option>
+                    <option value="500">500</option>
+                    <option value="1000">1000</option>
+                </select>
+                <button class="btn-secondary flex items-center space-x-2" @onclick="DownloadCsv" disabled="@(State.IsLoading || State.FilteredLogLines.Count == 0)" title="Download the current view as CSV">
+                    <i class="bi bi-download"></i>
+                    <span>CSV</span>
+                </button>
             </div>
         </div>
 
@@ -318,117 +386,153 @@ else
             </div>
         }
 
-
         <div class="border border-dark-border rounded-lg overflow-hidden">
-            <div style="max-height: 600px; overflow: auto;" tabindex="0" role="region" aria-label="Log table">
-                <table id="logResultsTable" class="w-full select-text" style="table-layout: fixed; min-width: 1200px;">
-                    <colgroup>
-                        @foreach (var col in State.TableColumns)
-                        {
-                            <col style="width: 160px;" />
-                        }
-                    </colgroup>
-                    <thead class="bg-dark-surface border-b border-dark-border sticky top-0 z-10">
-                        <tr>
-                            @foreach (var col in State.TableColumns)
+            @if (State.PlainTextView)
+            {
+                @* The same rows, template order, rejoined with the template's own
+                   delimiter — as close to the file's raw lines as the parse allows.
+                   Filtering, sorting, tabs and paging all still apply because this
+                   is just another rendering of FilteredLogLines. *@
+                <div class="log-results-scroll log-textview @(State.PlainTextWrap ? "log-textview-wrap" : null)" tabindex="0" role="region" aria-label="Log text">
+                    <Virtualize Items="@State.FilteredLogLines" ItemSize="18" OverscanCount="20">
+                        <ItemContent Context="logLine">
+                            <span class="log-textline" @ondblclick="() => OpenRowSource(logLine)"
+                                  title="Double-click to open this line in your editor">@PlainTextLine(logLine)</span>
+                        </ItemContent>
+                    </Virtualize>
+                </div>
+            }
+            else
+            {
+                <div class="log-results-scroll" tabindex="0" role="region" aria-label="Log table">
+                    <table id="logResultsTable" class="log-table-dense select-text" style="min-width: @(TableMinWidth)px;">
+                        <colgroup>
+                            <col style="width: 1.75rem;" />
+                            @foreach (var col in VisibleColumns)
                             {
-                                var sortEntry = State.ActiveSorts.FirstOrDefault(s => s.Column == col);
-                                var sortIndex = State.ActiveSorts.FindIndex(s => s.Column == col);
-                                <th class="relative px-4 py-3 text-left text-xs font-medium text-dark-text uppercase tracking-wider border-r border-dark-border cursor-pointer hover:bg-dark-surface-hover transition-colors"
-                                    style="width: 160px;"
-                                    @onclick="(e) => SortByColumn(col, e.ShiftKey)"
-                                    @onkeypress="@(async (e) => { if (e.Key == "Enter" || e.Key == " ") await SortByColumn(col, false); })"
-                                    tabindex="0"
-                                    role="button"
-                                    title="Click to sort, Shift+Click to add a secondary sort"
-                                    aria-label="Sort by @col">
-                                    <div class="flex items-center justify-between pr-2">
-                                        <span class="truncate">@col</span>
-                                        <span class="w-6 h-4 flex items-center justify-center">
-                                            @if (sortEntry != null)
-                                            {
-                                                <i class="bi @(sortEntry.Direction == "desc" ? "bi-chevron-down" : "bi-chevron-up") text-accent-blue"></i>
-                                                @if (State.ActiveSorts.Count > 1)
-                                                {
-                                                    <span class="text-[10px] text-accent-blue ml-0.5">@(sortIndex + 1)</span>
-                                                }
-                                            }
-                                            else
-                                            {
-                                                <i class="bi bi-chevron-expand text-dark-text-muted opacity-0 hover:opacity-100"></i>
-                                            }
-                                        </span>
-                                    </div>
-                                    <span class="col-resizer" style="position:absolute; top:0; right:0; width:6px; height:100%; cursor:col-resize;"></span>
-                                </th>
+                                @if (col == _flexColumn)
+                                {
+                                    <col />
+                                }
+                                else
+                                {
+                                    <col style="width: @(ColumnWidth(col))px;" />
+                                }
                             }
-                        </tr>
-                    </thead>
-                    <tbody class="bg-dark-bg">
-                        <Virtualize Items="@State.FilteredLogLines" ItemSize="32" OverscanCount="10">
-                            <ItemContent Context="logLine">
-                                @* Double-click opens the row's source file at its line.
-                                   Single click is left alone so selecting and copying
-                                   text still works. *@
-                                <tr class="border-b border-dark-border hover:bg-dark-surface/50 transition-colors" role="row"
-                                    @ondblclick="() => OpenRowSource(logLine)"
-                                    title="Double-click to open this line in your editor">
-                                    @foreach (var col in State.TableColumns)
-                                    {
-                                        <td class="px-4 py-3 text-sm text-dark-text border-r border-dark-border overflow-hidden text-ellipsis whitespace-nowrap select-text"
-                                            title="@logLine.GetValueOrDefault(col, "")" role="cell">
-                                            @logLine.GetValueOrDefault(col, "")
+                        </colgroup>
+                        <thead class="bg-dark-surface border-b border-dark-border sticky top-0 z-10">
+                            <tr>
+                                <th aria-label="Expand row"></th>
+                                @foreach (var col in VisibleColumns)
+                                {
+                                    var sortEntry = State.ActiveSorts.FirstOrDefault(s => s.Column == col);
+                                    var sortIndex = State.ActiveSorts.FindIndex(s => s.Column == col);
+                                    <th class="relative px-4 py-3 text-left text-xs font-medium text-dark-text uppercase tracking-wider border-r border-dark-border cursor-pointer hover:bg-dark-surface-hover transition-colors"
+                                        @onclick="(e) => SortByColumn(col, e.ShiftKey)"
+                                        @onkeypress="@(async (e) => { if (e.Key == "Enter" || e.Key == " ") await SortByColumn(col, false); })"
+                                        tabindex="0"
+                                        role="button"
+                                        title="Click to sort, Shift+Click to add a secondary sort"
+                                        aria-label="Sort by @col">
+                                        <div class="flex items-center justify-between pr-2">
+                                            <span class="truncate">@col</span>
+                                            <span class="w-6 h-4 flex items-center justify-center">
+                                                @if (sortEntry != null)
+                                                {
+                                                    <i class="bi @(sortEntry.Direction == "desc" ? "bi-chevron-down" : "bi-chevron-up") text-accent-blue"></i>
+                                                    @if (State.ActiveSorts.Count > 1)
+                                                    {
+                                                        <span class="text-[10px] text-accent-blue ml-0.5">@(sortIndex + 1)</span>
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    <i class="bi bi-chevron-expand text-dark-text-muted opacity-0 hover:opacity-100"></i>
+                                                }
+                                            </span>
+                                        </div>
+                                        <span class="col-resizer" style="position:absolute; top:0; right:0; width:6px; height:100%; cursor:col-resize;"></span>
+                                    </th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody class="bg-dark-bg">
+                            <Virtualize Items="@State.FilteredLogLines" ItemSize="24" OverscanCount="15">
+                                <ItemContent Context="logLine">
+                                    @* Double-click opens the row's source file at its line.
+                                       Single click is left alone so selecting and copying
+                                       text still works; the chevron cell toggles wrapping. *@
+                                    <tr class="border-b border-dark-border transition-colors @(IsRowExpanded(logLine) ? "log-row-expanded" : null)" role="row"
+                                        @ondblclick="() => OpenRowSource(logLine)"
+                                        title="Double-click to open this line in your editor">
+                                        <td class="log-expander" role="cell"
+                                            title="@(IsRowExpanded(logLine) ? "Collapse this row" : "Show this row's full content")"
+                                            @onclick="() => ToggleRowExpanded(logLine)"
+                                            @ondblclick:stopPropagation="true">
+                                            <i class="bi @(IsRowExpanded(logLine) ? "bi-chevron-down" : "bi-chevron-right")"></i>
                                         </td>
-                                    }
-                                </tr>
-                            </ItemContent>
-                            <Placeholder>
-                                <tr class="border-b border-dark-border">
-                                    @for (int i = 0; i < State.TableColumns.Count; i++)
-                                    {
-                                        <td class="px-4 py-3 border-r border-dark-border">
-                                            <div class="animate-pulse">
-                                                <div class="h-4 bg-dark-surface rounded w-3/4"></div>
-                                            </div>
-                                        </td>
-                                    }
-                                </tr>
-                            </Placeholder>
-                        </Virtualize>
-                    </tbody>
-                </table>
-            </div>
+                                        @foreach (var col in VisibleColumns)
+                                        {
+                                            <td class="select-text" role="cell" title="@logLine.GetValueOrDefault(col, "")">@logLine.GetValueOrDefault(col, "")</td>
+                                        }
+                                    </tr>
+                                </ItemContent>
+                                <Placeholder>
+                                    <tr class="border-b border-dark-border">
+                                        <td class="log-expander"></td>
+                                        @for (int i = 0; i < VisibleColumns.Count(); i++)
+                                        {
+                                            <td>
+                                                <div class="animate-pulse">
+                                                    <div class="h-4 bg-dark-surface rounded w-3/4"></div>
+                                                </div>
+                                            </td>
+                                        }
+                                    </tr>
+                                </Placeholder>
+                            </Virtualize>
+                        </tbody>
+                    </table>
+                </div>
+            }
         </div>
 
-        <div class="flex justify-between items-center mt-6" role="navigation" aria-label="Pagination">
-            <button class="btn-secondary flex items-center space-x-2" @onclick="PrevPage" disabled="@(State.IsLoading || State.CurrentPage == 0)" aria-label="Previous page">
-                <i class="bi bi-chevron-left"></i>
-                <span>Previous</span>
-            </button>
-
-            <div class="flex items-center space-x-4">
-                <div class="flex items-center space-x-2">
-                    <label for="pageInput" class="text-sm text-dark-text-muted">Page:</label>
-                    <input id="pageInput"
-                           type="number"
-                           class="input-modern w-20 text-center"
-                           min="1"
-                           max="@State.TotalPages"
-                           @bind="State.PageInput"
-                           @bind:event="oninput"
-                           @onkeypress="OnPageKeyPress" />
-                    <button class="btn-secondary px-3 py-1" @onclick="JumpToPage" disabled="@State.IsLoading">Go</button>
-                </div>
-                <span class="text-sm text-dark-text">
-                    of <span class="font-semibold text-accent-blue">@State.TotalPages</span> 
-                    (<span class="font-semibold text-accent-blue">@State.TotalRecords</span> total)
-                </span>
+        <div class="log-pagination" role="navigation" aria-label="Pagination">
+            <div class="log-toolbar-group">
+                <button class="btn-secondary" @onclick="FirstPage" disabled="@(State.IsLoading || State.CurrentPage == 0)" aria-label="First page" title="First page">
+                    <i class="bi bi-chevron-double-left"></i>
+                </button>
+                <button class="btn-secondary flex items-center space-x-2" @onclick="PrevPage" disabled="@(State.IsLoading || State.CurrentPage == 0)" aria-label="Previous page">
+                    <i class="bi bi-chevron-left"></i>
+                    <span>Previous</span>
+                </button>
             </div>
 
-            <button class="btn-secondary flex items-center space-x-2" @onclick="NextPage" disabled="@(State.IsLoading || !State.HasMorePages)" aria-label="Next page">
-                <span>Next</span>
-                <i class="bi bi-chevron-right"></i>
-            </button>
+            <div class="log-toolbar-group">
+                <label for="pageInput" class="log-toolbar-label">Page</label>
+                @* No Go button: typing a page number jumps after a beat, Enter jumps
+                   at once. Nothing fires while the box is empty mid-edit. *@
+                <input id="pageInput"
+                       type="number"
+                       class="input-modern w-20 text-center"
+                       min="1"
+                       max="@State.TotalPages"
+                       @bind="State.PageInput"
+                       @bind:event="oninput"
+                       @bind:after="OnPageInputChanged"
+                       @onkeypress="OnPageKeyPress" />
+                <span class="log-toolbar-label">of <strong class="text-accent-blue">@State.TotalPages.ToString("N0")</strong></span>
+            </div>
+
+            <div class="log-toolbar-group">
+                <button class="btn-secondary flex items-center space-x-2" @onclick="NextPage" disabled="@(State.IsLoading || !State.HasMorePages)" aria-label="Next page">
+                    <span>Next</span>
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+                <button class="btn-secondary" @onclick="LastPage" disabled="@(State.IsLoading || State.CurrentPage >= State.TotalPages - 1)" aria-label="Last page" title="Last page">
+                    <i class="bi bi-chevron-double-right"></i>
+                </button>
+            </div>
         </div>
     </div>
 }
@@ -436,6 +540,150 @@ else
 
 @code {
     private System.Threading.Timer? _searchDebounceTimer;
+    private System.Threading.Timer? _pageDebounceTimer;
+
+    // --- column metrics, computed per page of results ---
+
+    /// <summary>The page of rows the widths below were measured against.</summary>
+    private List<Dictionary<string, string>>? _measuredRows;
+    private readonly Dictionary<string, int> _columnWidths = new();
+    private readonly HashSet<string> _emptyColumns = new();
+    private string? _flexColumn;
+    private HashSet<Dictionary<string, string>> _expandedRows = new();
+
+    /// <summary>
+    /// The columns the table actually renders: everything, minus the ones that
+    /// hold nothing on this page unless the user asked to see those too.
+    /// </summary>
+    private IEnumerable<string> VisibleColumns =>
+        State.ShowEmptyColumns ? State.TableColumns : State.TableColumns.Where(c => !_emptyColumns.Contains(c));
+
+    /// <summary>Sum of the fixed column widths plus room for the flex column.</summary>
+    private int TableMinWidth =>
+        28 + VisibleColumns.Where(c => c != _flexColumn).Sum(c => ColumnWidth(c)) + 280;
+
+    /// <summary>
+    /// Sizes each column to its content instead of a flat 160px each. Widths come
+    /// from the longest value on the current page (capped), the column with the
+    /// longest content — almost always the message — flexes to take whatever
+    /// space is left, and columns that hold nothing at all are noted so the
+    /// table can drop them. Re-measured only when the page of rows changes.
+    /// </summary>
+    private void EnsureColumnMetrics()
+    {
+        if (ReferenceEquals(_measuredRows, State.FilteredLogLines)) return;
+        _measuredRows = State.FilteredLogLines;
+        _expandedRows = new HashSet<Dictionary<string, string>>();
+        _columnWidths.Clear();
+        _emptyColumns.Clear();
+        _flexColumn = null;
+
+        // Every row, not a sample: a column with its one value on row 900 must
+        // not be dropped as empty. Length checks over a 1000-row page are cheap.
+        var maxLengths = State.TableColumns.ToDictionary(c => c, c => 0);
+        foreach (var row in State.FilteredLogLines)
+        {
+            foreach (var col in State.TableColumns)
+            {
+                var length = row.GetValueOrDefault(col, "").Length;
+                if (length > maxLengths[col]) maxLengths[col] = length;
+            }
+        }
+
+        foreach (var (col, length) in maxLengths)
+        {
+            if (length == 0) _emptyColumns.Add(col);
+            // ~7.2px per character of 12px mono, plus cell padding; the header
+            // needs room for its own name too.
+            _columnWidths[col] = Math.Clamp((int)(Math.Max(length, col.Length) * 7.2) + 20, 72, 480);
+            if (length > 0 && (_flexColumn is null || length > maxLengths[_flexColumn])) _flexColumn = col;
+        }
+    }
+
+    private int ColumnWidth(string col) => _columnWidths.GetValueOrDefault(col, 160);
+
+    private bool IsRowExpanded(Dictionary<string, string> row) => _expandedRows.Contains(row);
+
+    private void ToggleRowExpanded(Dictionary<string, string> row)
+    {
+        if (!_expandedRows.Remove(row)) _expandedRows.Add(row);
+    }
+
+    // --- plain text mode ---
+
+    /// <summary>
+    /// Columns DbLogService appends about where a row came from, as opposed to
+    /// what the file said. Text mode leaves them out so the line reads like the
+    /// file; the table keeps them because sorting by SourceFile is useful.
+    /// </summary>
+    private static readonly string[] ProvenanceColumns = { "Location", "SourceFile", "Sequence" };
+
+    /// <summary>
+    /// The row rejoined with the template's delimiter — as close to the original
+    /// line as the parse allows: provenance columns left out, trailing empty
+    /// fields trimmed rather than rendered as a run of delimiters.
+    /// </summary>
+    private string PlainTextLine(Dictionary<string, string> logLine)
+    {
+        var values = State.TableColumns
+            .Where(c => !ProvenanceColumns.Contains(c))
+            .Select(c => logLine.GetValueOrDefault(c, ""))
+            .ToList();
+        while (values.Count > 0 && string.IsNullOrEmpty(values[^1])) values.RemoveAt(values.Count - 1);
+        return string.Join(State.TemplateDelimiter, values);
+    }
+
+    private void SetPlainTextView(bool plainText) => State.PlainTextView = plainText;
+
+    private void ToggleTextWrap() => State.PlainTextWrap = !State.PlainTextWrap;
+
+    private void ToggleEmptyColumns() => State.ShowEmptyColumns = !State.ShowEmptyColumns;
+
+    private void ToggleSourceCollapsed() => State.SourceCollapsed = !State.SourceCollapsed;
+
+    // --- pagination helpers ---
+
+    private int PageRangeStart() =>
+        State.TotalRecords == 0 ? 0 : State.CurrentPage * State.PageSize + 1;
+
+    private int PageRangeEnd() =>
+        Math.Min((State.CurrentPage + 1) * State.PageSize, State.TotalRecords);
+
+    private async Task FirstPage()
+    {
+        State.PageInput = 1;
+        await State.JumpToPageAsync();
+    }
+
+    private async Task LastPage()
+    {
+        State.PageInput = State.TotalPages;
+        await State.JumpToPageAsync();
+    }
+
+    /// <summary>
+    /// Typed page numbers jump on their own after a beat — no Go button. Values
+    /// below 1 mean the box is empty mid-edit, so they schedule nothing.
+    /// </summary>
+    private void OnPageInputChanged()
+    {
+        _pageDebounceTimer?.Dispose();
+        if (State.PageInput < 1) return;
+
+        _pageDebounceTimer = new Timer(async _ =>
+        {
+            await InvokeAsync(State.JumpToPageAsync);
+        }, null, TimeSpan.FromMilliseconds(600), Timeout.InfiniteTimeSpan);
+    }
+
+    private async Task OnPageKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            _pageDebounceTimer?.Dispose();
+            await State.JumpToPageAsync();
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -602,8 +850,6 @@ else
         return $"{(int)span.TotalHours}h {span.Minutes}m";
     }
 
-    private async Task JumpToPage() => await State.JumpToPageAsync();
-
     private async Task NextPage() => await State.NextPageAsync();
 
     private async Task PrevPage() => await State.PrevPageAsync();
@@ -615,14 +861,9 @@ else
 
     private async Task RemoveKeywordRow(int index) => await State.RemoveKeywordRowAsync(index);
 
-    private async Task OnPageKeyPress(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter") await JumpToPage();
-    }
-
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!State.IsLoading && State.FilteredLogLines.Count > 0)
+        if (!State.IsLoading && !State.PlainTextView && State.FilteredLogLines.Count > 0)
         {
             try
             {
@@ -694,5 +935,6 @@ else
         // Unsubscribe only — do NOT cancel the token so searches continue in the background
         State.OnChanged -= HandleStateChanged;
         _searchDebounceTimer?.Dispose();
+        _pageDebounceTimer?.Dispose();
     }
 }

@@ -43,6 +43,34 @@ public sealed class LogSearchStateService : IDisposable
     public List<string> TableColumns { get; set; } = new();
     public bool IsLoading { get; set; }
 
+    /// <summary>
+    /// The active template's column delimiter, kept alongside <see cref="TableColumns"/>
+    /// so plain-text mode can rebuild something close to the original line.
+    /// </summary>
+    public string TemplateDelimiter { get; set; } = "|";
+
+    // --- presentation ---
+
+    /// <summary>
+    /// The source card folds to a one-line summary after a successful search, so
+    /// the results get the screen. Lives here rather than in the page so leaving
+    /// the tab and coming back does not pop the card open again.
+    /// </summary>
+    public bool SourceCollapsed { get; set; }
+
+    /// <summary>Results rendered as raw delimited lines instead of the table.</summary>
+    public bool PlainTextView { get; set; }
+
+    /// <summary>Plain-text mode wraps long lines instead of scrolling them.</summary>
+    public bool PlainTextWrap { get; set; }
+
+    /// <summary>
+    /// Show columns that hold nothing on the current page. Off by default: the
+    /// WebsiteBase template alone carries fourteen Message columns, and rendering
+    /// the empty ones costs a screen's width of nothing.
+    /// </summary>
+    public bool ShowEmptyColumns { get; set; }
+
     /// <summary>Latest ingest progress, or null when not ingesting.</summary>
     public LogIngestProgress? Progress { get; set; }
 
@@ -174,6 +202,23 @@ public sealed class LogSearchStateService : IDisposable
         _ => $"{SelectedLocations.Count} locations selected"
     };
 
+    /// <summary>
+    /// What the collapsed source card shows: enough to know what was searched
+    /// without expanding it. Reads as "WebsiteBase · EE IIS · Jul 14 – Aug 20 · Checkout".
+    /// </summary>
+    public string SourceSummary
+    {
+        get
+        {
+            var dates = StartDate.Date == EndDate.Date
+                ? StartDate.ToString("MMM d")
+                : $"{StartDate:MMM d} – {EndDate:MMM d}";
+            var parts = new List<string> { SelectedTemplateName, LocationSummary, dates };
+            if (!string.IsNullOrWhiteSpace(LogFile)) parts.Add(LogFile);
+            return string.Join(" · ", parts.Where(p => !string.IsNullOrWhiteSpace(p)));
+        }
+    }
+
     public bool AllLocationsSelected =>
         LogLocations.Count > 0 && SelectedLocations.Count == LogLocations.Count;
 
@@ -289,6 +334,7 @@ public sealed class LogSearchStateService : IDisposable
             {
                 var template = await _logFileService.LoadTemplateAsync(templateEntry.File);
                 TableColumns = template?.Columns ?? new();
+                TemplateDelimiter = template?.Delimiter ?? "|";
             }
         }
         catch (Exception ex)
@@ -388,6 +434,15 @@ public sealed class LogSearchStateService : IDisposable
         HasSearched = true;
         ActiveSorts.Clear();
         await PrepareAndQueryAsync();
+
+        // Fold the source card once a search lands, so the results get the
+        // screen. Only on success: an error or a cancel means the user is about
+        // to adjust the very fields the fold would hide.
+        if (string.IsNullOrEmpty(ErrorMessage) && FilteredLogLines.Count > 0)
+        {
+            SourceCollapsed = true;
+            Notify();
+        }
     }
 
     public async Task PrepareAndQueryAsync()
@@ -653,11 +708,21 @@ public sealed class LogSearchStateService : IDisposable
 
     public async Task RemoveKeywordRowAsync(int index)
     {
-        if (KeywordRows.Count > 1 && index >= 0 && index < KeywordRows.Count)
+        if (index < 0 || index >= KeywordRows.Count) return;
+
+        // The last row cannot be removed — the strip always shows one — so its X
+        // clears the text instead of doing nothing.
+        if (KeywordRows.Count == 1)
+        {
+            if (string.IsNullOrEmpty(KeywordRows[0].Text)) return;
+            KeywordRows[0].Text = "";
+        }
+        else
         {
             KeywordRows.RemoveAt(index);
-            await RunLiveQueryAsync();
         }
+
+        await RunLiveQueryAsync();
     }
 
     public async Task SortByColumnAsync(string column, bool append)

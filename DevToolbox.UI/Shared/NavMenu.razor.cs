@@ -26,6 +26,25 @@ namespace DevToolbox.UI.Shared
 
         private HealthPill pill = NotMonitoring;
 
+        /// <summary>Every tab, defined once and rendered by both the strip and the drawer.</summary>
+        private static readonly (string Route, string Icon, string Label)[] Links =
+        {
+            ("/", "bi-house", "Dashboard"),
+            ("/logs", "bi-journal-text", "Log Viewer"),
+            ("/powershell", "bi-terminal", "PowerShell"),
+            ("/service-pulse", "bi-heart-pulse", "Service Pulse"),
+            ("/host-changer", "bi-hdd-network", "Host Changer"),
+            ("/settings", "bi-gear", "Settings"),
+        };
+
+        /// <summary>The narrow-width drawer. Closed on every navigation, so a tap
+        /// on a tab never leaves it hanging over the new page.</summary>
+        private bool _drawerOpen;
+
+        private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+
+        private void CloseDrawer() => _drawerOpen = false;
+
         protected override async Task OnInitializedAsync()
         {
             NavigationManager.LocationChanged += LocationChanged;
@@ -37,7 +56,11 @@ namespace DevToolbox.UI.Shared
             await RefreshPillAsync();
         }
 
-        private void LocationChanged(object? sender, LocationChangedEventArgs e) => StateHasChanged();
+        private void LocationChanged(object? sender, LocationChangedEventArgs e)
+        {
+            _drawerOpen = false;
+            StateHasChanged();
+        }
 
         // Raised from a monitor loop, not the UI thread — same reason ServicePulse marshals
         // this with InvokeAsync before touching component state.

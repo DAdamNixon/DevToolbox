@@ -33,56 +33,63 @@ else
                 </button>
             </div>
 
-            <div class="ws-field">
-                <label class="ws-label">Name</label>
-                <input type="text" class="ws-input" @bind="source.Name" placeholder="VS Code Workspaces" />
-            </div>
+            @* Paired into two columns: the fields are short, and stacking all
+               eight made one source taller than the screen. Anything with a long
+               value or a long hint spans both. *@
+            <div class="ws-source-grid">
+                <div class="ws-field">
+                    <label class="ws-label">Name</label>
+                    <input type="text" class="ws-input" @bind="source.Name" placeholder="VS Code Workspaces" />
+                </div>
 
-            <div class="ws-field">
-                <label class="ws-label">Folder to scan</label>
-                <input type="text" class="ws-input" @bind="source.Path" placeholder="C:\path\to\workspaces" />
-                <span class="ws-hint">Environment variables such as %USERPROFILE% are expanded.</span>
-            </div>
+                <div class="ws-field">
+                    <label class="ws-label">Pattern</label>
+                    <input type="text" class="ws-input" @bind="source.Pattern" placeholder="*.code-workspace" />
+                </div>
 
-            <div class="ws-field">
-                <label class="ws-label">Pattern</label>
-                <input type="text" class="ws-input" @bind="source.Pattern" placeholder="*.code-workspace" />
-            </div>
+                <div class="ws-field ws-span">
+                    <label class="ws-label">Folder to scan</label>
+                    <input type="text" class="ws-input" @bind="source.Path" placeholder="C:\path\to\workspaces" />
+                    <span class="ws-hint">Environment variables such as %USERPROFILE% are expanded.</span>
+                </div>
 
-            <div class="ws-field">
-                <label class="ws-label">Collect</label>
-                <select class="ws-input" value="@source.Scan" @onchange="e => SetScan(source, e.Value?.ToString())">
-                    <option value="@nameof(ScanKind.Files)">Files matching the pattern</option>
-                    <option value="@nameof(ScanKind.Directories)">Subfolders matching the pattern</option>
-                </select>
-            </div>
+                <div class="ws-field">
+                    <label class="ws-label">Collect</label>
+                    <select class="ws-input" value="@source.Scan" @onchange="e => SetScan(source, e.Value?.ToString())">
+                        <option value="@nameof(ScanKind.Files)">Files matching the pattern</option>
+                        <option value="@nameof(ScanKind.Directories)">Subfolders matching the pattern</option>
+                    </select>
+                </div>
 
-            <label class="ws-check mb-3">
-                <input type="checkbox" checked="@source.Recursive"
-                       @onchange="e => source.Recursive = (bool?)e.Value ?? false" />
-                <span>Search subfolders too</span>
-            </label>
+                @* Sits in the second column, aligned with the Collect input beside it
+                   rather than with its label. *@
+                <label class="ws-check ws-check-inline">
+                    <input type="checkbox" checked="@source.Recursive"
+                           @onchange="e => source.Recursive = (bool?)e.Value ?? false" />
+                    <span>Search subfolders too</span>
+                </label>
 
-            <div class="ws-field">
-                <label class="ws-label">Group name</label>
-                <input type="text" class="ws-input" @bind="source.Group" placeholder="Leave blank to use the source name" />
-            </div>
+                <div class="ws-field">
+                    <label class="ws-label">Group name</label>
+                    <input type="text" class="ws-input" @bind="source.Group" placeholder="Leave blank to use the source name" />
+                </div>
 
-            <div class="ws-field">
-                <label class="ws-label">Group icon</label>
-                <input type="text" class="ws-input" @bind="source.Icon" placeholder="bi-window-stack" />
-                <span class="ws-hint">Starting point only — the icon picker on the card overrides it.</span>
-            </div>
+                <div class="ws-field">
+                    <label class="ws-label">Group icon</label>
+                    <input type="text" class="ws-input" @bind="source.Icon" placeholder="bi-window-stack" />
+                    <span class="ws-hint">Starting point only — the icon picker on the card overrides it.</span>
+                </div>
 
-            <div class="ws-field">
-                <label class="ws-label">Name pattern (optional regex)</label>
-                <input type="text" class="ws-input" @bind="source.NameRegex"
-                       placeholder="^(?&lt;location&gt;dev|demo)-(?&lt;workspace&gt;.+)$" />
-                <span class="ws-hint">
-                    Named groups <span class="font-mono">workspace</span> and <span class="font-mono">location</span>
-                    merge related files into one card — <span class="font-mono">dev-checkout</span> and
-                    <span class="font-mono">demo-checkout</span> become one "checkout" with two locations.
-                </span>
+                <div class="ws-field ws-span">
+                    <label class="ws-label">Name pattern (optional regex)</label>
+                    <input type="text" class="ws-input" @bind="source.NameRegex"
+                           placeholder="^(?&lt;location&gt;dev|demo)-(?&lt;workspace&gt;.+)$" />
+                    <span class="ws-hint">
+                        Named groups <span class="font-mono">workspace</span> and <span class="font-mono">location</span>
+                        merge related files into one card — <span class="font-mono">dev-checkout</span> and
+                        <span class="font-mono">demo-checkout</span> become one "checkout" with two locations.
+                    </span>
+                </div>
             </div>
 
             @if (scan is not null)
@@ -105,16 +112,18 @@ else
         </div>
     }
 
-    <button type="button" class="btn-secondary" @onclick="Add">
-        <i class="bi bi-plus-circle"></i> Add scan folder
-    </button>
-
     @if (!string.IsNullOrEmpty(error))
     {
         <div class="ws-error mt-3">@error</div>
     }
 
-    <div class="ws-dialog-actions">
+    @* Pinned to the bottom of the scrolling body. Both buttons used to follow the
+       last source, so with a few sources configured they sat below the fold — and
+       the panel itself could not scroll, which made Save unreachable outright. *@
+    <div class="ws-sources-actions">
+        <button type="button" class="btn-secondary" @onclick="Add">
+            <i class="bi bi-plus-circle"></i> Add scan folder
+        </button>
         <button type="button" class="btn-primary" @onclick="Save">
             <i class="bi bi-check-lg"></i> Save and rescan
         </button>
