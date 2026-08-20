@@ -1,78 +1,50 @@
-using DevToolbox.DevServer;
 using DevToolbox.Services.Interfaces;
-using DevToolbox.UI;
-using Microsoft.Extensions.FileProviders;
+using DevToolbox.UI.Web;
+using Microsoft.Extensions.DependencyInjection;
 
-// A browser-based host for the DevToolbox UI, for development only. The real app runs the same
-// components inside a WinForms BlazorWebView (see DevToolbox.UI.Program); this serves them over
-// an interactive server circuit so the views can be inspected, screenshotted and iterated on in
-// a browser. Root.razor is the document shell, CatchAll.razor gives every URL a route, and the
-// legacy App component runs as an interactive island with its own Router.
+// A headless launcher for the browser view.
+//
+// The WinForms app hosts the same server itself and has done since it starts one on
+// launch, so this is not how the feature ships — it exists for working on the UI
+// without a desktop session or a WebView in the way. The host, the shell document and
+// the routing all come from DevToolbox.UI.Web so there is one definition of them.
 
-// Always Development: this host only exists for development, and it makes startup and circuit
-// errors surface in full instead of as generic messages.
-var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+var port = args.Length > 0 && int.TryParse(args[0], out var requested)
+    ? requested
+    : WebPreviewHost.DefaultPort;
+
+var web = WebPreviewHost.Build(new WebPreviewInfo(), port);
+await web.StartAsync();
+
+if (!web.IsRunning)
 {
-    Args = args,
-    EnvironmentName = Environments.Development,
-});
-
-// Fail at startup if a singleton ever captures a scoped service again — the WinForms host
-// validates the same way. Explicit rather than left to the Development-environment
-// defaults, so the check survives a change of environment.
-builder.Host.UseDefaultServiceProvider(options =>
-{
-    options.ValidateScopes = true;
-    options.ValidateOnBuild = true;
-});
-
-builder.Services.AddRazorComponents().AddInteractiveServerComponents();
-builder.Services.AddDevToolboxApp();
-
-var app = builder.Build();
-
-// The UI project's wwwroot, served at the root so index.html's relative asset paths (css/…,
-// js/…) resolve identically in both hosts — and straight from the source tree, so a stylesheet
-// edit shows up on refresh without a rebuild. Running from source is a given for a dev tool.
-var uiWwwroot = Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "..", "DevToolbox.UI", "wwwroot"));
-if (!Directory.Exists(uiWwwroot))
-{
-    throw new InvalidOperationException(
-        $"DevToolbox.UI/wwwroot not found at '{uiWwwroot}'. Run the dev server from the repository via " +
-        "'dotnet run --project DevToolbox.DevServer'.");
+    Console.Error.WriteLine($"Could not start: {web.StartError}");
+    return 1;
 }
 
-app.UseStaticFiles(new StaticFileOptions { FileProvider = new PhysicalFileProvider(uiWwwroot) });
+Console.WriteLine($"DevToolbox UI at {web.Url}");
 
-// The framework script (_framework/blazor.web.js) is only served through the static assets
-// endpoints in .NET 10 — UseStaticFiles alone no longer surfaces it (dotnet/aspnetcore#66059).
-app.MapStaticAssets();
-app.UseAntiforgery();
-app.MapRazorComponents<Root>().AddInteractiveServerRenderMode();
-
-// Same startup work MainWindow_Load does, minus the tray icon, so Host Changer and Service
-// Pulse show live data rather than their empty states. Failures are tolerated for the same
-// reason as there: a bad config or unreadable hosts file must not stop the UI from opening,
-// and the tabs surface those errors themselves.
-_ = Task.Run(async () =>
+// The startup work MainWindow_Load does, minus the tray icon, so Host Changer and
+// Service Pulse show live data rather than their empty states. Failures are tolerated
+// for the same reason as there: a bad config or an unreadable hosts file must not stop
+// the UI opening, and those tabs surface the error themselves.
+try
 {
-    try
-    {
-        await app.Services.GetRequiredService<IHostsFileService>().InitializeAsync();
-    }
-    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
-    {
-        app.Logger.LogWarning("Host Changer failed to start: {Message}", ex.Message);
-    }
+    await web.Services.GetRequiredService<IHostsFileService>().InitializeAsync();
+}
+catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+{
+    Console.Error.WriteLine($"Host Changer failed to start: {ex.Message}");
+}
 
-    try
-    {
-        await app.Services.GetRequiredService<IHealthMonitoringService>().InitializeAsync();
-    }
-    catch (InvalidOperationException ex)
-    {
-        app.Logger.LogWarning("Service Pulse failed to start: {Message}", ex.Message);
-    }
-});
+try
+{
+    await web.Services.GetRequiredService<IHealthMonitoringService>().InitializeAsync();
+}
+catch (InvalidOperationException ex)
+{
+    Console.Error.WriteLine($"Service Pulse failed to start: {ex.Message}");
+}
 
-app.Run();
+await Task.Delay(Timeout.Infinite);
+return 0;

@@ -1,0 +1,23 @@
+@page "/{*path:nonfile}"
+
+@*
+    Two jobs, one per host.
+
+    In the browser host it is never rendered: Root.razor has no <Routes/> for a
+    matched page to land in. It exists so ASP.NET endpoint routing has a routable
+    component for every non-file URL, which is what makes the server answer /logs,
+    /host-changer and friends with the Root shell — the App component's own Router,
+    running as an interactive island, then resolves the actual page.
+
+    In the WinForms host it is a real page, because App.razor's Router scans this
+    assembly and a catch-all matches anything unrouted. That would otherwise
+    swallow the Router's <NotFound> and render a blank page, so it says the same
+    thing NotFound did.
+*@
+
+<PageTitle>Not found</PageTitle>
+<p role="alert">Sorry, there's nothing at this address.</p>
+
+@code {
+    [Parameter] public string? Path { get; set; }
+}

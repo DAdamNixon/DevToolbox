@@ -2,10 +2,12 @@
 @using DevToolbox.Services.Interfaces
 @using DevToolbox.Services.Models
 @using DevToolbox.Services.Services
+@using DevToolbox.UI.Web
 @using Microsoft.JSInterop
 @inject IUiSettingsService UiSettings
 @inject IYamlStorageService YamlStorage
 @inject IJSRuntime JS
+@inject WebPreviewInfo WebPreview
 
 <!-- Page Header -->
 <div class="mb-8">
@@ -153,6 +155,52 @@
         }
     </div>
 
+    <!-- Browser view -->
+    @* The same UI, served to a real browser while the app runs. Useful for a second
+       monitor, for devtools the WebView does not give you, and for anyone who would
+       rather keep a tab open than a window. *@
+    <div class="modern-card">
+        <div class="border-b border-dark-border pb-4 mb-6">
+            <h2 class="text-2xl font-semibold text-dark-text flex items-center space-x-2">
+                <i class="bi bi-browser-chrome text-accent-blue"></i>
+                <span>Browser View</span>
+            </h2>
+        </div>
+
+        @if (WebPreview.IsRunning)
+        {
+            <div class="flex items-center justify-between gap-4">
+                <div class="min-w-0">
+                    <div class="flex items-center space-x-2">
+                        <div class="status-indicator status-online"></div>
+                        <span class="text-sm text-dark-text">Serving at</span>
+                        <span class="text-sm font-mono text-dark-text break-all">@WebPreview.Url</span>
+                    </div>
+                    <p class="text-xs text-dark-text-muted mt-2">
+                        Bound to localhost only, and available for as long as DevToolbox is running.
+                        Anything you do there acts on this machine, exactly as it does in this window.
+                    </p>
+                </div>
+                <button class="btn-primary flex items-center space-x-2 flex-none" @onclick="OpenInBrowser">
+                    <i class="bi bi-box-arrow-up-right"></i>
+                    <span>Open in Browser</span>
+                </button>
+            </div>
+        }
+        else
+        {
+            <div class="flex items-start space-x-2">
+                <div class="status-indicator status-offline mt-1.5"></div>
+                <div>
+                    <div class="text-sm text-dark-text">Not running</div>
+                    <p class="text-xs text-dark-text-muted mt-1">
+                        @(WebPreview.Error ?? "The browser view did not start with the app.")
+                    </p>
+                </div>
+            </div>
+        }
+    </div>
+
     <!-- About -->
     @* Here rather than in a dialog because the first thing a bug report needs is the version, and
        the second is where the config it is complaining about actually lives. *@
@@ -213,6 +261,32 @@
 </div>
 
 @code {
+
+    /// <summary>
+    /// Hands the URL to Windows so it opens in the default browser.
+    /// <para>
+    /// UseShellExecute is required for a URL: with it false, CreateProcess would look
+    /// for an executable literally named "http://localhost:5218" and fail.
+    /// </para>
+    /// </summary>
+    private void OpenInBrowser()
+    {
+        if (WebPreview.Url is not { } url) return;
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            statusMessage = $"Could not open a browser: {ex.Message}";
+            statusIsError = true;
+        }
+    }
     private string ConfigDirectory => YamlStorage.StorageDirectory;
 
     private List<ConfigRestore.Comparison> bundled = new();
