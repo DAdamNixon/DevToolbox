@@ -16,6 +16,17 @@ namespace DevToolbox.Services.Services
     {
         private static readonly string[] ScriptExtensions = { ".cmd", ".bat" };
 
+        /// <summary>
+        /// ERROR_ELEVATION_REQUIRED. CreateProcess — which is what a start with
+        /// <c>UseShellExecute = false</c> uses — cannot raise a UAC prompt, so it fails
+        /// outright when the target needs elevation. ShellExecute can, hence the retry
+        /// in <see cref="RunExecutable"/>.
+        /// </summary>
+        private const int ElevationRequired = 740;
+
+        /// <summary>ERROR_CANCELLED: the UAC prompt was dismissed.</summary>
+        private const int ElevationCancelled = 1223;
+
         /// <summary>Locator results, so discovering an install costs one process per session.</summary>
         private static readonly ConcurrentDictionary<string, string?> LocatorCache = new();
 
@@ -291,15 +302,62 @@ namespace DevToolbox.Services.Services
                     $"\"{option.ExecutablePath}\" on PATH, App Paths and disk.");
             }
 
+            var startInfo = BuildStartInfo(resolved, path, option.Arguments, line);
+
             try
             {
-                var startInfo = BuildStartInfo(resolved, path, option.Arguments, line);
                 Process.Start(startInfo);
                 return OpenResult.Ok();
+            }
+            catch (Win32Exception ex) when (ex.NativeErrorCode == ElevationRequired)
+            {
+                // The program is marked to run as administrator — either by its own
+                // manifest or, far more often, by the "Run this program as an
+                // administrator" compatibility flag someone ticked on it. Visual
+                // Studio is the common case. Going through ShellExecute is what
+                // Explorer does: it honours that flag and shows the UAC prompt,
+                // where CreateProcess can only fail. DevToolbox stays unelevated
+                // either way — Windows asks, and the user answers.
+                return RunElevated(startInfo, resolved);
             }
             catch (Exception ex)
             {
                 return OpenResult.Fail($"Could not launch {resolved}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Second attempt at a start that came back needing elevation, this time via
+        /// ShellExecute so Windows can prompt.
+        /// </summary>
+        private static OpenResult RunElevated(ProcessStartInfo original, string resolved)
+        {
+            // A fresh start info rather than a mutated one: ShellExecute rejects the
+            // redirection flags CreateProcess was set up with, and no verb is set on
+            // purpose — the flag or manifest already says elevation is needed, and
+            // forcing "runas" would elevate programs that never asked to be.
+            var elevated = new ProcessStartInfo
+            {
+                FileName = original.FileName,
+                Arguments = original.Arguments,
+                UseShellExecute = true
+            };
+
+            foreach (var argument in original.ArgumentList) elevated.ArgumentList.Add(argument);
+
+            try
+            {
+                Process.Start(elevated);
+                return OpenResult.Ok();
+            }
+            catch (Win32Exception ex) when (ex.NativeErrorCode == ElevationCancelled)
+            {
+                return OpenResult.Fail(
+                    $"{Path.GetFileName(resolved)} needs administrator rights to start, and the prompt was dismissed.");
+            }
+            catch (Exception ex)
+            {
+                return OpenResult.Fail($"Could not launch {resolved} with elevation: {ex.Message}");
             }
         }
 
