@@ -44,3 +44,9 @@ window.logTools = {
         });
     }
 };
+
+// The visible viewport, so the row context menu can be kept on screen. MouseEventArgs
+// carries the pointer position but nothing about how much room is left around it.
+window.logTools.viewportSize = function () {
+    return { width: window.innerWidth, height: window.innerHeight };
+};

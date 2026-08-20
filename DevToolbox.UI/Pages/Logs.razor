@@ -396,8 +396,10 @@ else
                 <div class="log-results-scroll log-textview @(State.PlainTextWrap ? "log-textview-wrap" : null)" tabindex="0" role="region" aria-label="Log text">
                     <Virtualize Items="@State.FilteredLogLines" ItemSize="18" OverscanCount="20">
                         <ItemContent Context="logLine">
-                            <span class="log-textline" @ondblclick="() => OpenRowSource(logLine)"
-                                  title="Double-click to open this line in your editor">@PlainTextLine(logLine)</span>
+                            <span class="log-textline @(IsContextRow(logLine) ? "log-row-context" : null)"
+                                  @oncontextmenu="e => ShowContextMenu(e, logLine)"
+                                  @oncontextmenu:preventDefault="true"
+                                  title="Right-click for actions">@PlainTextLine(logLine)</span>
                         </ItemContent>
                     </Virtualize>
                 </div>
@@ -459,16 +461,16 @@ else
                         <tbody class="bg-dark-bg">
                             <Virtualize Items="@State.FilteredLogLines" ItemSize="24" OverscanCount="15">
                                 <ItemContent Context="logLine">
-                                    @* Double-click opens the row's source file at its line.
-                                       Single click is left alone so selecting and copying
-                                       text still works; the chevron cell toggles wrapping. *@
-                                    <tr class="border-b border-dark-border transition-colors @(IsRowExpanded(logLine) ? "log-row-expanded" : null)" role="row"
-                                        @ondblclick="() => OpenRowSource(logLine)"
-                                        title="Double-click to open this line in your editor">
+                                    @* Right-click opens the row menu. Left click is left alone so
+                                       selecting and copying text still works, and the chevron cell
+                                       stays as the quick way to expand without the menu. *@
+                                    <tr class="border-b border-dark-border transition-colors @(IsRowExpanded(logLine) ? "log-row-expanded" : null) @(IsContextRow(logLine) ? "log-row-context" : null)" role="row"
+                                        @oncontextmenu="e => ShowContextMenu(e, logLine)"
+                                        @oncontextmenu:preventDefault="true"
+                                        title="Right-click for actions">
                                         <td class="log-expander" role="cell"
                                             title="@(IsRowExpanded(logLine) ? "Collapse this row" : "Show this row's full content")"
-                                            @onclick="() => ToggleRowExpanded(logLine)"
-                                            @ondblclick:stopPropagation="true">
+                                            @onclick="() => ToggleRowExpanded(logLine)">
                                             <i class="bi @(IsRowExpanded(logLine) ? "bi-chevron-down" : "bi-chevron-right")"></i>
                                         </td>
                                         @foreach (var col in VisibleColumns)
@@ -538,7 +540,127 @@ else
 }
 
 
+@* Row actions. Rendered at the page level rather than inside the table: it is
+   positioned from the pointer, and the results container scrolls and clips, which
+   would cut the menu off at its edge. The backdrop is what closes it on the next
+   click anywhere. *@
+@if (_contextRow is not null)
+{
+    <div class="log-context-backdrop" @onclick="CloseContextMenu" @oncontextmenu="CloseContextMenu" @oncontextmenu:preventDefault="true"></div>
+    <div class="log-context-menu" style="left: @(_contextX)px; top: @(_contextY)px;" role="menu">
+        <div class="log-context-heading">@ContextRowSummary()</div>
+
+        @if (!State.PlainTextView)
+        {
+            <button type="button" class="dropdown-item" role="menuitem" @onclick="ToggleContextRowExpanded">
+                <i class="bi @(IsRowExpanded(_contextRow) ? "bi-arrows-collapse" : "bi-arrows-expand")"></i>
+                <span>@(IsRowExpanded(_contextRow) ? "Collapse row" : "Expand row")</span>
+            </button>
+        }
+
+        <button type="button" class="dropdown-item" role="menuitem"
+                @onclick="OpenContextRowSource" disabled="@(!ContextRowHasSource())"
+                title="@(ContextRowHasSource() ? null : "This row has no source file recorded. Run the search again.")">
+            <i class="bi bi-box-arrow-up-right"></i>
+            <span>Open in editor</span>
+        </button>
+
+        <button type="button" class="dropdown-item" role="menuitem" @onclick="CopyContextRow">
+            <i class="bi bi-clipboard"></i>
+            <span>Copy line</span>
+        </button>
+    </div>
+}
+
 @code {
+
+    // --- row context menu ---
+
+    /// <summary>The row the menu was opened on, and null when no menu is open.</summary>
+    private Dictionary<string, string>? _contextRow;
+    private double _contextX;
+    private double _contextY;
+
+    private bool IsContextRow(Dictionary<string, string> row) => ReferenceEquals(_contextRow, row);
+
+    /// <summary>
+    /// Opens the row menu at the pointer. Client coordinates, because the menu is
+    /// position:fixed — page coordinates would be off by the scroll offset.
+    /// <para>
+    /// Nudged back from the right and bottom edges so a right-click near either does
+    /// not put half the menu off-screen. The sizes are the panel's own min-width and
+    /// its rough height at three items; being approximate is fine, since the only cost
+    /// of being wrong is a menu that sits slightly inside the edge instead of against it.
+    /// </para>
+    /// </summary>
+    private async Task ShowContextMenu(MouseEventArgs e, Dictionary<string, string> row)
+    {
+        const double menuWidth = 208;
+        const double menuHeight = 160;
+
+        _contextRow = row;
+        _contextX = e.ClientX;
+        _contextY = e.ClientY;
+
+        try
+        {
+            var viewport = await JS.InvokeAsync<Viewport>("logTools.viewportSize");
+            _contextX = Math.Max(4, Math.Min(e.ClientX, viewport.Width - menuWidth));
+            _contextY = Math.Max(4, Math.Min(e.ClientY, viewport.Height - menuHeight));
+        }
+        catch (JSException)
+        {
+            // Keep the raw pointer position: a menu that might overhang an edge beats
+            // no menu at all.
+        }
+    }
+
+    private sealed record Viewport(double Width, double Height);
+
+    private void CloseContextMenu() => _contextRow = null;
+
+    private void ToggleContextRowExpanded()
+    {
+        if (_contextRow is { } row) ToggleRowExpanded(row);
+        CloseContextMenu();
+    }
+
+    private bool ContextRowHasSource() =>
+        _contextRow is { } row && !string.IsNullOrWhiteSpace(row.GetValueOrDefault(DbLogService.SourcePathColumn, ""));
+
+    private async Task OpenContextRowSource()
+    {
+        var row = _contextRow;
+        CloseContextMenu();
+        if (row is not null) await OpenRowSource(row);
+    }
+
+    /// <summary>The row as one delimited line, on the clipboard.</summary>
+    private async Task CopyContextRow()
+    {
+        var row = _contextRow;
+        CloseContextMenu();
+        if (row is null) return;
+
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", PlainTextLine(row));
+        }
+        catch (JSException ex)
+        {
+            // Clipboard access can be refused, and a failed copy must not look like it worked.
+            State.SetError($"Could not copy the line: {ex.Message}");
+        }
+    }
+
+    /// <summary>What the menu shows at the top, so it is obvious which row it acts on.</summary>
+    private string ContextRowSummary()
+    {
+        if (_contextRow is not { } row) return "";
+
+        var line = PlainTextLine(row);
+        return line.Length <= 60 ? line : line[..60] + "…";
+    }
     private System.Threading.Timer? _searchDebounceTimer;
     private System.Threading.Timer? _pageDebounceTimer;
 
