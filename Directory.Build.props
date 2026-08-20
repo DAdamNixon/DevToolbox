@@ -31,7 +31,7 @@
     [[03-Projects/DevToolbox/Plans/2026-08-18-alpha-launch-feedback]] in the vault.
   -->
   <PropertyGroup>
-    <VersionPrefix>0.4.2</VersionPrefix>
-    <VersionSuffix>alpha.3</VersionSuffix>
+    <VersionPrefix>0.4.3</VersionPrefix>
+    <VersionSuffix>alpha.4</VersionSuffix>
   </PropertyGroup>
 </Project>
