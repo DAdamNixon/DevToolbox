@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Razor">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -19,6 +19,9 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <EnableDefaultRazorGenerateItems>true</EnableDefaultRazorGenerateItems>
     <RazorLangVersion>latest</RazorLangVersion>
+    <!-- Explicit: this app serves its own components over Kestrel, so it needs the
+         framework static assets (_framework/blazor.web.js) resolved into its manifest. -->
+    <RequiresAspNetWebAssets>true</RequiresAspNetWebAssets>
   </PropertyGroup>
 
   <ItemGroup>
@@ -31,6 +34,26 @@
   <ItemGroup>
     <ProjectReference Include="..\DevToolbox.Services\DevToolbox.Services.csproj" />
   </ItemGroup>
+
+  <!--
+    Put blazor.web.js where the app can serve it.
+
+    Microsoft.AspNetCore.App.Internal.Assets ships the script and has a target that
+    registers it as a static web asset, but that target is gated on OutputType == 'Exe'
+    and this project is WinExe, being a Windows app that happens to also serve itself.
+    So the script never reached the manifest and /_framework/blazor.web.js 404'd, which
+    leaves the browser view rendered but inert � no circuit, no interactivity.
+
+    Copied into wwwroot rather than fought over in MSBuild: from there it is an ordinary
+    static web asset of this project. It is generated, so .gitignore covers it.
+  -->
+  <Target Name="CopyBlazorWebScript"
+          BeforeTargets="ResolveStaticWebAssetsInputs;BeforeBuild"
+          Condition="Exists('$(BlazorFrameworkStaticWebAssetRoot)\blazor.web.js')">
+    <Copy SourceFiles="$(BlazorFrameworkStaticWebAssetRoot)\blazor.web.js"
+          DestinationFolder="$(MSBuildProjectDirectory)\wwwroot\_framework"
+          SkipUnchangedFiles="true" />
+  </Target>
 
   <!--
     Rebuild the Tailwind stylesheet when its inputs change.

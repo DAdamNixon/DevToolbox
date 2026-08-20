@@ -119,3 +119,6 @@ package-lock.json
 .env.development.local
 .env.test.local
 .env.production.local 
+# Generated at build time from Microsoft.AspNetCore.App.Internal.Assets; see the
+# CopyBlazorWebScript target in DevToolbox.UI.csproj.
+DevToolbox.UI/wwwroot/_framework/
