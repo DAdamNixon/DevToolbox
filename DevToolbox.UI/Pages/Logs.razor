@@ -40,9 +40,6 @@
     @if (State.SourceCollapsed)
     {
         <div class="log-source-summary">
-            <button type="button" class="log-collapse-btn" title="Edit search source" aria-expanded="false" @onclick="ToggleSourceCollapsed">
-                <i class="bi bi-chevron-down"></i>
-            </button>
             <span class="log-source-summary-text"><strong>Source:</strong> @State.SourceSummary</span>
             <button class="btn-primary flex items-center space-x-2" @onclick="Search" disabled="@State.IsLoading" title="Run the search again">
                 @if (State.IsLoading)
@@ -156,13 +153,6 @@
                     <span>@(State.IsCancelling ? "Cancelling…" : "Cancel")</span>
                 </button>
             }
-            @if (State.HasSearched)
-            {
-                <button type="button" class="btn-ghost flex items-center space-x-2 ml-auto" @onclick="ToggleSourceCollapsed" title="Collapse the source card">
-                    <i class="bi bi-chevron-up"></i>
-                    <span class="text-sm">Collapse</span>
-                </button>
-            }
         </div>
 
         @if (State.IsLoading)
@@ -197,6 +187,21 @@
                 }
             </div>
         }
+    }
+
+    @* The bottom edge of the card is the expand/collapse control. Only offered
+       once a search has run — before that there is nothing worth collapsing to,
+       and a card that folds away its own empty form is just a trap. *@
+    @if (State.HasSearched)
+    {
+        <div class="log-source-lip" role="button" tabindex="0"
+             aria-expanded="@(!State.SourceCollapsed)"
+             title="@(State.SourceCollapsed ? "Show the search source" : "Collapse the search source")"
+             @onclick="ToggleSourceCollapsed"
+             @onkeypress="@(e => { if (e.Key == "Enter" || e.Key == " ") ToggleSourceCollapsed(); })">
+            <i class="bi @(State.SourceCollapsed ? "bi-chevron-down" : "bi-chevron-up")"></i>
+            <span>@(State.SourceCollapsed ? "Edit search" : "Collapse")</span>
+        </div>
     }
 </div>
 
@@ -299,7 +304,7 @@ else
 {
     EnsureColumnMetrics();
 
-    <div class="modern-card">
+    <div class="modern-card log-results-card @(State.ResultsFullscreen ? "is-fullscreen" : null)">
         <div class="log-toolbar">
             <div class="log-toolbar-group">
                 <i class="bi bi-table text-accent-blue"></i>
@@ -355,6 +360,13 @@ else
                     <option value="500">500</option>
                     <option value="1000">1000</option>
                 </select>
+                @* Beside page size and CSV: the controls that decide how much you see
+                   at once, rather than off with the row counts. *@
+                <button type="button" class="btn-secondary flex items-center space-x-2" @onclick="ToggleResultsFullscreen"
+                        title="@(State.ResultsFullscreen ? "Exit full screen (Esc)" : "Fill the window with the results")"
+                        aria-pressed="@State.ResultsFullscreen">
+                    <i class="bi @(State.ResultsFullscreen ? "bi-fullscreen-exit" : "bi-arrows-fullscreen")"></i>
+                </button>
                 <button class="btn-secondary flex items-center space-x-2" @onclick="DownloadCsv" disabled="@(State.IsLoading || State.FilteredLogLines.Count == 0)" title="Download the current view as CSV">
                     <i class="bi bi-download"></i>
                     <span>CSV</span>
@@ -386,7 +398,7 @@ else
             </div>
         }
 
-        <div class="border border-dark-border rounded-lg overflow-hidden">
+        <div class="border border-dark-border rounded-lg overflow-hidden log-results-frame">
             @if (State.PlainTextView)
             {
                 @* The same rows, template order, rejoined with the template's own
@@ -422,7 +434,7 @@ else
                                 }
                             }
                         </colgroup>
-                        <thead class="bg-dark-surface border-b border-dark-border sticky top-0 z-10">
+                        <thead class="border-b border-dark-border">
                             <tr>
                                 <th aria-label="Expand row"></th>
                                 @foreach (var col in VisibleColumns)
@@ -573,6 +585,24 @@ else
 }
 
 @code {
+
+    // --- full-screen results ---
+
+    private DotNetObjectReference<Logs>? _self;
+
+    private void ToggleResultsFullscreen() => State.ResultsFullscreen = !State.ResultsFullscreen;
+
+    /// <summary>Called from the document keydown listener; see wwwroot/js/logTools.js.</summary>
+    [JSInvokable]
+    public Task ExitFullscreen()
+    {
+        // Only a state change when there is something to exit, so Escape elsewhere on
+        // the page does not cost a render.
+        if (!State.ResultsFullscreen) return Task.CompletedTask;
+
+        State.ResultsFullscreen = false;
+        return InvokeAsync(StateHasChanged);
+    }
 
     // --- row context menu ---
 
@@ -985,6 +1015,19 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            _self = DotNetObjectReference.Create(this);
+            try
+            {
+                await JS.InvokeVoidAsync("logTools.watchEscape", _self, nameof(ExitFullscreen));
+            }
+            catch (JSException)
+            {
+                // Non-fatal: the toolbar button still leaves full screen.
+            }
+        }
+
         if (!State.IsLoading && !State.PlainTextView && State.FilteredLogLines.Count > 0)
         {
             try
@@ -1058,5 +1101,10 @@ else
         State.OnChanged -= HandleStateChanged;
         _searchDebounceTimer?.Dispose();
         _pageDebounceTimer?.Dispose();
+
+        // The listener is on the document and would outlive this page otherwise,
+        // holding a reference to a component that is no longer rendering.
+        _ = JS.InvokeVoidAsync("logTools.stopEscape");
+        _self?.Dispose();
     }
 }

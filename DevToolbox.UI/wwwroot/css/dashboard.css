@@ -1557,3 +1557,154 @@ tr.log-row-expanded td {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+/* ── Log Viewer: sticky header ───────────────────────────────────────────────
+   The sticky lives on the cells, not on <thead>.
+
+   A table paints its backgrounds in layers — table, column group, row group,
+   row, then cell — and the cell paints last, on top. The header carried its
+   background on <thead> while the <th> cells were transparent, so once rows
+   scrolled up they showed through the header wherever the row-group background
+   did not reach: past the tenth column the header text sat directly on top of
+   the data. Giving each cell its own background and its own sticky removes the
+   dependency on which layer paints where. */
+.log-table-dense thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background-color: rgb(var(--c-surface));
+}
+
+/* ── Log Viewer: fullscreen results ──────────────────────────────────────────
+   Page size only ever put more rows inside the same short box. This makes the
+   box itself the window: the card covers the source and filter cards rather
+   than being resized around them, so the table gets every pixel.
+
+   Above the nav (z-30) but below modals (z-40/50), so a dialog opened from here
+   still lands on top. */
+.log-results-card.is-fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 35;
+    margin: 0;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+    background-color: rgb(var(--c-surface));
+    overflow: hidden;
+}
+
+/* The frame around the scroller has to flex too, or the scroller inherits a
+   height of nothing and the table renders into a sliver. min-height:0 for the
+   usual reason: a flex child will not shrink below its content without it. */
+.log-results-card.is-fullscreen .log-results-frame {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.log-results-card.is-fullscreen .log-results-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+}
+
+/* ── Log Viewer: stripes across the whole line ───────────────────────────────
+   A block-level line is as wide as its container, not as wide as its text, so
+   with wrapping off the text ran past the end of its own background and the
+   zebra striping stopped dead at the fold. max-content makes the line as wide
+   as what it holds; min-width keeps short lines full width so the striping
+   still reaches the right edge. */
+.log-textline {
+    width: max-content;
+    min-width: 100%;
+}
+
+/* Wrapped mode wants the opposite: lines must fold at the container, and
+   max-content would keep them on one endless line instead. */
+.log-textview-wrap .log-textline {
+    width: auto;
+}
+
+/* ── Log Viewer: scrollbars ──────────────────────────────────────────────────
+   The corner where the two scrollbars meet is painted by the browser and is
+   not covered by color-scheme, which is the white notch that showed at the
+   right-hand end of the horizontal bar. Styling the parts explicitly also
+   keeps the bars from reading as light chrome on a dark panel. */
+.log-results-scroll::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+}
+
+.log-results-scroll::-webkit-scrollbar-track,
+.log-results-scroll::-webkit-scrollbar-corner {
+    background-color: rgb(var(--c-bg));
+}
+
+.log-results-scroll::-webkit-scrollbar-thumb {
+    background-color: rgb(var(--c-border));
+    border-radius: 6px;
+    border: 3px solid rgb(var(--c-bg));
+}
+
+.log-results-scroll::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(var(--c-text-muted));
+}
+
+/* ── Log Viewer: slimmer pagination ──────────────────────────────────────── */
+
+.log-pagination {
+    margin-top: 0.5rem;
+}
+
+.log-pagination .btn-secondary {
+    padding: 0.2rem 0.55rem;
+    font-size: 0.8125rem;
+}
+
+.log-pagination .input-modern {
+    padding: 0.15rem 0.35rem;
+    font-size: 0.8125rem;
+}
+
+/* ── Log Viewer: the source card's bottom lip ────────────────────────────────
+   The whole bottom edge is the expand/collapse control, which replaces a Collapse
+   button that sat among the search actions and read like one of them. Negative
+   margins take it out to the card's own edges so it reads as the lip of the box
+   rather than a strip inside it. */
+.log-source-lip {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    height: 1.15rem;
+    margin: 0.75rem -1.5rem -1.5rem;
+    border-top: 1px solid rgb(var(--c-border));
+    border-radius: 0 0 0.75rem 0.75rem;
+    color: rgb(var(--c-text-muted));
+    font-size: 0.6875rem;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.15s ease-out, color 0.15s ease-out;
+}
+
+.log-source-lip:hover {
+    background-color: rgb(var(--c-surface-hover));
+    color: rgb(var(--c-text));
+}
+
+/* The collapsed card carries tighter padding, so the lip has less to reach past. */
+.log-card-compact .log-source-lip {
+    margin: 0.5rem -1rem -0.625rem;
+}
+
+/* The label is for discoverability and gets out of the way once you know. */
+.log-source-lip span {
+    opacity: 0;
+    transition: opacity 0.15s ease-out;
+}
+
+.log-source-lip:hover span {
+    opacity: 1;
+}
