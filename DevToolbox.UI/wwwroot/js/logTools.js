@@ -50,3 +50,26 @@ window.logTools = {
 window.logTools.viewportSize = function () {
     return { width: window.innerWidth, height: window.innerHeight };
 };
+
+// Escape closes the Log Viewer's full-screen results.
+//
+// A document listener rather than @onkeydown on the card, for the same reason
+// menu.js listens on the document: the key has to work wherever focus happens to
+// be — the page-number box, a filter field, nothing at all — and a handler bound
+// to one element only fires when that element has focus.
+window.logTools.watchEscape = function (owner, method) {
+    if (window.logTools._escapeHandler) { return; }
+
+    window.logTools._escapeHandler = function (event) {
+        if (event.key === 'Escape') { owner.invokeMethodAsync(method); }
+    };
+
+    document.addEventListener('keydown', window.logTools._escapeHandler);
+};
+
+window.logTools.stopEscape = function () {
+    if (!window.logTools._escapeHandler) { return; }
+
+    document.removeEventListener('keydown', window.logTools._escapeHandler);
+    window.logTools._escapeHandler = null;
+};
