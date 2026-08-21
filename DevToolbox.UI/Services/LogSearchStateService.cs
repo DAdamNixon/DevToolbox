@@ -58,6 +58,13 @@ public sealed class LogSearchStateService : IDisposable
     /// </summary>
     public bool SourceCollapsed { get; set; }
 
+    /// <summary>
+    /// The results card fills the window, covering the source and filter cards.
+    /// Page size only ever added rows to the same short box; this is what makes the
+    /// box itself bigger.
+    /// </summary>
+    public bool ResultsFullscreen { get; set; }
+
     /// <summary>Results rendered as raw delimited lines instead of the table.</summary>
     public bool PlainTextView { get; set; }
 
