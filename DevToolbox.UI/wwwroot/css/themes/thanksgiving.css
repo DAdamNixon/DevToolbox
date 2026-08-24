@@ -1,0 +1,27 @@
+/* Thanksgiving — harvest gold and cranberry on a deeper, browner ground than
+ * Fall. The two overlap in November on purpose; they are meant to be told apart
+ * by their accents, so those are gold/red here and orange/red there.
+ */
+:root[data-theme="thanksgiving"] {
+    color-scheme: dark;
+
+    --c-bg: 26 20 16;
+    --c-surface: 43 33 26;
+    --c-surface-hover: 59 45 34;
+    --c-border: 85 64 45;
+    --c-text: 245 234 217;
+    --c-text-muted: 201 174 140;
+
+    --c-accent-blue: 217 155 43;
+    --c-accent-blue-hover: 184 127 28;
+    --c-accent-purple: 168 50 70;
+    --c-accent-purple-hover: 139 37 55;
+
+    --c-success: 125 154 60;
+    --c-warning: 217 161 31;
+    --c-danger: 201 68 48;
+
+    --c-danger-text: 239 171 156;
+
+    --shadow-strength: 1;
+}

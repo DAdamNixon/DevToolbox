@@ -1,8 +1,10 @@
-/* The only place a colour is written down.
+/* The base palettes: dark, and the light override.
+ *
+ * Colours are written down here and in themes/, and nowhere else.
  *
  * Everything else — the Tailwind palette in tailwind.config.js, dashboard.css,
- * and any component style — refers back to these variables, so swapping a theme
- * is a change to this file alone.
+ * and any component style — refers back to these variables, so switching
+ * themes is a variable swap at runtime and never needs a rebuild.
  *
  * Values are space-separated RGB channels, not hex, so one variable serves both
  * consumers:
@@ -15,11 +17,16 @@
  * `bg-dark-bg` means white, which reads oddly; renaming the whole palette to
  * semantic names is a separate pass, deliberately not mixed into this one.
  *
- * Only two states exist here: default (dark) and [data-theme="light"]. There is
- * no prefers-color-scheme block — the boot script in index.html resolves the
- * "system" setting itself and always writes a concrete theme onto <html>. That
- * keeps the fallback honest: if scripting fails the page stays dark, which is
- * what it was before any of this existed.
+ * Two states live in this file: default (dark) and [data-theme="light"]. The
+ * seasonal palettes are one file each under themes/, listed by themes.css, and
+ * they override the same tokens at a higher specificity — read themes.css before
+ * adding one.
+ *
+ * There is no prefers-color-scheme block anywhere: the boot script in index.html
+ * resolves the "system" setting itself and always writes a concrete theme onto
+ * <html>. That keeps the fallback honest — if scripting fails the page stays dark,
+ * which is what it was before any of this existed — and it means an explicit
+ * choice never has to out-specify a media query.
  */
 
 :root {

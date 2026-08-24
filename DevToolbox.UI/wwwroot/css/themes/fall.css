@@ -1,0 +1,28 @@
+/* Fall — warm dark. Ember orange on damp bark.
+ *
+ * See themes.css for the token contract and for what "declare all of them" means.
+ * The accent names are historical: under this palette --c-accent-blue is orange.
+ */
+:root[data-theme="fall"] {
+    color-scheme: dark;
+
+    --c-bg: 28 21 18;
+    --c-surface: 42 31 25;
+    --c-surface-hover: 58 43 34;
+    --c-border: 77 58 44;
+    --c-text: 242 229 215;
+    --c-text-muted: 192 165 140;
+
+    --c-accent-blue: 224 116 42;
+    --c-accent-blue-hover: 194 95 28;
+    --c-accent-purple: 209 83 63;
+    --c-accent-purple-hover: 178 63 45;
+
+    --c-success: 111 168 50;
+    --c-warning: 224 160 40;
+    --c-danger: 217 79 61;
+
+    --c-danger-text: 242 169 155;
+
+    --shadow-strength: 1;
+}

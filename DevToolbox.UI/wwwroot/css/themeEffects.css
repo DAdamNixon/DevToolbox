@@ -1,0 +1,194 @@
+/* The seasonal animation layer — falling leaves, snow, bats.
+ *
+ * Off unless two things are true: the active theme names an effect (see
+ * js/themeCatalog.js) and the user has animations enabled in Settings. Neither
+ * default paints anything, so the app is exactly as still as it was before.
+ *
+ * HOW IT IS DIVIDED. js/themeEffects.js owns the *randomness* and nothing else:
+ * it stamps a container with data-fx and fills it with identical particles, each
+ * carrying its own --fx-* custom properties. Every question of what a particle
+ * looks like and how it moves is answered here, in CSS, so a new effect is a
+ * block in this file plus one line in the catalog — no JS change.
+ *
+ * Motion is transform-only and runs on the compositor. Nothing here animates a
+ * property that would force layout, which is what keeps sixty particles from
+ * costing anything measurable while a log file is being parsed.
+ *
+ * ADDING AN EFFECT
+ *   1. a `#theme-fx[data-fx="<id>"] .fx::before` rule for the glyph
+ *   2. optionally an `animation-name` override if it should not fall
+ *   3. `effects: { <id>: { count, minSize, maxSize } }` in js/themeCatalog.js
+ *   4. name it on a theme in both catalogs
+ */
+
+/* Above the page, below every overlay. The ceiling is set by the lowest thing
+ * the snow must not cover: the Logs suggestion dropdown at z-20 and .ws-menu at
+ * z-30 in dashboard.css, then the log context menu at 40 and the modals at 50.
+ * Snow drifting over a card reads as weather; snow over an open menu reads as a
+ * bug, and #theme-fx is appended after #app so a tie in z-index would go the
+ * wrong way.
+ *
+ * pointer-events is the load-bearing line: without it this layer would sit over
+ * the whole window and eat every click in the app. */
+#theme-fx {
+    position: fixed;
+    inset: 0;
+    z-index: 15;
+    overflow: hidden;
+    pointer-events: none;
+    /* Belt and braces with the aria-hidden the script sets: this layer is
+     * decoration and must never be read out or land in a text selection. */
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* The outer element travels; the inner one spins in place. Splitting them means
+ * a tumble and a descent can have unrelated durations without either being
+ * expressed as a keyframe of the other. */
+#theme-fx .fx {
+    position: absolute;
+    top: 0;
+    left: var(--fx-x);
+    font-size: var(--fx-size);
+    line-height: 1;
+    opacity: var(--fx-opacity);
+    will-change: transform;
+    animation: fx-descend var(--fx-duration) linear var(--fx-delay) infinite;
+}
+
+#theme-fx .fx > i {
+    display: block;
+    font-style: normal;
+    will-change: transform;
+    animation: fx-sway var(--fx-sway-duration) ease-in-out var(--fx-delay) infinite;
+}
+
+/* Starts a screen height above the top and ends a screen height below the
+ * bottom, so a particle is never seen appearing or vanishing mid-window. The
+ * negative --fx-delay the script hands out is what fills the screen on the first
+ * frame instead of dropping everything from the ceiling at once. */
+@keyframes fx-descend {
+    from { transform: translate3d(0, -20vh, 0); }
+    to   { transform: translate3d(var(--fx-drift), 120vh, 0); }
+}
+
+@keyframes fx-sway {
+    0%, 100% { transform: translateX(calc(var(--fx-sway) * -1)); }
+    50%      { transform: translateX(var(--fx-sway)); }
+}
+
+/* A full tumble, for anything with a recognisable up. */
+@keyframes fx-tumble {
+    from { transform: translateX(calc(var(--fx-sway) * -1)) rotate(0deg); }
+    to   { transform: translateX(var(--fx-sway)) rotate(var(--fx-spin)); }
+}
+
+@keyframes fx-flap {
+    0%, 100% { transform: scaleY(1); }
+    50%      { transform: scaleY(0.55); }
+}
+
+/* ---- snow ---------------------------------------------------------------- */
+
+/* Three glyphs rather than one: a single repeated snowflake reads as a pattern
+ * the moment two of them line up. */
+#theme-fx[data-fx="snow"] .fx > i::before { content: "\2744"; }
+#theme-fx[data-fx="snow"] .fx:nth-child(3n) > i::before { content: "\2745"; }
+#theme-fx[data-fx="snow"] .fx:nth-child(3n+1) > i::before { content: "\2746"; }
+
+/* Snow is a text glyph, not an emoji, so it takes `color` — which is the only
+ * reason it can be white on Christmas and slate on Winter. Effect colour lives
+ * here rather than in the palettes so the token contract in themes.css stays the
+ * fifteen colours the app itself uses. */
+#theme-fx[data-fx="snow"] .fx {
+    color: #ffffff;
+    text-shadow: 0 0 6px rgb(255 255 255 / 0.55);
+}
+
+/* Winter is light-grounded: white on #eef4f9 is invisible. */
+:root[data-theme="winter"] #theme-fx[data-fx="snow"] .fx {
+    color: #6f9cc4;
+    text-shadow: 0 0 5px rgb(111 156 196 / 0.35);
+}
+
+/* ---- leaves -------------------------------------------------------------- */
+
+/* A silhouette masked out of a background colour, not an emoji.
+ *
+ * The emoji were tried first and are the reason this is a mask: U+1F341 MAPLE
+ * LEAF renders bright magenta in Segoe UI Emoji, which among brown leaves reads
+ * as a rendering fault rather than as autumn — and being a colour font, nothing
+ * in CSS can correct it. A mask puts the colour back under our control, so the
+ * leaves can be tinted per theme below, and it drops the dependency on which
+ * emoji font the host happens to have.
+ *
+ * One shape, four colours, and the per-particle size, opacity and tumble the
+ * script already randomises. That reads as a scatter of leaves without needing
+ * a second silhouette. */
+#theme-fx[data-fx="leaves"] {
+    --fx-leaf: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2c8.5 6.5 11.5 14 1 24l-1 1-1-1C4.5 16 7.5 8.5 16 2z'/%3E%3Cpath d='M15.3 24h1.4v7h-1.4z'/%3E%3C/svg%3E");
+}
+
+#theme-fx[data-fx="leaves"] .fx > i {
+    /* A masked element paints its own box, so unlike a glyph it needs a size. */
+    width: var(--fx-size);
+    height: var(--fx-size);
+    background-color: currentColor;
+    -webkit-mask-image: var(--fx-leaf);
+    mask-image: var(--fx-leaf);
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+
+    /* A leaf has a shape, so it tumbles rather than sways. */
+    animation-name: fx-tumble;
+    animation-timing-function: linear;
+}
+
+/* Fall: ember orange through rust, picked to sit on that palette's ground. */
+#theme-fx[data-fx="leaves"] .fx { color: #c8631f; }
+#theme-fx[data-fx="leaves"] .fx:nth-child(4n+1) { color: #e08a2c; }
+#theme-fx[data-fx="leaves"] .fx:nth-child(4n+2) { color: #a83a24; }
+#theme-fx[data-fx="leaves"] .fx:nth-child(4n+3) { color: #8a5a2b; }
+
+/* Thanksgiving shares the effect but not the colours — harvest gold and
+ * cranberry, the same pair its palette uses for accents. */
+:root[data-theme="thanksgiving"] #theme-fx[data-fx="leaves"] .fx { color: #b8862b; }
+:root[data-theme="thanksgiving"] #theme-fx[data-fx="leaves"] .fx:nth-child(4n+1) { color: #d9a93b; }
+:root[data-theme="thanksgiving"] #theme-fx[data-fx="leaves"] .fx:nth-child(4n+2) { color: #a83246; }
+:root[data-theme="thanksgiving"] #theme-fx[data-fx="leaves"] .fx:nth-child(4n+3) { color: #8a5a2b; }
+
+/* ---- bats ---------------------------------------------------------------- */
+
+/* Bats cross the window instead of falling, which is the whole reason the outer
+ * animation is overridable: same engine, same particles, different axis. */
+#theme-fx[data-fx="bats"] .fx > i::before { content: "\1F987"; }
+
+#theme-fx[data-fx="bats"] .fx {
+    left: auto;
+    right: -15vw;
+    top: var(--fx-y);
+    animation-name: fx-cross;
+}
+
+#theme-fx[data-fx="bats"] .fx > i {
+    animation-name: fx-flap;
+    /* Wingbeats are much faster than a glide, and derived from it so a slow bat
+     * still flaps slowly. */
+    animation-duration: calc(var(--fx-sway-duration) / 6);
+}
+
+@keyframes fx-cross {
+    from { transform: translate3d(0, 0, 0); }
+    to   { transform: translate3d(-130vw, var(--fx-drift), 0); }
+}
+
+/* ---- opting out ---------------------------------------------------------- */
+
+/* An OS-level "reduce motion" outranks the app setting. Decoration is exactly
+ * what that preference is for, and honouring it here means the toggle in
+ * Settings never has to be found by someone who already said this once. */
+@media (prefers-reduced-motion: reduce) {
+    #theme-fx { display: none; }
+}

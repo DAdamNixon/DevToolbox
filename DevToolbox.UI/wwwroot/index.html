@@ -16,9 +16,18 @@
     <!-- Colour tokens. Must come first: output.css and dashboard.css both
          resolve their colours through the variables declared here. -->
     <link href="css/theme.css" rel="stylesheet" />
+    <!-- The seasonal palettes, and the animation layer one of them can switch on.
+         Both after theme.css: every selector in them is :root[data-theme=...], so
+         they only have to outrank the base tokens declared there. -->
+    <link href="css/themes.css" rel="stylesheet" />
+    <link href="css/themeEffects.css" rel="stylesheet" />
     <!-- Theme boot. Inline and before the body so the correct palette is in
-         place at first paint — a deferred script would flash the wrong theme. -->
+         place at first paint — a deferred script would flash the wrong theme.
+         Order matters within it: the catalog is data the other two read, and the
+         effects layer must have registered itself before boot() asks for snow. -->
+    <script src="js/themeCatalog.js"></script>
     <script src="js/theme.js"></script>
+    <script src="js/themeEffects.js"></script>
     <script>window.devtoolboxTheme.boot();</script>
     <!-- Tailwind CSS -->
     <link href="css/output.css" rel="stylesheet" />

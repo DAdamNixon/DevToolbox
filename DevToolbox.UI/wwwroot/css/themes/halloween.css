@@ -1,0 +1,26 @@
+/* Halloween — near-black violet, pumpkin, and a brighter purple for the second
+ * accent. The darkest ground of any theme here; that is the point.
+ */
+:root[data-theme="halloween"] {
+    color-scheme: dark;
+
+    --c-bg: 18 13 24;
+    --c-surface: 30 21 40;
+    --c-surface-hover: 44 31 58;
+    --c-border: 64 41 92;
+    --c-text: 240 230 247;
+    --c-text-muted: 185 163 201;
+
+    --c-accent-blue: 255 117 24;
+    --c-accent-blue-hover: 224 95 10;
+    --c-accent-purple: 162 89 230;
+    --c-accent-purple-hover: 139 63 208;
+
+    --c-success: 122 201 67;
+    --c-warning: 255 176 32;
+    --c-danger: 224 69 58;
+
+    --c-danger-text: 247 167 159;
+
+    --shadow-strength: 1;
+}

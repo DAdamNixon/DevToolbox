@@ -1,0 +1,30 @@
+/* Winter — the only light-grounded seasonal theme, and deliberately so: it is
+ * the one season people associate with glare off snow rather than with a dark
+ * room. That means it follows the light theme's rules, not the dark ones —
+ * accents are a step darker so body text clears 4.5:1 on a near-white ground,
+ * and --shadow-strength drops, because the same black that reads as depth over
+ * #1a1a1a reads as grime over #eef4f9.
+ */
+:root[data-theme="winter"] {
+    color-scheme: light;
+
+    --c-bg: 238 244 249;
+    --c-surface: 255 255 255;
+    --c-surface-hover: 226 236 245;
+    --c-border: 203 218 232;
+    --c-text: 18 33 46;
+    --c-text-muted: 74 96 114;
+
+    --c-accent-blue: 31 111 178;
+    --c-accent-blue-hover: 23 90 143;
+    --c-accent-purple: 90 99 184;
+    --c-accent-purple-hover: 70 78 155;
+
+    --c-success: 15 118 110;
+    --c-warning: 180 83 9;
+    --c-danger: 190 53 53;
+
+    --c-danger-text: 161 39 39;
+
+    --shadow-strength: 0.35;
+}

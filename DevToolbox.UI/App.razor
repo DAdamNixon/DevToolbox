@@ -56,11 +56,16 @@
     // cache by now. This reconciles that guess against ui_settings.yaml, which is
     // the actual setting — it matters when the file was hand-edited, or when the
     // cache was cleared and boot fell back to "system".
+    //
+    // All three values go over together: the animation and show-all flags are
+    // cached alongside the theme for the same timing reason, and re-sending only
+    // the theme would leave a stale flag deciding whether it snows.
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
 
         var settings = await UiSettings.GetAsync();
-        await JS.InvokeVoidAsync("devtoolboxTheme.apply", settings.Theme);
+        await JS.InvokeVoidAsync(
+            "devtoolboxTheme.apply", settings.Theme, settings.ThemeAnimations, settings.ShowAllThemes);
     }
 }

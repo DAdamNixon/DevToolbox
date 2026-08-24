@@ -1,0 +1,30 @@
+/* Christmas — pine ground, red primary, gold second accent.
+ *
+ * Red is the *primary* accent here, which means every btn-primary in the app
+ * turns red. That is intentional, but it is also why --c-danger is pushed
+ * lighter than usual: a destructive button has to stay distinguishable from an
+ * ordinary one.
+ */
+:root[data-theme="christmas"] {
+    color-scheme: dark;
+
+    --c-bg: 13 26 18;
+    --c-surface: 20 38 26;
+    --c-surface-hover: 29 53 36;
+    --c-border: 43 74 51;
+    --c-text: 238 246 239;
+    --c-text-muted: 168 196 174;
+
+    --c-accent-blue: 217 64 64;
+    --c-accent-blue-hover: 185 47 47;
+    --c-accent-purple: 217 176 54;
+    --c-accent-purple-hover: 184 146 38;
+
+    --c-success: 63 168 92;
+    --c-warning: 217 168 40;
+    --c-danger: 235 110 110;
+
+    --c-danger-text: 245 170 170;
+
+    --shadow-strength: 1;
+}

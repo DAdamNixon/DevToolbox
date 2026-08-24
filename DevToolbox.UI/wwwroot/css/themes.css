@@ -1,0 +1,42 @@
+/* The seasonal palettes. This file lists them and nothing else.
+ *
+ * ADDING A THEME is four edits, and ThemeCatalogTests fails until all four are made:
+ *
+ *   1. css/themes/<id>.css          the palette
+ *   2. this file                    one @import line, kept in calendar order
+ *   3. js/themeCatalog.js           id, label, season window, effect
+ *   4. Models/ThemeCatalog.cs       the same row, for the C# side
+ *
+ * Steps 3 and 4 are the same data in two languages because the two run at
+ * different times: the boot script has to put a palette on <html> before first
+ * paint, long before any .NET code has read a config file. The test compares
+ * them so the duplication cannot drift.
+ *
+ * THE TOKEN CONTRACT. A palette file declares *every* token below, not just the
+ * ones that differ from dark:
+ *
+ *   --c-bg  --c-surface  --c-surface-hover  --c-border  --c-text  --c-text-muted
+ *   --c-accent-blue  --c-accent-blue-hover
+ *   --c-accent-purple  --c-accent-purple-hover
+ *   --c-success  --c-warning  --c-danger  --c-danger-text
+ *   --shadow-strength  and the color-scheme property
+ *
+ * Base values live on plain `:root` in theme.css, so an omitted token silently
+ * inherits the *dark* one — which for a light-grounded theme like Winter means
+ * white text on white. Declaring all of them makes that impossible to get wrong
+ * by accident. Values are space-separated RGB channels for the same reason as in
+ * theme.css: one variable has to serve both `rgb(var(--c-bg) / <alpha-value>)`
+ * in Tailwind and `rgb(var(--c-bg))` in plain CSS.
+ *
+ * The accent tokens keep their historical blue/purple names — under Halloween
+ * `--c-accent-blue` is pumpkin orange. Read them as "primary" and "secondary".
+ *
+ * Loaded after theme.css, and every selector here is `:root[data-theme=...]`, so
+ * a seasonal theme outranks both the dark default and the light override without
+ * needing !important.
+ */
+@import url("themes/fall.css");
+@import url("themes/halloween.css");
+@import url("themes/thanksgiving.css");
+@import url("themes/winter.css");
+@import url("themes/christmas.css");

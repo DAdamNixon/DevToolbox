@@ -29,12 +29,39 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div class="space-y-2">
                     <label class="block text-sm font-medium text-dark-text">Theme</label>
+                    @* Seasonal themes are listed only inside their own window unless "Show all
+                       themes" is on. The exception is one that is already saved: it stays in the
+                       list year-round, because a select whose value matches no option displays the
+                       first one instead and would quietly misreport the setting. *@
                     <select class="input-modern w-full" value="@selectedTheme" @onchange="OnThemeChangedAsync">
-                        <option value="@ThemeOptions.System">System Default</option>
-                        <option value="@ThemeOptions.Dark">Dark Theme</option>
-                        <option value="@ThemeOptions.Light">Light Theme</option>
+                        @foreach (var theme in offered.Where(t => !t.IsSeasonal))
+                        {
+                            <option value="@theme.Id">@theme.Label</option>
+                        }
+                        @if (offered.Any(t => t.IsSeasonal))
+                        {
+                            <optgroup label="Seasonal">
+                                @foreach (var theme in offered.Where(t => t.IsSeasonal))
+                                {
+                                    <option value="@theme.Id">@OptionLabel(theme)</option>
+                                }
+                            </optgroup>
+                        }
                     </select>
                     <p class="text-xs text-dark-text-muted">Choose your preferred color scheme</p>
+                    @if (WaitingFor is { } season)
+                    {
+                        <p class="text-xs text-warning">
+                            Saved, but out of season, so the app is showing your system theme until
+                            @season. Turn on "Show all themes" below to use it now.
+                        </p>
+                    }
+                    @if (UnseenEffect is { } effect)
+                    {
+                        <p class="text-xs text-dark-text-muted">
+                            This theme animates @effect. Turn on "Theme animations" below to see it.
+                        </p>
+                    }
                     @if (themeError is not null)
                     {
                         <p class="text-xs text-danger">@themeError</p>
@@ -57,6 +84,39 @@
                 </div>
             </div>
             
+            @* Both of these are applied on change rather than on Save, for the same reason the
+               theme is: the only way to judge snow is to watch it. *@
+            <div class="flex items-center justify-between p-4 bg-dark-surface rounded-lg">
+                <div>
+                    <label for="theme-animations" class="text-sm font-medium text-dark-text cursor-pointer">Theme animations</label>
+                    <p class="text-xs text-dark-text-muted">
+                        Let a seasonal theme animate: leaves for Fall and Thanksgiving, snow for
+                        Winter and Christmas, bats for Halloween. Windows' own "reduce motion"
+                        setting overrides this either way.
+                    </p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="theme-animations" class="sr-only peer"
+                           checked="@themeAnimations" @onchange="OnAnimationsChangedAsync" />
+                    <div class="w-11 h-6 bg-dark-border peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-accent-blue/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent-blue"></div>
+                </label>
+            </div>
+
+            <div class="flex items-center justify-between p-4 bg-dark-surface rounded-lg">
+                <div>
+                    <label for="show-all-themes" class="text-sm font-medium text-dark-text cursor-pointer">Show all themes</label>
+                    <p class="text-xs text-dark-text-muted">
+                        Offer every seasonal theme year-round. Off by default, so they arrive on
+                        their own when the date comes round.
+                    </p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="show-all-themes" class="sr-only peer"
+                           checked="@showAllThemes" @onchange="OnShowAllChangedAsync" />
+                    <div class="w-11 h-6 bg-dark-border peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-accent-blue/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent-blue"></div>
+                </label>
+            </div>
+
             <div class="flex items-center justify-between p-4 bg-dark-surface rounded-lg">
                 <div>
                     <label for="auto-save" class="text-sm font-medium text-dark-text cursor-pointer">Auto-save</label>
@@ -376,16 +436,73 @@
     }
 
     private string selectedTheme = ThemeOptions.System;
+    private bool themeAnimations = true;
+    private bool showAllThemes;
     private string? themeError;
     private string? statusMessage;
     private bool statusIsError;
+
+    // The themes in the dropdown. A field rather than a property because the markup walks it three
+    // times per render, and because it only ever changes on an event.
+    private List<ThemeDefinition> offered = new();
+
+    // Read once per refresh instead of per call, so a render that straddles midnight on 30 November
+    // cannot show Fall in the list and call it out of season in the same breath.
+    private DateOnly today = DateOnly.FromDateTime(DateTime.Now);
+
+    /// <summary>
+    /// The season a saved-but-dormant theme is waiting for, or null when the choice is live. This is
+    /// the case worth spelling out: the file says christmas, the window is grey, and nothing is
+    /// broken.
+    /// </summary>
+    private string? WaitingFor =>
+        ThemeCatalog.Find(selectedTheme) is { Season: { } season } && !ThemeCatalog.IsActive(selectedTheme, today, showAllThemes)
+            ? season.Describe()
+            : null;
+
+    /// <summary>An animation the chosen theme has but the animation toggle is suppressing.</summary>
+    private string? UnseenEffect =>
+        !themeAnimations && ThemeCatalog.Find(selectedTheme)?.Effect is { } effect
+            ? ThemeCatalog.DescribeEffect(effect)
+            : null;
+
+    private string OptionLabel(ThemeDefinition theme)
+    {
+        if (theme.Season is null) return theme.Label;
+
+        // The window is worth showing whenever it is not self-evident: with "show all themes" on
+        // nothing else says when Halloween would normally appear, and a dormant saved theme needs
+        // to say what it is waiting for.
+        return showAllThemes || !theme.IsAvailableOn(today)
+            ? $"{theme.Label} ({theme.Season.Describe()})"
+            : theme.Label;
+    }
+
+    private void RefreshOffered()
+    {
+        today = DateOnly.FromDateTime(DateTime.Now);
+        offered = ThemeCatalog.Offered(today, showAllThemes).ToList();
+
+        // Keep a saved theme selectable even out of season; see the comment on the select.
+        if (ThemeCatalog.Find(selectedTheme) is { } saved && !offered.Contains(saved))
+        {
+            offered.Add(saved);
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
         RefreshBundled();
 
+        // Once before the first await, so the select is never rendered empty in the frame between
+        // the component initializing and ui_settings.yaml coming back off disk.
+        RefreshOffered();
+
         var settings = await UiSettings.GetAsync();
         selectedTheme = settings.Theme;
+        themeAnimations = settings.ThemeAnimations;
+        showAllThemes = settings.ShowAllThemes;
+        RefreshOffered();
 
         // A malformed ui_settings.yaml leaves the dropdown showing defaults that
         // are not what is in the file. Say so, rather than letting the next save
@@ -403,25 +520,46 @@
         await ApplyAndSaveThemeAsync();
     }
 
+    private async Task OnAnimationsChangedAsync(ChangeEventArgs e)
+    {
+        themeAnimations = e.Value is true;
+        await ApplyAndSaveThemeAsync();
+    }
+
+    private async Task OnShowAllChangedAsync(ChangeEventArgs e)
+    {
+        showAllThemes = e.Value is true;
+        await ApplyAndSaveThemeAsync();
+    }
+
     private async Task SaveSettings() => await ApplyAndSaveThemeAsync();
 
     private async Task ResetToDefaults()
     {
-        selectedTheme = new UiSettings().Theme;
+        var defaults = new UiSettings();
+        selectedTheme = defaults.Theme;
+        themeAnimations = defaults.ThemeAnimations;
+        showAllThemes = defaults.ShowAllThemes;
         await ApplyAndSaveThemeAsync();
     }
 
     private async Task ApplyAndSaveThemeAsync()
     {
+        // The dropdown's own contents depend on these values, so the list is rebuilt before the
+        // paint: turning "show all themes" off has to remove the options it added.
+        RefreshOffered();
+
         // Paint first so the change is instant even if the write is slow, then
         // persist. If the write fails the screen and the file disagree, which is
         // exactly what the error message needs to say.
-        await JS.InvokeVoidAsync("devtoolboxTheme.apply", selectedTheme);
+        await JS.InvokeVoidAsync("devtoolboxTheme.apply", selectedTheme, themeAnimations, showAllThemes);
 
         try
         {
             var settings = await UiSettings.GetAsync();
             settings.Theme = selectedTheme;
+            settings.ThemeAnimations = themeAnimations;
+            settings.ShowAllThemes = showAllThemes;
             await UiSettings.SaveAsync(settings);
 
             themeError = null;
