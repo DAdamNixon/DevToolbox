@@ -2,6 +2,7 @@
 @using DevToolbox.Services.Interfaces
 @using DevToolbox.Services.Models
 @using DevToolbox.UI.Services
+@using DevToolbox.UI.Components.Dialogs
 @using Microsoft.AspNetCore.Components.Web.Virtualization
 @using Microsoft.JSInterop
 @using System.Threading
@@ -41,16 +42,16 @@
     {
         <div class="log-source-summary">
             <span class="log-source-summary-text"><strong>Source:</strong> @State.SourceSummary</span>
-            <button class="btn-primary flex items-center space-x-2" @onclick="Search" disabled="@State.IsLoading" title="Run the search again">
+            <button class="btn-primary flex items-center space-x-2" @onclick="Search" disabled="@State.IsLoading" title="Read these files in again">
                 @if (State.IsLoading)
                 {
                     <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                 }
                 else
                 {
-                    <i class="bi bi-search"></i>
+                    <i class="bi bi-box-arrow-in-down"></i>
                 }
-                <span>Search</span>
+                <span>Load Logs</span>
             </button>
             @if (State.IsLoading)
             {
@@ -64,7 +65,17 @@
     {
         <div class="grid grid-cols-1 md:grid-cols-6 gap-4">
             <div>
-                <label for="templateSelect" class="block text-sm font-medium text-dark-text mb-2">Template</label>
+                @* The gear sits on the label rather than off in a settings page: a template that
+                   parses the file wrongly is discovered right here, with the wrong columns on
+                   screen. It is a *sibling* of the label rather than inside it, because a button
+                   within a label carrying `for` has its click forwarded to the control as well. *@
+                <div class="log-field-head">
+                    <label for="templateSelect" class="text-sm font-medium text-dark-text">Template</label>
+                    <button type="button" class="log-config-open" title="Add, edit or remove templates"
+                            @onclick="OpenTemplateConfig">
+                        <i class="bi bi-sliders"></i>
+                    </button>
+                </div>
                 <select id="templateSelect" class="input-modern w-full" @bind="State.SelectedTemplateName" @bind:after="OnTemplateChanged">
                     @foreach (var template in State.AvailableTemplates)
                     {
@@ -73,7 +84,13 @@
                 </select>
             </div>
             <div class="md:col-span-2 relative">
-                <label class="block text-sm font-medium text-dark-text mb-2">Location</label>
+                <div class="log-field-head">
+                    <span class="text-sm font-medium text-dark-text">Location</span>
+                    <button type="button" class="log-config-open" title="Add or remove locations"
+                            @onclick="OpenLocationConfig">
+                        <i class="bi bi-sliders"></i>
+                    </button>
+                </div>
                 <button type="button" class="input-modern w-full text-left flex items-center justify-between" @onclick="ToggleLocationMenu">
                     <span class="truncate">@State.LocationSummary</span>
                     <i class="bi bi-chevron-down text-dark-text-muted ml-2"></i>
@@ -134,17 +151,22 @@
             </div>
         </div>
 
+        @* "Load Logs", not "Search": this button reads the files off disk into the table, and the
+           filter bar below is what searches them. Called Search, it read as the last step of the
+           form — people typed their keywords first and clicked it expecting results, which is a
+           different and much slower thing than what it does. *@
         <div class="flex items-end gap-4 mt-6">
-            <button class="btn-primary flex items-center space-x-2" @onclick="Search" disabled="@State.IsLoading" aria-describedby="searchHelp">
+            <button class="btn-primary flex items-center space-x-2" @onclick="Search" disabled="@State.IsLoading"
+                    title="Read the matching files into the table, then filter them below">
                 @if (State.IsLoading)
                 {
                     <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                 }
                 else
                 {
-                    <i class="bi bi-search"></i>
+                    <i class="bi bi-box-arrow-in-down"></i>
                 }
-                <span>Search</span>
+                <span>Load Logs</span>
             </button>
             @if (State.IsLoading)
             {
@@ -213,7 +235,7 @@
             <input type="checkbox" @bind="State.AdvancedRawMode" @bind:after="OnAdvancedToggled" />
             <span class="text-sm font-medium text-dark-text">Advanced query mode (SQL)</span>
         </label>
-        <span class="text-xs text-dark-text-muted">@(State.AdvancedRawMode ? "Full SQL against the table named logs." : "Type to filter as you go (Enter or 500ms). Rows combine with AND / OR / NOT.")</span>
+        <span class="text-xs text-dark-text-muted">@(State.AdvancedRawMode ? "Full SQL against the table named logs." : "Filters the loaded rows as you type (Enter or 500ms). Rows combine with AND / OR / NOT.")</span>
     </div>
 
     @if (State.AdvancedRawMode)
@@ -223,7 +245,7 @@
             <textarea id="advExpr" rows="3" class="input-modern w-full font-mono text-sm"
                       placeholder="SELECT LEFT(DateTime,4) AS Year, COUNT(*) AS Hits FROM logs GROUP BY Year"
                       @bind="State.AdvancedExpression" @bind:event="oninput" @bind:after="OnCriteriaInput"></textarea>
-            <div class="text-xs text-dark-text-muted mt-1">Full SQL against the table <code>logs</code>. Sorting and keyword groups are ignored in this mode. Run with Search or as you type (500ms).</div>
+            <div class="text-xs text-dark-text-muted mt-1">Full SQL against the table <code>logs</code>, which holds whatever was last loaded. Sorting and keyword groups are ignored in this mode. Runs as you type (500ms) or on Enter.</div>
         </div>
     }
     else
@@ -289,8 +311,9 @@
 else if (State.FilteredLogLines.Count == 0 && !State.HasSearched)
 {
     <div class="modern-card text-center py-16">
-        <i class="bi bi-search text-6xl text-dark-text-muted"></i>
-        <p class="text-dark-text-muted mt-4">Enter your search criteria and click "Search" to view logs.</p>
+        <i class="bi bi-box-arrow-in-down text-6xl text-dark-text-muted"></i>
+        <p class="text-dark-text-muted mt-4">Pick a template, location and date range, then click <strong>Load Logs</strong>.</p>
+        <p class="text-dark-text-muted text-sm mt-1">Keywords filter the rows once they are loaded.</p>
     </div>
 }
 else if (State.FilteredLogLines.Count == 0)
@@ -584,7 +607,40 @@ else
     </div>
 }
 
+<LogSourceConfigDialog IsVisible="_sourceConfigVisible"
+                       IsVisibleChanged="OnSourceConfigVisibleChanged"
+                       OpenOn="@_sourceConfigTab"
+                       OnSaved="OnSourceConfigSaved" />
+
 @code {
+
+    // --- template and location editor ---
+
+    private bool _sourceConfigVisible;
+    private string _sourceConfigTab = "templates";
+
+    private void OpenTemplateConfig() => OpenSourceConfig("templates");
+
+    private void OpenLocationConfig() => OpenSourceConfig("locations");
+
+    private void OpenSourceConfig(string tab)
+    {
+        _sourceConfigTab = tab;
+        _sourceConfigVisible = true;
+
+        // The location dropdown is a hand-rolled panel with no outside-click handler of its own, so
+        // it would sit over the dialog's backdrop.
+        State.ShowLocationMenu = false;
+    }
+
+    private void OnSourceConfigVisibleChanged(bool visible) => _sourceConfigVisible = visible;
+
+    /// <summary>
+    /// The config was written, so the lists this page has been holding since startup are stale.
+    /// Called on every save rather than on close: the dialog stays open across several saves, and the
+    /// picker behind it should already agree with what was just saved.
+    /// </summary>
+    private async Task OnSourceConfigSaved() => await State.ReloadConfigAsync();
 
     // --- full-screen results ---
 
@@ -768,7 +824,7 @@ else
     /// what the file said. Text mode leaves them out so the line reads like the
     /// file; the table keeps them because sorting by SourceFile is useful.
     /// </summary>
-    private static readonly string[] ProvenanceColumns = { "Location", "SourceFile", "Sequence" };
+    private static readonly IReadOnlyList<string> ProvenanceColumns = LogProvenanceColumns.Visible;
 
     /// <summary>
     /// The row rejoined with the template's delimiter — as close to the original

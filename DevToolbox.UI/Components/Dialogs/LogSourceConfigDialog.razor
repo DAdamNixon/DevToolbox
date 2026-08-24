@@ -1,0 +1,1140 @@
+@using DevToolbox.Services.Interfaces
+@using DevToolbox.Services.Models
+@using DevToolbox.Services.Services
+@using System.IO
+@using System.Text.RegularExpressions
+@using System.Threading
+
+@inject ILogConfigService LogConfig
+@implements IDisposable
+
+@*
+    The Log Viewer's own configuration, editable where it is used.
+
+    Both halves were hand-edited YAML until now, which meant a new log format or a new share was a
+    trip to %LOCALAPPDATA% and a guess at the schema. The two tabs are the two files: templates
+    (one YAML each, plus the index that names them) and locations (one list).
+
+    Each tab saves on its own and only when asked. Nothing here writes as you type: these files
+    decide how every subsequent search parses its rows, and YamlStorageService rewrites a whole file
+    on save — comments and key order included — so a save is a deliberate act with a .bak behind it.
+*@
+
+<Modal Title="Log sources" SizeClass="is-wide" IsVisible="IsVisible" IsVisibleChanged="OnVisibleChanged">
+    @if (IsVisible)
+    {
+        <div class="log-config">
+            <div class="log-segmented log-config-tabs" role="tablist">
+                <button type="button" role="tab" class="@(_tab == Tab.Templates ? "active" : null)"
+                        aria-selected="@(_tab == Tab.Templates)" @onclick="() => _tab = Tab.Templates">
+                    <i class="bi bi-columns-gap"></i> Templates
+                </button>
+                <button type="button" role="tab" class="@(_tab == Tab.Locations ? "active" : null)"
+                        aria-selected="@(_tab == Tab.Locations)" @onclick="() => _tab = Tab.Locations">
+                    <i class="bi bi-folder2-open"></i> Locations
+                </button>
+            </div>
+
+            @if (_loadError is not null)
+            {
+                <div class="ws-notice">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <span>@_loadError</span>
+                </div>
+            }
+            else if (_tab == Tab.Templates)
+            {
+                <div class="log-config-split">
+                    <div class="log-config-list">
+                        @foreach (var entry in _templates)
+                        {
+                            var selected = _draft is not null && FileMatches(_draft.File, entry.File);
+                            <button type="button" class="log-config-list-item @(selected ? "active" : null)"
+                                    @onclick="() => RequestSelectAsync(entry)">
+                                <span class="log-config-list-name">@entry.Name</span>
+                                <span class="log-config-list-note">@entry.File</span>
+                            </button>
+                        }
+                        <button type="button" class="log-config-list-add" @onclick="RequestNew">
+                            <i class="bi bi-plus-lg"></i> New template
+                        </button>
+                    </div>
+
+                    <div class="log-config-pane">
+                        @if (_draft is null)
+                        {
+                            @if (_saveError is not null)
+                            {
+                                <div class="ws-notice">
+                                    <i class="bi bi-exclamation-triangle-fill"></i>
+                                    <span>@_saveError</span>
+                                </div>
+                            }
+                            <p class="log-config-empty">Pick a template to edit it, or add a new one.</p>
+                        }
+                        else
+                        {
+                            @if (_pendingSelect is not null || _pendingNew)
+                            {
+                                <div class="ws-notice is-caution">
+                                    <i class="bi bi-exclamation-triangle-fill"></i>
+                                    <span>Unsaved changes to <strong>@DraftLabel()</strong>.</span>
+                                    <button type="button" class="btn-ghost px-2 text-sm" @onclick="SaveThenSwitch">Save</button>
+                                    <button type="button" class="btn-ghost px-2 text-sm" @onclick="DiscardThenSwitch">Discard</button>
+                                    <button type="button" class="btn-ghost px-2 text-sm" @onclick="CancelSwitch">Stay</button>
+                                </div>
+                            }
+
+                            <div class="log-config-row">
+                                <label class="hosts-field flex-1">
+                                    <span class="hosts-field-label">Name</span>
+                                    <input class="input-modern" disabled="@_busy" placeholder="What the picker calls it"
+                                           @bind="_draft.Template.Name" @bind:event="oninput" @bind:after="Revalidate" />
+                                </label>
+                                <label class="hosts-field log-config-narrow">
+                                    <span class="hosts-field-label">File extension</span>
+                                    <input class="input-modern font-mono" disabled="@_busy" placeholder=".txt"
+                                           @bind="_draft.Template.Extension" @bind:event="oninput" @bind:after="Revalidate" />
+                                </label>
+                            </div>
+
+                            <div class="log-config-row">
+                                <label class="hosts-field log-config-narrow">
+                                    <span class="hosts-field-label">Delimiter</span>
+                                    <input class="input-modern font-mono" disabled="@_busy" placeholder="|"
+                                           @bind="_draft.Template.Delimiter" @bind:event="oninput" @bind:after="Revalidate" />
+                                </label>
+                                <label class="hosts-field flex-1">
+                                    <span class="hosts-field-label">Inherits</span>
+                                    <select class="input-modern" disabled="@_busy" value="@(_draft.Template.Inherits ?? "")"
+                                            @onchange="OnInheritsChanged">
+                                        <option value="">Nothing — these columns are the whole row</option>
+                                        @foreach (var entry in _templates.Where(t => !FileMatches(_draft.File, t.File)))
+                                        {
+                                            <option value="@BaseName(entry.File)">@entry.Name</option>
+                                        }
+                                    </select>
+                                </label>
+                            </div>
+
+                            <p class="log-config-hint">@DescribeShape()</p>
+
+                            @if (_inheritedColumns.Count > 0)
+                            {
+                                <div class="hosts-field-context">
+                                    <i class="bi bi-diagram-2"></i>
+                                    <span>
+                                        Inherited first: <span class="font-mono">@string.Join(" · ", _inheritedColumns)</span>.
+                                        The columns below follow them.
+                                    </span>
+                                </div>
+                            }
+
+                            <div>
+                                <div class="log-config-section-head">
+                                    <span class="hosts-field-label">Columns</span>
+                                    <span class="log-config-count">@_columns.Count</span>
+                                    <div class="flex-1"></div>
+                                    <button type="button" class="btn-ghost px-2 text-sm" disabled="@_busy" @onclick="ToggleSampler">
+                                        <i class="bi bi-magic"></i> From a sample line
+                                    </button>
+                                    <button type="button" class="btn-ghost px-2 text-sm" disabled="@_busy" @onclick="AddColumn">
+                                        <i class="bi bi-plus-lg"></i> Add
+                                    </button>
+                                </div>
+
+                                @if (_showSampler)
+                                {
+                                    <div class="log-config-sampler">
+                                        <p class="log-config-hint">
+                                            Paste one line from the file. It is split on the delimiter above and each
+                                            field becomes a column, ready to be renamed.
+                                        </p>
+                                        <textarea rows="2" class="input-modern w-full font-mono text-xs"
+                                                  placeholder="2026-08-24 10:14:02|a1b2|10.0.0.7|123456|jbarron"
+                                                  @bind="_sample" @bind:event="oninput"></textarea>
+                                        <div class="flex items-center gap-2">
+                                            <button type="button" class="btn-secondary text-sm"
+                                                    disabled="@(_busy || SampleFieldCount() == 0)" @onclick="ApplySample">
+                                                Use these @SampleFieldCount() fields
+                                            </button>
+                                            <button type="button" class="btn-ghost text-sm" @onclick="ToggleSampler">Cancel</button>
+                                        </div>
+                                    </div>
+                                }
+
+                                <div class="log-config-rows">
+                                    @for (var i = 0; i < _columns.Count; i++)
+                                    {
+                                        var index = i;
+                                        var row = _columns[index];
+                                        <div class="log-config-item" @key="row">
+                                            <span class="log-config-ordinal">@(index + 1 + _inheritedColumns.Count)</span>
+                                            <input class="input-modern flex-1" disabled="@_busy" placeholder="Column name"
+                                                   @bind="row.Name" @bind:event="oninput" @bind:after="Revalidate" />
+                                            <button type="button" class="btn-ghost p-1" title="Move up"
+                                                    disabled="@(_busy || index == 0)" @onclick="() => MoveColumn(index, -1)">
+                                                <i class="bi bi-arrow-up"></i>
+                                            </button>
+                                            <button type="button" class="btn-ghost p-1" title="Move down"
+                                                    disabled="@(_busy || index == _columns.Count - 1)" @onclick="() => MoveColumn(index, 1)">
+                                                <i class="bi bi-arrow-down"></i>
+                                            </button>
+                                            <button type="button" class="btn-ghost p-1" title="Remove this column"
+                                                    disabled="@_busy" @onclick="() => RemoveColumn(index)">
+                                                <i class="bi bi-x-lg"></i>
+                                            </button>
+                                        </div>
+                                    }
+                                    @if (_columns.Count == 0)
+                                    {
+                                        <p class="log-config-empty">No columns yet.</p>
+                                    }
+                                </div>
+                            </div>
+
+                            <div>
+                                <div class="log-config-section-head">
+                                    <span class="hosts-field-label">Sort</span>
+                                    <div class="flex-1"></div>
+                                    <button type="button" class="btn-ghost px-2 text-sm"
+                                            disabled="@(_busy || SortableColumns().Count == 0)" @onclick="AddSort">
+                                        <i class="bi bi-plus-lg"></i> Add
+                                    </button>
+                                </div>
+                                <p class="log-config-hint">
+                                    Applied in order, until you click a column header in the results.
+                                    <span class="font-mono">Location</span>, <span class="font-mono">SourceFile</span>
+                                    and <span class="font-mono">Sequence</span> are added to every row, so ending on
+                                    them keeps rows in file order within each file.
+                                </p>
+
+                                <div class="log-config-rows">
+                                    @for (var i = 0; i < _sorts.Count; i++)
+                                    {
+                                        var index = i;
+                                        var row = _sorts[index];
+                                        var known = SortableColumns();
+                                        <div class="log-config-item" @key="row">
+                                            <span class="log-config-ordinal">@(index + 1)</span>
+                                            <select class="input-modern flex-1" disabled="@_busy"
+                                                    @bind="row.Column" @bind:after="Revalidate">
+                                                @if (!known.Contains(row.Column, StringComparer.OrdinalIgnoreCase))
+                                                {
+                                                    <option value="@row.Column">
+                                                        @(string.IsNullOrWhiteSpace(row.Column) ? "Pick a column…" : row.Column + " (not a column)")
+                                                    </option>
+                                                }
+                                                @foreach (var column in known)
+                                                {
+                                                    <option value="@column">@column</option>
+                                                }
+                                            </select>
+                                            <select class="input-modern log-config-narrow" disabled="@_busy"
+                                                    @bind="row.Direction" @bind:after="Revalidate">
+                                                <option value="asc">Ascending</option>
+                                                <option value="desc">Descending</option>
+                                            </select>
+                                            <button type="button" class="btn-ghost p-1" title="Move up"
+                                                    disabled="@(_busy || index == 0)" @onclick="() => MoveSort(index, -1)">
+                                                <i class="bi bi-arrow-up"></i>
+                                            </button>
+                                            <button type="button" class="btn-ghost p-1" title="Move down"
+                                                    disabled="@(_busy || index == _sorts.Count - 1)" @onclick="() => MoveSort(index, 1)">
+                                                <i class="bi bi-arrow-down"></i>
+                                            </button>
+                                            <button type="button" class="btn-ghost p-1" title="Remove this sort"
+                                                    disabled="@_busy" @onclick="() => RemoveSort(index)">
+                                                <i class="bi bi-x-lg"></i>
+                                            </button>
+                                        </div>
+                                    }
+                                    @if (_sorts.Count == 0)
+                                    {
+                                        <p class="log-config-empty">Unsorted — rows arrive in the order the files were read.</p>
+                                    }
+                                </div>
+                            </div>
+
+                            @foreach (var problem in _problems)
+                            {
+                                <p class="hosts-field-error"><i class="bi bi-exclamation-circle"></i>@problem</p>
+                            }
+
+                            @if (_saveError is not null)
+                            {
+                                <div class="ws-notice">
+                                    <i class="bi bi-exclamation-triangle-fill"></i>
+                                    <span>@_saveError</span>
+                                </div>
+                            }
+
+                            @if (_deleteWarning is not null)
+                            {
+                                <div class="ws-notice is-caution">
+                                    <i class="bi bi-exclamation-triangle-fill"></i>
+                                    <span>@_deleteWarning</span>
+                                </div>
+                            }
+
+                            <div class="log-config-actions">
+                                @if (!_draft.IsNew)
+                                {
+                                    @if (_confirmDelete)
+                                    {
+                                        <button type="button" class="btn-danger" disabled="@_busy" @onclick="DeleteTemplate">
+                                            Delete @DraftLabel() for good
+                                        </button>
+                                        <button type="button" class="btn-ghost" @onclick="CancelDelete">Keep it</button>
+                                    }
+                                    else
+                                    {
+                                        <button type="button" class="btn-ghost" disabled="@_busy" @onclick="AskDelete">
+                                            <i class="bi bi-trash"></i> Delete
+                                        </button>
+                                    }
+                                }
+                                <div class="flex-1"></div>
+                                @if (_dirty)
+                                {
+                                    <span class="log-config-dirty">Unsaved</span>
+                                }
+                                else if (_savedNote is not null)
+                                {
+                                    <span class="log-config-saved"><i class="bi bi-check2"></i> @_savedNote</span>
+                                }
+                                <button type="button" class="btn-primary" @onclick="SaveTemplate"
+                                        disabled="@(_busy || !_dirty || _problems.Count > 0)">
+                                    @(_draft.IsNew ? "Create template" : "Save template")
+                                </button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="log-config-pane">
+                    <p class="log-config-hint">
+                        Every place the viewer looks for files. Nothing is searched recursively, and a
+                        location that is offline is skipped rather than fatal — so a machine that cannot
+                        reach a share can keep it on the list.
+                    </p>
+
+                    <div class="log-config-rows">
+                        @for (var i = 0; i < _locations.Count; i++)
+                        {
+                            var index = i;
+                            var location = _locations[index];
+                            <div class="log-config-location" @key="location">
+                                <div class="log-config-row">
+                                    <label class="hosts-field log-config-name">
+                                        <span class="hosts-field-label">Name</span>
+                                        <input class="input-modern" disabled="@_busy" placeholder="Live Web01"
+                                               @bind="location.Name" @bind:event="oninput" @bind:after="MarkLocationsDirty" />
+                                    </label>
+                                    <label class="hosts-field flex-1">
+                                        <span class="hosts-field-label">Folder</span>
+                                        <input class="input-modern font-mono text-xs" disabled="@_busy"
+                                               placeholder="\\web01\inetpub\LogFiles"
+                                               @bind="location.Path" @bind:event="oninput" @bind:after="MarkLocationsDirty" />
+                                    </label>
+                                    <button type="button" class="btn-ghost p-2 log-config-drop" title="Remove this location"
+                                            disabled="@_busy" @onclick="() => RemoveLocation(index)">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </div>
+                                <label class="hosts-field">
+                                    <span class="hosts-field-label">File name pattern (optional)</span>
+                                    <input class="input-modern font-mono text-xs" disabled="@_busy"
+                                           placeholder="^(?&lt;name&gt;.+)\.(?&lt;date&gt;\d{8})\.txt$"
+                                           @bind="location.NamePattern" @bind:event="oninput" @bind:after="MarkLocationsDirty" />
+                                </label>
+                                <p class="log-config-hint">@DescribeLocation(location)</p>
+                            </div>
+                        }
+                        @if (_locations.Count == 0)
+                        {
+                            <p class="log-config-empty">No locations yet. Add one and the viewer has somewhere to look.</p>
+                        }
+                    </div>
+
+                    <div>
+                        <button type="button" class="btn-secondary text-sm" disabled="@_busy" @onclick="AddLocation">
+                            <i class="bi bi-plus-lg"></i> Add a location
+                        </button>
+                    </div>
+
+                    @foreach (var problem in _locationProblems)
+                    {
+                        <p class="hosts-field-error"><i class="bi bi-exclamation-circle"></i>@problem</p>
+                    }
+
+                    @if (_locationSaveError is not null)
+                    {
+                        <div class="ws-notice">
+                            <i class="bi bi-exclamation-triangle-fill"></i>
+                            <span>@_locationSaveError</span>
+                        </div>
+                    }
+
+                    <div class="hosts-field-context">
+                        <i class="bi bi-info-circle"></i>
+                        <span>
+                            Saving rewrites <span class="font-mono">log_paths.yaml</span>, which loses the comments
+                            in it. The version it replaces is kept as
+                            <span class="font-mono">log_paths.yaml.bak</span>.
+                        </span>
+                    </div>
+
+                    <div class="log-config-actions">
+                        <div class="flex-1"></div>
+                        @if (_locationsDirty)
+                        {
+                            <span class="log-config-dirty">Unsaved</span>
+                        }
+                        else if (_locationsSavedNote is not null)
+                        {
+                            <span class="log-config-saved"><i class="bi bi-check2"></i> @_locationsSavedNote</span>
+                        }
+                        <button type="button" class="btn-primary" @onclick="SaveLocations"
+                                disabled="@(_busy || !_locationsDirty || _locationProblems.Count > 0)">
+                            Save locations
+                        </button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</Modal>
+
+@code {
+    [Parameter] public bool IsVisible { get; set; }
+    [Parameter] public EventCallback<bool> IsVisibleChanged { get; set; }
+
+    /// <summary>Which tab opens first, so the gear beside Location lands on Locations.</summary>
+    [Parameter] public string OpenOn { get; set; } = "templates";
+
+    /// <summary>
+    /// Raised after anything is written, so the page can re-read the config it is holding. The Log
+    /// Viewer keeps templates and locations for the life of its state service, and a template edited
+    /// here would otherwise not take effect until the app restarted.
+    /// </summary>
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    private enum Tab { Templates, Locations }
+
+    private Tab _tab = Tab.Templates;
+    private bool _loaded;
+    private bool _busy;
+    private string? _loadError;
+
+    // --- templates ---
+
+    private List<LogTemplateIndexEntry> _templates = new();
+    private TemplateDraft? _draft;
+    private readonly List<ColumnRow> _columns = new();
+    private readonly List<SortColumn> _sorts = new();
+    private List<string> _inheritedColumns = new();
+    private List<string> _problems = new();
+    private bool _dirty;
+    private string? _saveError;
+    private string? _savedNote;
+    private bool _confirmDelete;
+    private string? _deleteWarning;
+    private bool _showSampler;
+    private string _sample = "";
+
+    /// <summary>What the list should switch to once the unsaved-changes bar is answered.</summary>
+    private LogTemplateIndexEntry? _pendingSelect;
+    private bool _pendingNew;
+
+    /// <summary>
+    /// One template being edited: its body, and the file it came from. <c>File</c> is null for a
+    /// template that does not exist yet — which is also what tells the service to derive a file name
+    /// rather than overwrite one.
+    /// </summary>
+    private sealed class TemplateDraft
+    {
+        public string? File { get; init; }
+        public LogTemplate Template { get; init; } = new();
+        public bool IsNew => string.IsNullOrEmpty(File);
+    }
+
+    /// <summary>
+    /// A column name in a box. A bare <c>List&lt;string&gt;</c> cannot be two-way bound per item, and
+    /// this also gives each row a stable identity for <c>@@key</c>, so reordering moves the boxes
+    /// instead of rewriting their contents underneath the caret.
+    /// </summary>
+    private sealed class ColumnRow
+    {
+        public string Name { get; set; } = "";
+    }
+
+    // --- locations ---
+
+    private List<LogLocation> _locations = new();
+    private bool _locationsDirty;
+    private List<string> _locationProblems = new();
+    private string? _locationSaveError;
+    private string? _locationsSavedNote;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!IsVisible)
+        {
+            // Reset on close rather than on open: whatever is on disk when the dialog is next opened
+            // is what should be shown, and a half-finished draft must not survive a cancel.
+            _loaded = false;
+            return;
+        }
+
+        if (_loaded) return;
+        _loaded = true;
+
+        _tab = string.Equals(OpenOn, "locations", StringComparison.OrdinalIgnoreCase) ? Tab.Locations : Tab.Templates;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        _loadError = null;
+        ResetTemplateEditor();
+        _locationsDirty = false;
+        _locationProblems = new();
+        _locationSaveError = null;
+        _locationsSavedNote = null;
+
+        // Cleared rather than kept across opens: a share that was down last time is exactly the one
+        // someone reopens this dialog to check on.
+        _reachable.Clear();
+
+        try
+        {
+            _templates = await LogConfig.GetTemplatesAsync();
+            _locations = await LogConfig.GetLocationsAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            // A YAML file that will not parse. Say which one and stop — offering to overwrite a file
+            // that could not be read would turn a typo into data loss.
+            _loadError = $"The log configuration could not be read: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private Task OnVisibleChanged(bool visible) => IsVisibleChanged.InvokeAsync(visible);
+
+    // --- template selection ---
+
+    private async Task RequestSelectAsync(LogTemplateIndexEntry entry)
+    {
+        if (_draft is not null && FileMatches(_draft.File, entry.File)) return;
+
+        if (_dirty)
+        {
+            _pendingSelect = entry;
+            _pendingNew = false;
+            return;
+        }
+
+        await SelectAsync(entry);
+    }
+
+    private void RequestNew()
+    {
+        if (_dirty)
+        {
+            _pendingSelect = null;
+            _pendingNew = true;
+            return;
+        }
+
+        StartNew();
+    }
+
+    private void CancelSwitch()
+    {
+        _pendingSelect = null;
+        _pendingNew = false;
+    }
+
+    private async Task SaveThenSwitch()
+    {
+        var entry = _pendingSelect;
+        var wantsNew = _pendingNew;
+        CancelSwitch();
+
+        await SaveTemplate();
+        if (_dirty) return; // the save was refused; stay put and leave the reason on screen
+
+        if (wantsNew) StartNew();
+        else if (entry is not null) await SelectAsync(entry);
+    }
+
+    private async Task DiscardThenSwitch()
+    {
+        var entry = _pendingSelect;
+        var wantsNew = _pendingNew;
+        CancelSwitch();
+        _dirty = false;
+
+        if (wantsNew) StartNew();
+        else if (entry is not null) await SelectAsync(entry);
+    }
+
+    private async Task SelectAsync(LogTemplateIndexEntry entry)
+    {
+        ResetTemplateEditor();
+        _busy = true;
+        try
+        {
+            var template = await LogConfig.LoadTemplateAsync(entry.File);
+            if (template is null)
+            {
+                _saveError = $"The index points at {entry.File}, but that file is not there.";
+                return;
+            }
+
+            // The index is what the picker shows, so it wins over a name inside the file that has
+            // drifted from it. Otherwise editing a template would silently rename it back.
+            if (!string.IsNullOrWhiteSpace(entry.Name)) template.Name = entry.Name;
+
+            _draft = new TemplateDraft { File = entry.File, Template = template };
+            _columns.AddRange((template.Columns ?? new()).Select(c => new ColumnRow { Name = c }));
+            _sorts.AddRange((template.Sort ?? new()).Select(s => new SortColumn { Column = s.Column, Direction = s.Direction }));
+
+            await RefreshInheritedColumnsAsync();
+            Revalidate(markDirty: false);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _saveError = $"{entry.File} could not be read: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void StartNew()
+    {
+        ResetTemplateEditor();
+        _draft = new TemplateDraft
+        {
+            File = null,
+            Template = new LogTemplate { Name = "", Extension = ".txt", Delimiter = "|" }
+        };
+
+        // Every shipped template ends its sort this way, and it is the difference between rows that
+        // read like the file and rows in whatever order SQLite felt like.
+        foreach (var column in LogProvenanceColumns.Visible)
+            _sorts.Add(new SortColumn { Column = column, Direction = "asc" });
+
+        _dirty = true;
+        Revalidate(markDirty: false);
+    }
+
+    private void ResetTemplateEditor()
+    {
+        _draft = null;
+        _columns.Clear();
+        _sorts.Clear();
+        _inheritedColumns = new();
+        _problems = new();
+        _dirty = false;
+        _saveError = null;
+        _savedNote = null;
+        _confirmDelete = false;
+        _deleteWarning = null;
+        _pendingSelect = null;
+        _pendingNew = false;
+        _showSampler = false;
+        _sample = "";
+    }
+
+    private string DraftLabel()
+    {
+        var name = _draft?.Template.Name?.Trim() ?? "";
+        return name.Length > 0 ? $"\"{name}\"" : "this template";
+    }
+
+    // --- template editing ---
+
+    private void AddColumn()
+    {
+        _columns.Add(new ColumnRow());
+        Revalidate();
+    }
+
+    private void RemoveColumn(int index)
+    {
+        if (index < 0 || index >= _columns.Count) return;
+        _columns.RemoveAt(index);
+        Revalidate();
+    }
+
+    private void MoveColumn(int index, int delta) => Move(_columns, index, delta);
+
+    private void AddSort()
+    {
+        var sortable = SortableColumns();
+        var unused = sortable.FirstOrDefault(c =>
+            !_sorts.Any(s => string.Equals(s.Column, c, StringComparison.OrdinalIgnoreCase)));
+
+        _sorts.Add(new SortColumn { Column = unused ?? "", Direction = "asc" });
+        Revalidate();
+    }
+
+    private void RemoveSort(int index)
+    {
+        if (index < 0 || index >= _sorts.Count) return;
+        _sorts.RemoveAt(index);
+        Revalidate();
+    }
+
+    private void MoveSort(int index, int delta) => Move(_sorts, index, delta);
+
+    private void Move<T>(List<T> list, int index, int delta)
+    {
+        var target = index + delta;
+        if (index < 0 || index >= list.Count || target < 0 || target >= list.Count) return;
+        (list[index], list[target]) = (list[target], list[index]);
+        Revalidate();
+    }
+
+    private async Task OnInheritsChanged(ChangeEventArgs e)
+    {
+        if (_draft is null) return;
+
+        var value = e.Value?.ToString();
+        _draft.Template.Inherits = string.IsNullOrWhiteSpace(value) ? null : value;
+        await RefreshInheritedColumnsAsync();
+        Revalidate();
+    }
+
+    /// <summary>
+    /// The base template's columns, for the two things that need them: the note saying what comes
+    /// before this template's own columns, and the validator, which otherwise reports a sort on an
+    /// inherited column as a sort on nothing.
+    /// </summary>
+    private async Task RefreshInheritedColumnsAsync()
+    {
+        _inheritedColumns = new();
+        var inherits = _draft?.Template.Inherits;
+        if (string.IsNullOrWhiteSpace(inherits)) return;
+
+        try
+        {
+            var baseTemplate = await LogConfig.LoadTemplateAsync(inherits!);
+            _inheritedColumns = (baseTemplate?.Columns ?? new())
+                .Where(c => !string.IsNullOrWhiteSpace(c))
+                .ToList();
+        }
+        catch (InvalidOperationException)
+        {
+            // Unreadable base. The validator will not know about its columns, which at worst means a
+            // warning about a sort column that is actually fine — better than failing the edit.
+        }
+    }
+
+    private void ToggleSampler()
+    {
+        _showSampler = !_showSampler;
+        if (!_showSampler) _sample = "";
+    }
+
+    private int SampleFieldCount() => SplitSample().Count;
+
+    private List<string> SplitSample()
+    {
+        var line = (_sample ?? "").Trim('\r', '\n');
+        if (line.Trim().Length == 0) return new();
+
+        var delimiter = _draft?.Template.Delimiter ?? "";
+        return delimiter.Length == 0
+            ? new List<string> { line }
+            : line.Split(delimiter).ToList();
+    }
+
+    /// <summary>
+    /// Replaces the columns with one per field in the pasted line, keeping the names already in place
+    /// where the counts line up — so re-pasting a longer line adds to the end rather than wiping the
+    /// naming done so far.
+    /// </summary>
+    private void ApplySample()
+    {
+        var fields = SplitSample();
+        if (fields.Count == 0) return;
+
+        var existing = _columns.Select(c => c.Name).ToList();
+        _columns.Clear();
+        for (var i = 0; i < fields.Count; i++)
+        {
+            var keep = i < existing.Count && existing[i].Trim().Length > 0;
+            _columns.Add(new ColumnRow { Name = keep ? existing[i] : SuggestColumnName(fields[i], i) });
+        }
+
+        _showSampler = false;
+        _sample = "";
+        Revalidate();
+    }
+
+    /// <summary>
+    /// A first guess at a name for a field. Only used where there is nothing to keep, and only worth
+    /// guessing when the field itself looks like a header rather than a value.
+    /// </summary>
+    private static string SuggestColumnName(string field, int index)
+    {
+        var value = field.Trim();
+        var looksLikeHeader = value.Length is > 0 and <= 32 &&
+                              !value.Any(char.IsWhiteSpace) &&
+                              value.Any(char.IsLetter) &&
+                              value.Count(char.IsDigit) <= 2 &&
+                              value.IndexOfAny(new[] { '[', ']' }) < 0;
+
+        return looksLikeHeader ? value : $"Field {index + 1}";
+    }
+
+    private List<string> SortableColumns() =>
+        _inheritedColumns
+            .Concat(_columns.Select(c => c.Name))
+            .Concat(LogProvenanceColumns.Visible)
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Select(c => c.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private void Revalidate() => Revalidate(markDirty: true);
+
+    private void Revalidate(bool markDirty)
+    {
+        if (markDirty)
+        {
+            _dirty = true;
+            _savedNote = null;
+            _confirmDelete = false;
+            _deleteWarning = null;
+        }
+
+        if (_draft is null)
+        {
+            _problems = new();
+            return;
+        }
+
+        // Validated against a copy: the draft's own lists are the editor's working state, and handing
+        // them over would let the validator's view and the form's view diverge.
+        var candidate = new LogTemplate
+        {
+            Name = _draft.Template.Name,
+            Extension = _draft.Template.Extension,
+            Delimiter = _draft.Template.Delimiter,
+            Inherits = _draft.Template.Inherits,
+            Columns = _columns.Select(c => c.Name).ToList(),
+            Sort = _sorts.Select(s => new SortColumn { Column = s.Column, Direction = s.Direction }).ToList()
+        };
+
+        var otherNames = _templates
+            .Where(t => !FileMatches(_draft.File, t.File))
+            .Select(t => t.Name);
+
+        _problems = LogTemplateValidator.Validate(candidate, otherNames, _inheritedColumns);
+    }
+
+    private string DescribeShape()
+    {
+        var delimiter = _draft?.Template.Delimiter ?? "";
+        if (delimiter.Length == 0)
+            return "No delimiter: each line is kept whole in the first column. For logs with no fixed shape.";
+
+        var total = _inheritedColumns.Count + _columns.Count(c => !string.IsNullOrWhiteSpace(c.Name));
+        return $"Each line is split on \"{delimiter}\" into {total} column{(total == 1 ? "" : "s")}. " +
+               "Fields beyond these become Message1, Message2, and so on.";
+    }
+
+    private async Task SaveTemplate()
+    {
+        if (_draft is null) return;
+
+        Revalidate(markDirty: false);
+        if (_problems.Count > 0) return;
+
+        _busy = true;
+        _saveError = null;
+        try
+        {
+            var template = _draft.Template;
+            template.Columns = _columns.Select(c => c.Name).ToList();
+            template.Sort = _sorts.Select(s => new SortColumn { Column = s.Column, Direction = s.Direction }).ToList();
+
+            var entry = await LogConfig.SaveTemplateAsync(_draft.File, template);
+            _templates = await LogConfig.GetTemplatesAsync();
+
+            // Re-read rather than keep the draft: the service trims and drops empty rows on the way
+            // in, and the form should show what is actually on disk now. SelectAsync clears the note,
+            // so it is set afterwards.
+            await SelectAsync(entry);
+            _savedNote = $"Saved to {entry.File}";
+
+            await OnSaved.InvokeAsync();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or IOException)
+        {
+            _saveError = $"The template could not be saved: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task AskDelete()
+    {
+        if (_draft?.File is null) return;
+
+        _confirmDelete = true;
+        _deleteWarning = null;
+
+        var dependents = await LogConfig.FindTemplatesInheritingAsync(_draft.File);
+        if (dependents.Count > 0)
+        {
+            _deleteWarning = $"{string.Join(", ", dependents)} inherit{(dependents.Count == 1 ? "s" : "")} from this " +
+                             "template and would lose its columns.";
+        }
+    }
+
+    private void CancelDelete()
+    {
+        _confirmDelete = false;
+        _deleteWarning = null;
+    }
+
+    private async Task DeleteTemplate()
+    {
+        if (_draft?.File is null) return;
+
+        _busy = true;
+        try
+        {
+            await LogConfig.DeleteTemplateAsync(_draft.File);
+            _templates = await LogConfig.GetTemplatesAsync();
+            ResetTemplateEditor();
+            await OnSaved.InvokeAsync();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException)
+        {
+            _saveError = $"The template could not be deleted: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    // --- locations ---
+
+    private void AddLocation()
+    {
+        _locations.Add(new LogLocation());
+        MarkLocationsDirty();
+    }
+
+    private void RemoveLocation(int index)
+    {
+        if (index < 0 || index >= _locations.Count) return;
+        _locations.RemoveAt(index);
+        MarkLocationsDirty();
+    }
+
+    private void MarkLocationsDirty()
+    {
+        _locationsDirty = true;
+        _locationsSavedNote = null;
+        _locationProblems = ValidateLocations();
+    }
+
+    private List<string> ValidateLocations()
+    {
+        var problems = new List<string>();
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var location in _locations)
+        {
+            var name = location.Name?.Trim() ?? "";
+            var path = location.Path?.Trim() ?? "";
+
+            // A row just added and not yet typed into. Dropped on save rather than complained about.
+            if (name.Length == 0 && path.Length == 0) continue;
+
+            if (name.Length == 0)
+                problems.Add($"The location at {path} needs a name — it is stamped on every row it produces.");
+            else if (!names.Add(name))
+                problems.Add($"Two locations are both called \"{name}\".");
+
+            if (path.Length == 0)
+                problems.Add($"\"{name}\" has no folder.");
+
+            if (!string.IsNullOrWhiteSpace(location.NamePattern))
+            {
+                try
+                {
+                    var regex = new Regex(location.NamePattern!.Trim());
+                    if (!regex.GetGroupNames().Contains("name"))
+                        problems.Add($"\"{name}\" has a pattern with no (?<name>…) group, so nothing would be discovered from it.");
+                }
+                catch (ArgumentException ex)
+                {
+                    problems.Add($"\"{name}\" has a pattern that is not a valid regex: {ex.Message}");
+                }
+            }
+        }
+
+        return problems;
+    }
+
+    /// <summary>
+    /// What each row says under its inputs: whether the folder answers, and what its pattern would
+    /// do. Reads the probe cache only — never the file system. See <see cref="ProbeAsync"/>.
+    /// </summary>
+    private string DescribeLocation(LogLocation location)
+    {
+        var path = location.Path?.Trim() ?? "";
+        if (path.Length == 0) return "Type or paste a folder, local or UNC.";
+
+        var where = _reachable.TryGetValue(path, out var found)
+            ? (found ? "Reachable now." : "Not reachable from this machine right now — kept anyway.")
+            : "Checking whether it answers…";
+
+        return string.IsNullOrWhiteSpace(location.NamePattern)
+            ? $"{where} With no pattern, the Log File box falls back to its preset list."
+            : $"{where} The pattern's name capture fills the Log File box.";
+    }
+
+    // --- reachability probe ---
+
+    /// <summary>What each distinct path answered. A path absent from here has not been probed yet.</summary>
+    private readonly Dictionary<string, bool> _reachable = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Paths with a probe in flight, so the same share is not asked twice at once.</summary>
+    private readonly HashSet<string> _probing = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Waits for typing to stop before probing.
+    /// <para>
+    /// Without it every keystroke in a path box would start a probe of a prefix nobody asked about —
+    /// and since <c>Directory.Exists</c> on a share that does not answer blocks until SMB gives up,
+    /// which is measured in seconds and cannot be cancelled, those pile up as threads waiting on
+    /// paths that no longer exist in the form.
+    /// </para>
+    /// </summary>
+    private System.Threading.Timer? _probeDebounce;
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        // Probed from here rather than from DescribeLocation: starting work during a render and then
+        // calling StateHasChanged from its continuation is how a render loop starts.
+        if (_tab == Tab.Locations && !_busy) ScheduleProbe();
+    }
+
+    private void ScheduleProbe()
+    {
+        if (Unprobed().Count == 0) return;
+
+        _probeDebounce?.Dispose();
+        _probeDebounce = new System.Threading.Timer(
+            _ =>
+            {
+                try
+                {
+                    _ = InvokeAsync(ProbeUnprobedAsync);
+                }
+                catch (ObjectDisposedException)
+                {
+                    // The dialog closed between the timer firing and this running. Nothing to update.
+                }
+            },
+            null,
+            TimeSpan.FromMilliseconds(500),
+            Timeout.InfiniteTimeSpan);
+    }
+
+    private List<string> Unprobed() =>
+        _locations
+            .Select(l => l.Path?.Trim() ?? "")
+            .Where(p => p.Length > 0 && !_reachable.ContainsKey(p) && !_probing.Contains(p))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private async Task ProbeUnprobedAsync()
+    {
+        var paths = Unprobed();
+        if (paths.Count == 0) return;
+
+        foreach (var path in paths) _probing.Add(path);
+
+        // All at once: they are independent, and the whole point is not to make an offline share hold
+        // up the answer for a local folder behind it.
+        await Task.WhenAll(paths.Select(ProbeAsync));
+        StateHasChanged();
+    }
+
+    private async Task ProbeAsync(string path)
+    {
+        var found = await Task.Run(() =>
+        {
+            try
+            {
+                return Directory.Exists(path);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            {
+                // Unreachable and malformed are the same answer here.
+                return false;
+            }
+        });
+
+        _reachable[path] = found;
+        _probing.Remove(path);
+    }
+
+    private async Task SaveLocations()
+    {
+        _locationProblems = ValidateLocations();
+        if (_locationProblems.Count > 0) return;
+
+        _busy = true;
+        _locationSaveError = null;
+        try
+        {
+            await LogConfig.SaveLocationsAsync(_locations);
+            _locations = await LogConfig.GetLocationsAsync();
+            _locationsDirty = false;
+            _locationsSavedNote = $"{_locations.Count} location{(_locations.Count == 1 ? "" : "s")} saved";
+            await OnSaved.InvokeAsync();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException)
+        {
+            _locationSaveError = $"The locations could not be saved: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static string BaseName(string? file) =>
+        string.IsNullOrWhiteSpace(file) ? "" : Path.GetFileNameWithoutExtension(file!.Trim());
+
+    private static bool FileMatches(string? a, string? b)
+    {
+        var left = BaseName(a);
+        return left.Length > 0 && string.Equals(left, BaseName(b), StringComparison.OrdinalIgnoreCase);
+    }
+
+    public void Dispose() => _probeDebounce?.Dispose();
+}

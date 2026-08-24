@@ -25,7 +25,7 @@ namespace DevToolbox.Services.Services
         /// Column holding each row's originating file path. Public so the UI can
         /// both find it and know to keep it out of the visible grid.
         /// </summary>
-        public const string SourcePathColumn = "SourcePath";
+        public const string SourcePathColumn = LogProvenanceColumns.SourcePath;
 
         public DbLogService(IYamlStorageService yamlStorage, ILogStorageService logStorage)
         {
@@ -241,12 +241,12 @@ namespace DevToolbox.Services.Services
 
             var columns = new List<string>(baseColumns);
             for (int i = 1; i <= maxMessageColumns; i++)
-                columns.Add($"Message {i}");
+                columns.Add(LogOverflowColumns.Name(i));
             
             // Provenance columns: Location precedes SourceFile, Sequence follows it.
-            columns.Add("Location");
-            columns.Add("SourceFile");
-            columns.Add("Sequence");
+            columns.Add(LogProvenanceColumns.Location);
+            columns.Add(LogProvenanceColumns.SourceFile);
+            columns.Add(LogProvenanceColumns.Sequence);
 
             // Full path, so a row can be opened in an editor without having to
             // reconstruct where it came from. SourceFile is only the file name, and
@@ -519,11 +519,11 @@ namespace DevToolbox.Services.Services
                             dict[templateColumns[i]] = parts.Length > i ? parts[i] : "";
 
                         for (int i = templateColumns.Count; i < parts.Length; i++)
-                            dict[$"Message {i - templateColumns.Count + 1}"] = parts[i];
+                            dict[LogOverflowColumns.Name(i - templateColumns.Count + 1)] = parts[i];
 
-                        dict["Location"] = locationName;
-                        dict["SourceFile"] = sourceFileName;
-                        dict["Sequence"] = sequence.ToString();
+                        dict[LogProvenanceColumns.Location] = locationName;
+                        dict[LogProvenanceColumns.SourceFile] = sourceFileName;
+                        dict[LogProvenanceColumns.Sequence] = sequence.ToString();
                         dict[SourcePathColumn] = filePath;
 
                         batch.Add(dict);

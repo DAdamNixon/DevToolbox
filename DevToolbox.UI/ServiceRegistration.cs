@@ -48,6 +48,9 @@ namespace DevToolbox.UI
             services.AddScoped<IScriptExecutionService, ScriptExecutionService>();
             services.AddScoped<ILogFileService, DbLogService>();
             services.AddScoped<ILogStorageService, SqliteLogStorageService>();
+            // Reads and writes the same YAML DbLogService reads. Scoped alongside it because it holds
+            // nothing between calls — every method goes to the file.
+            services.AddScoped<ILogConfigService, LogConfigService>();
 
             // Register UI-specific services
             services.AddScoped<ViewModelFactory>();

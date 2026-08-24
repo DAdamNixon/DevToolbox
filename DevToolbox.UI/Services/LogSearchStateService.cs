@@ -200,6 +200,70 @@ public sealed class LogSearchStateService : IDisposable
         }
     }
 
+    /// <summary>
+    /// Re-reads the templates and locations after they have been edited, keeping the current
+    /// selection wherever it still exists.
+    /// <para>
+    /// This state service lives as long as the host, which is what lets a search survive tab
+    /// navigation — and also means it would go on showing a template list from startup for the rest
+    /// of the session. Selections are matched by name and path rather than by object: the lists were
+    /// rebuilt from YAML, so nothing the page is holding is the same instance any more.
+    /// </para>
+    /// <para>
+    /// Results already on screen are left alone. They came from an ingest under the old template and
+    /// still say what they said; re-parsing them would need another search, which is the user's call.
+    /// </para>
+    /// </summary>
+    public async Task ReloadConfigAsync()
+    {
+        try
+        {
+            var previousTemplate = SelectedTemplateName;
+            var previousLocations = SelectedLocations.Select(l => l.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            // ApplyPresetsForTemplate fills the Log File box from the template's default, which is
+            // right when the template is picked and wrong here — nobody wants a config edit to
+            // overwrite the file name they had already typed.
+            var previousLogFile = LogFile;
+
+            LogLocations = await _logFileService.GetLogLocationsAsync() ?? new();
+            AvailableTemplates = await _logFileService.GetAvailableLogFileTemplatesAsync() ?? new();
+            PresetConfig = await _yamlStorage.LoadAsync<LogFilePresetConfig>("log_file_presets");
+
+            SelectedLocations = LogLocations.Where(l => previousLocations.Contains(l.Path)).ToList();
+            if (SelectedLocations.Count == 0) SelectedLocations = LogLocations.Take(1).ToList();
+
+            var stillThere = AvailableTemplates.Any(t => t.Name == previousTemplate);
+            SelectedTemplateName = stillThere
+                ? previousTemplate
+                : AvailableTemplates.FirstOrDefault()?.Name ?? string.Empty;
+
+            if (!string.IsNullOrEmpty(SelectedTemplateName))
+            {
+                // Not OnTemplateChangedAsync: that resets pagination, which would throw away the page
+                // of results the user is looking at over what may have been an edit to a different
+                // template entirely.
+                ApplyPresetsForTemplate();
+                await UpdateTableColumnsAsync();
+            }
+            else
+            {
+                TableColumns = new();
+            }
+
+            await RefreshLogFileNamesAsync();
+            LogFile = previousLogFile;
+        }
+        catch (Exception ex)
+        {
+            SetError($"Failed to reload the log configuration: {ex.Message}");
+        }
+        finally
+        {
+            Notify();
+        }
+    }
+
     // --- location helpers ---
 
     public string LocationSummary => SelectedLocations.Count switch

@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using YamlDotNet.Serialization;
 
 namespace DevToolbox.Services.Models
 {
@@ -30,7 +31,13 @@ namespace DevToolbox.Services.Models
         /// from log_file_presets.yaml, and free text.
         /// </para>
         /// <example><c>^(?&lt;name&gt;.+)\.(?&lt;date&gt;\d{8})\.WEB(?&lt;server&gt;\d+)\.txt$</c></example>
+        /// <para>
+        /// Omitted from the YAML when unset rather than written as a blank: this file is read and
+        /// edited by hand, and a bare <c>namePattern:</c> line reads as a pattern someone started and
+        /// abandoned instead of a location that deliberately has none.
+        /// </para>
         /// </summary>
+        [YamlMember(DefaultValuesHandling = DefaultValuesHandling.OmitNull)]
         public string? NamePattern { get; set; }
     }
 
