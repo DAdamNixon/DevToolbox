@@ -18,6 +18,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DevToolbox.Services\DevToolbox.Services.csproj" />
+    <!-- For WebPreviewHost's port selection, where a busy 5218 used to crash the app at launch.
+         Referenced as a plain library; the WinExe entry point is not compiled in here. -->
+    <ProjectReference Include="..\DevToolbox.UI\DevToolbox.UI.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -73,7 +74,7 @@ public sealed class WebPreviewHost
         // edits the hosts file; binding any other interface would put that on the network.
         // ListenLocalhost rather than a single address because "localhost" resolves to ::1
         // before 127.0.0.1 on Windows, and binding only IPv4 refuses the browser outright.
-        builder.WebHost.ConfigureKestrel(options => options.ListenLocalhost(ChoosePort(preferredPort)));
+        builder.WebHost.ConfigureKestrel(options => ListenOnLoopback(options, ChoosePort(preferredPort)));
 
         // Matches how the WinForms host has always built its provider, and catches a
         // singleton capturing a scoped service at startup rather than as a stale-state
@@ -110,25 +111,84 @@ public sealed class WebPreviewHost
     }
 
     /// <summary>
-    /// The preferred port if it is free, otherwise 0 so the OS assigns one.
+    /// Binds both loopback stacks on <paramref name="port"/>.
+    /// <para>
+    /// Not <c>ListenLocalhost</c> unconditionally, because it rejects port 0 outright —
+    /// "Dynamic port binding is not supported when binding to localhost. You must either
+    /// bind to 127.0.0.1:0 or [::1]:0, or both." — and it throws that from
+    /// <see cref="WebApplicationBuilder.Build"/>, before <see cref="StartAsync"/> exists
+    /// to catch it. So a second instance, or a leftover dev server on the port, took the
+    /// whole WinForms app down at launch rather than merely costing it the browser view.
+    /// </para>
+    /// </summary>
+    private static void ListenOnLoopback(KestrelServerOptions options, int port)
+    {
+        if (port != 0)
+        {
+            options.ListenLocalhost(port);
+            return;
+        }
+
+        // Last resort, when nothing in the scanned range was free. Each call gets its own
+        // OS-assigned port, so the two stacks end up on different ones and Urls reports
+        // both — which is why this is the fallback and not the normal path.
+        options.Listen(IPAddress.Loopback, 0);
+        options.Listen(IPAddress.IPv6Loopback, 0);
+    }
+
+    /// <summary>
+    /// The preferred port if it is free, else the next free one after it, else 0 for
+    /// "let the OS decide".
     /// <para>
     /// Kestrel only discovers a clash when it binds, which happens inside StartAsync
     /// and takes the whole host down with it. Asking first turns "that port is taken"
     /// into a different port rather than no browser view at all.
     /// </para>
+    /// <para>
+    /// A concrete port is worth scanning for rather than passing 0 and taking whatever
+    /// the OS hands out: the same number has to work on both loopback stacks, since
+    /// "localhost" resolves to ::1 before 127.0.0.1 on Windows and the two would
+    /// otherwise be assigned different ports.
+    /// </para>
     /// </summary>
     private static int ChoosePort(int preferred)
     {
-        try
+        // Ten is enough for the case this exists for — a couple of instances and a stale
+        // dev server — without turning a launch into a port scan.
+        for (var port = preferred; port < preferred + 10; port++)
         {
-            var probe = new TcpListener(IPAddress.Loopback, preferred);
-            probe.Start();
-            probe.Stop();
-            return preferred;
+            if (IsFree(port)) return port;
         }
-        catch (SocketException)
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Whether both loopback stacks will take <paramref name="port"/>. Both, because
+    /// <c>ListenLocalhost</c> binds both and fails if either refuses — probing only IPv4
+    /// would hand back a port that then dies at bind time.
+    /// </summary>
+    private static bool IsFree(int port)
+    {
+        return CanBind(IPAddress.Loopback, port) && CanBind(IPAddress.IPv6Loopback, port);
+
+        static bool CanBind(IPAddress address, int port)
         {
-            return 0;
+            TcpListener? probe = null;
+            try
+            {
+                probe = new TcpListener(address, port);
+                probe.Start();
+                return true;
+            }
+            catch (SocketException)
+            {
+                return false;
+            }
+            finally
+            {
+                probe?.Stop();
+            }
         }
     }
 
