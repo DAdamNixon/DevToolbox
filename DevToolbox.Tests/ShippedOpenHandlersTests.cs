@@ -60,12 +60,34 @@ public class ShippedOpenHandlersTests
         Assert.NotNull(handler);
         Assert.Equal("Visual Studio", handler!.Name);
         Assert.Equal(OpenOptionType.Executable, handler.Type);
-
         // vswhere, not the registry: App Paths can name an older Visual Studio that cannot read a
         // newer solution and exits without a word.
         Assert.NotNull(handler.ExecutableFrom);
         Assert.Contains("vswhere", handler.ExecutableFrom!.Command, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("devenv", handler.ExecutablePath);
+    }
+
+    [Theory]
+    [InlineData(@"C:\tfs\Console Programs\EmployeeEOD\EmployeeEOD.sln")]
+    [InlineData(@"C:\tfs\Console Programs\EmployeeEOD\EmployeeEOD.slnf")]
+    public async Task The_locator_asks_for_devenv_by_name_and_not_for_the_newest_of_any_product(string path)
+    {
+        // The bug this guards. `-latest -products * -property productPath` reads as "the newest
+        // Visual Studio" and is not: SQL Server Management Studio is built on the VS shell and
+        // installs through the VS Installer, so it registers as a product too. On a machine with
+        // SSMS 21 it outranked Visual Studio and every solution opened in SSMS as a text query —
+        // with no error, because the handler did exactly what it was told.
+        //
+        // Asking for devenv.exe by name cannot pick SSMS, which ships Ssms.exe and has no
+        // devenv.exe to find, however it chooses to register itself.
+        using var config = new TempDirectory();
+        var handlers = await LoadShippedHandlersAsync(config.Path);
+
+        var arguments = handlers.HandlerFor(path)!.ExecutableFrom!.Arguments;
+
+        Assert.Contains(@"-find **\devenv.exe", arguments);
+        Assert.DoesNotContain("-property productPath", arguments);
+        Assert.DoesNotContain("-latest", arguments);
     }
 
     [Fact]
@@ -89,16 +111,21 @@ public class ShippedOpenHandlersTests
         Assert.Equal("Visual Studio", handlers.HandlerFor(@"C:\tfs\Thing\Thing.SLN")?.Name);
     }
 
-    [Fact]
-    public async Task Files_the_association_already_handles_are_left_alone()
+    [Theory]
+    [InlineData(@"C:\logs\service.log")]
+    [InlineData(@"C:\notes.txt")]
+    public async Task Log_and_text_files_open_at_the_line_the_Log_Viewer_was_on(string path)
     {
-        // Naming an editor this machine may not have would turn a working Open into an error, so
-        // the shipped default deliberately claims only the extensions that are actually broken.
+        // These carry the editor's jump-to-line switch, which is why they are handlers rather than
+        // being left to Windows: the Log Viewer passes the double-clicked row as {1}.
         using var config = new TempDirectory();
         var handlers = await LoadShippedHandlersAsync(config.Path);
 
-        Assert.Null(handlers.HandlerFor(@"C:\logs\service.log"));
-        Assert.Null(handlers.HandlerFor(@"C:\notes.txt"));
+        var handler = handlers.HandlerFor(path);
+
+        Assert.NotNull(handler);
+        Assert.Equal("VS Code", handler!.Name);
+        Assert.Contains("{1}", handler.Arguments);
     }
 
     /// <summary>
