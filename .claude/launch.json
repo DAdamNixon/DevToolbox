@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "devtoolbox-ui",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "DevToolbox.DevServer", "-c", "Debug"],
+      "port": 5218
+    }
+  ]
+}

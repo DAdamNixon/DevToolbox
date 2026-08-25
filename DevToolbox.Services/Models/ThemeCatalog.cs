@@ -95,6 +95,7 @@ public static class ThemeCatalog
         new ThemeDefinition("thanksgiving", "Thanksgiving", new ThemeSeason(11, 1, 11, 30), "leaves"),
         new ThemeDefinition("winter", "Winter", new ThemeSeason(12, 1, 2, 29), "snow"),
         new ThemeDefinition("christmas", "Christmas", new ThemeSeason(12, 1, 12, 31), "snow"),
+        new ThemeDefinition("better-christmas", "(Better)Christmas", new ThemeSeason(12, 1, 12, 31), "snow"),
     };
 
     /// <summary>

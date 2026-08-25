@@ -19,14 +19,15 @@
 //            theme. Standard themes never animate.
 window.devtoolboxThemes = {
     themes: [
-        { id: 'system',       season: null,           effect: null },
-        { id: 'dark',         season: null,           effect: null },
-        { id: 'light',        season: null,           effect: null },
-        { id: 'fall',         season: '09-01..11-30', effect: 'leaves' },
-        { id: 'halloween',    season: '10-01..10-31', effect: 'bats' },
-        { id: 'thanksgiving', season: '11-01..11-30', effect: 'leaves' },
-        { id: 'winter',       season: '12-01..02-29', effect: 'snow' },
-        { id: 'christmas',    season: '12-01..12-31', effect: 'snow' }
+        { id: 'system',           season: null,           effect: null },
+        { id: 'dark',             season: null,           effect: null },
+        { id: 'light',            season: null,           effect: null },
+        { id: 'fall',             season: '09-01..11-30', effect: 'leaves' },
+        { id: 'halloween',        season: '10-01..10-31', effect: 'bats' },
+        { id: 'thanksgiving',     season: '11-01..11-30', effect: 'leaves' },
+        { id: 'winter',           season: '12-01..02-29', effect: 'snow' },
+        { id: 'christmas',        season: '12-01..12-31', effect: 'snow' },
+        { id: 'better-christmas', season: '12-01..12-31', effect: 'snow' }
     ],
 
     // Per-effect tuning. `count` is the whole cost of the feature — every

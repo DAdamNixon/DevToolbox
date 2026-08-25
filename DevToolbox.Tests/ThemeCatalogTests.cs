@@ -53,6 +53,11 @@ public class ThemeCatalogTests
     /// Parses <c>themeCatalog.js</c> with a regex rather than a JS engine. That is why the file is
     /// documented as one theme per line in a fixed field order: the format is a contract with this
     /// method, and a reformat that breaks it should break here rather than at runtime.
+    /// <para>
+    /// Ids are lowercase with hyphens allowed — <c>better-christmas</c> is the first of those, and
+    /// before it the pattern accepted <c>[a-z]+</c> only, which would have skipped the row silently
+    /// and reported it as missing from the JS catalog rather than as an unparseable one.
+    /// </para>
     /// </summary>
     private static List<JsTheme> ParseJsCatalog()
     {
@@ -60,7 +65,7 @@ public class ThemeCatalogTests
 
         var entries = Regex.Matches(
             source,
-            @"\{\s*id:\s*'(?<id>[a-z]+)',\s*season:\s*(?:null|'(?<season>[^']*)'),\s*effect:\s*(?:null|'(?<effect>[^']*)')\s*\}");
+            @"\{\s*id:\s*'(?<id>[a-z][a-z-]*)',\s*season:\s*(?:null|'(?<season>[^']*)'),\s*effect:\s*(?:null|'(?<effect>[^']*)')\s*\}");
 
         Assert.NotEmpty(entries);
 
