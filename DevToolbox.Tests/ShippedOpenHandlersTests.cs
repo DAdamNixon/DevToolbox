@@ -1,8 +1,6 @@
 using DevToolbox.Services.Interfaces;
 using DevToolbox.Services.Models;
 using DevToolbox.Services.Services;
-using YamlDotNet.Serialization;
-using YamlDotNet.Serialization.NamingConventions;
 
 namespace DevToolbox.Tests;
 
@@ -52,7 +50,7 @@ public class ShippedOpenHandlersTests
     [InlineData(@"C:\tfs\Console Programs\EmployeeEOD\EmployeeEOD.slnf")]
     public async Task A_solution_opens_in_Visual_Studio_rather_than_the_file_association(string path)
     {
-        using var config = new TempDirectory();
+        using var config = new TempDirectory("DevToolboxShippedHandlers");
         var handlers = await LoadShippedHandlersAsync(config.Path);
 
         var handler = handlers.HandlerFor(path);
@@ -80,7 +78,7 @@ public class ShippedOpenHandlersTests
         //
         // Asking for devenv.exe by name cannot pick SSMS, which ships Ssms.exe and has no
         // devenv.exe to find, however it chooses to register itself.
-        using var config = new TempDirectory();
+        using var config = new TempDirectory("DevToolboxShippedHandlers");
         var handlers = await LoadShippedHandlersAsync(config.Path);
 
         var arguments = handlers.HandlerFor(path)!.ExecutableFrom!.Arguments;
@@ -93,7 +91,7 @@ public class ShippedOpenHandlersTests
     [Fact]
     public async Task A_workspace_file_opens_in_VS_Code()
     {
-        using var config = new TempDirectory();
+        using var config = new TempDirectory("DevToolboxShippedHandlers");
         var handlers = await LoadShippedHandlersAsync(config.Path);
 
         var handler = handlers.HandlerFor(@"C:\TFS\Workspaces\dev-checkout.code-workspace");
@@ -105,7 +103,7 @@ public class ShippedOpenHandlersTests
     [Fact]
     public async Task The_case_of_the_extension_does_not_matter()
     {
-        using var config = new TempDirectory();
+        using var config = new TempDirectory("DevToolboxShippedHandlers");
         var handlers = await LoadShippedHandlersAsync(config.Path);
 
         Assert.Equal("Visual Studio", handlers.HandlerFor(@"C:\tfs\Thing\Thing.SLN")?.Name);
@@ -118,7 +116,7 @@ public class ShippedOpenHandlersTests
     {
         // These carry the editor's jump-to-line switch, which is why they are handlers rather than
         // being left to Windows: the Log Viewer passes the double-clicked row as {1}.
-        using var config = new TempDirectory();
+        using var config = new TempDirectory("DevToolboxShippedHandlers");
         var handlers = await LoadShippedHandlersAsync(config.Path);
 
         var handler = handlers.HandlerFor(path);
@@ -126,59 +124,5 @@ public class ShippedOpenHandlersTests
         Assert.NotNull(handler);
         Assert.Equal("VS Code", handler!.Name);
         Assert.Contains("{1}", handler.Arguments);
-    }
-
-    /// <summary>
-    /// Reads YAML out of one directory, the way <see cref="YamlStorageService"/> does, without its
-    /// constructor — which points at the real <c>%LOCALAPPDATA%</c> and seeds it.
-    /// </summary>
-    private sealed class DirectoryYamlStorage : IYamlStorageService
-    {
-        private static readonly IDeserializer Yaml = new DeserializerBuilder()
-            .WithNamingConvention(CamelCaseNamingConvention.Instance)
-            .IgnoreUnmatchedProperties()
-            .Build();
-
-        public DirectoryYamlStorage(string directory)
-        {
-            StorageDirectory = directory;
-        }
-
-        public string StorageDirectory { get; }
-
-        public Task<T?> LoadAsync<T>(string fileName)
-        {
-            var path = Path.Combine(StorageDirectory, $"{fileName}.yaml");
-            return Task.FromResult(File.Exists(path) ? Yaml.Deserialize<T>(File.ReadAllText(path)) : default);
-        }
-
-        public Task SaveAsync<T>(string fileName, T data) => throw new NotSupportedException();
-
-        public Task<bool> DeleteAsync(string fileName) => throw new NotSupportedException();
-
-        public Task<List<string>> ListFilesAsync() => throw new NotSupportedException();
-    }
-
-    private sealed class TempDirectory : IDisposable
-    {
-        public TempDirectory()
-        {
-            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "DevToolboxShippedHandlers",
-                Guid.NewGuid().ToString("N"));
-            System.IO.Directory.CreateDirectory(Path);
-        }
-
-        public string Path { get; }
-
-        public void Dispose()
-        {
-            try
-            {
-                if (System.IO.Directory.Exists(Path)) System.IO.Directory.Delete(Path, recursive: true);
-            }
-            catch (IOException)
-            {
-            }
-        }
     }
 }

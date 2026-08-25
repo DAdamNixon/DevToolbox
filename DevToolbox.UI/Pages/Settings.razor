@@ -6,6 +6,7 @@
 @using Microsoft.JSInterop
 @inject IUiSettingsService UiSettings
 @inject IYamlStorageService YamlStorage
+@inject IEnumerable<ICachedConfig> CachedConfigs
 @inject IJSRuntime JS
 @inject WebPreviewInfo WebPreview
 
@@ -325,6 +326,8 @@
                     ? $"Restored {name}. There was nothing to back up."
                     : $"Restored {name}. Your copy was kept as {Path.GetFileName(backup)}.",
                 failed: false);
+
+            DropCachedCopy(name);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -352,6 +355,8 @@
                 var backup = ConfigRestore.Restore(file.Name, ConfigDefaults.SourceDirectory, ConfigDirectory, stamp);
                 restored++;
                 if (backup is not null) backups++;
+
+                DropCachedCopy(file.Name);
             }
 
             SetRestoreResult(
@@ -366,8 +371,34 @@
         await Task.CompletedTask;
     }
 
-    // Restored files are read on next use, not now — the pages that own them hold their own loaded
-    // state, and saying so is more honest than pretending a live reload happened.
+    /// <summary>
+    /// Tells whichever service holds this file in memory to forget it, so the restored copy is the
+    /// one read next.
+    /// <para>
+    /// Restoring writes over the live file directly rather than going through the service that owns
+    /// it, so without this the service keeps serving the snapshot it loaded at startup. That is not
+    /// hypothetical: a restored <c>openHandlers.yaml</c> reported success and changed nothing,
+    /// because <c>OpenHandlerService</c> loads once and only when what it holds is null. Reopening
+    /// the tab did not help — it returned the same cached copy — so the restore looked broken while
+    /// having worked perfectly.
+    /// </para>
+    /// <para>
+    /// Called even when the restore failed. Dropping a cache costs one re-read of a file that did
+    /// not change, and getting it wrong in the other direction is what this exists to fix.
+    /// </para>
+    /// </summary>
+    private void DropCachedCopy(string fileName)
+    {
+        var key = Path.GetFileNameWithoutExtension(fileName);
+
+        foreach (var cached in CachedConfigs.Where(c => string.Equals(c.ConfigKey, key, StringComparison.OrdinalIgnoreCase)))
+        {
+            cached.Invalidate();
+        }
+    }
+
+    // The cache each restored file lives in has just been dropped, so "reopen the tab" is now
+    // true rather than wishful: the page reads the restored copy on its next initialisation.
     private void SetRestoreResult(string message, bool failed)
     {
         restoreMessage = failed ? message : message + " Reopen the affected tab to see the change.";
