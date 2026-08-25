@@ -1,0 +1,75 @@
+# Which program opens which kind of file, for every card on the Projects tab.
+#
+# This is the shipped default. It is copied into %LOCALAPPDATA%\DevToolbox\Config on
+# first run only if that folder does not already have an openHandlers.yaml — a file
+# you already have is yours, and an upgrade never replaces it. Edit the copy, not this.
+#
+# The Open button picks, in order:
+#   1. the `openWith` on the workspace source the card came from (scanned cards only)
+#   2. the first handler below whose `match` fits
+#   3. the Windows file association
+#
+# Everything here exists to keep step 3 from being reached, because the association is
+# not trustworthy for these files:
+#   .sln             whatever happens to claim the extension answers. On a machine with
+#                    SQL Server Management Studio that is SSMS, which opens a solution
+#                    as a text query. Where VSLauncher does answer, it resolves devenv
+#                    through the App Paths registry and can land on an older Visual
+#                    Studio that cannot read a newer solution, then exits silently.
+#   .code-workspace  usually has no handler registered at all, so opening did nothing.
+#
+#   match            glob on the file name; use a pattern containing \ to match the
+#                    whole path instead and scope a rule to one tree
+#   type             Executable | Command
+#   executablePath   program name or full path; a bare name is resolved across
+#                    PATH x PATHEXT, then the App Paths registry
+#   executableFrom   ask another program where it lives — first line of stdout is used.
+#                    Beats executablePath, which stays as the fallback.
+#   arguments        optional; {0} is the file path, {1} the line number. Leave unset
+#                    and the path is passed as a single correctly-quoted argument.
+
+handlers:
+
+# Solutions and solution filters open in the *newest installed* Visual Studio, asked
+# for by vswhere rather than guessed from the registry. vswhere ships with every VS
+# 2017-and-later installer, so it is present wherever devenv is.
+- match: '*.sln'
+  name: Visual Studio
+  type: Executable
+  executableFrom:
+    command: '%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe'
+    arguments: -latest -products * -property productPath
+  executablePath: devenv         # fallback if the locator finds nothing
+  icon: bi-code-square
+
+- match: '*.slnf'
+  name: Visual Studio
+  type: Executable
+  executableFrom:
+    command: '%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe'
+    arguments: -latest -products * -property productPath
+  executablePath: devenv
+  icon: bi-code-square
+
+- match: '*.code-workspace'
+  name: VS Code
+  type: Executable
+  # `code` on PATH is code.cmd, which is run through cmd /c with no window.
+  executablePath: code
+  icon: bi-window-stack
+
+# Log and text files are left to the association on purpose: unlike the above, whatever
+# Windows picks does open them, and a rule naming an editor this machine does not have
+# would turn a working Open into an error. Uncomment to open them at the line the Log
+# Viewer was double-clicked on — {1} is that line number, and 1 everywhere else. Which
+# switch jumps to a line is the editor's business, so it lives here rather than in the app:
+#     VS Code     -g "{0}:{1}"
+#     Notepad++   -n{1} "{0}"
+#     Sublime     "{0}:{1}"
+#
+# - match: '*.log'
+#   name: VS Code
+#   type: Executable
+#   executablePath: code
+#   arguments: -g "{0}:{1}"
+#   icon: bi-file-earmark-text
