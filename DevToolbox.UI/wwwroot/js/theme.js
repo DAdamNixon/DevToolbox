@@ -1,6 +1,8 @@
 // Applies the colour theme by setting data-theme on <html>; theme.css and
-// themes.css do the rest. Also decides whether the animation layer runs, and
-// hands that decision to themeEffects.js.
+// themes.css do the rest. Also decides whether animation is allowed at all, and
+// publishes that two ways: to themeEffects.js, which builds the particle layer, and
+// as data-fx-motion on <html>, which is how the CSS-only ornament in themeDecor.css
+// knows whether it may move.
 //
 // Two stores are involved, and only one of them is authoritative:
 //
@@ -126,9 +128,16 @@
         window.devtoolboxThemeEffects.set(animations && def ? def.effect : null);
     }
 
+    // The particle layer is built by JS, so themeEffects.js can simply not be asked
+    // for it. Decoration that lives entirely in CSS — the twinkling lights
+    // (Better)Christmas wraps its cards in — has no such switch, so the setting is
+    // published onto <html> as well and themeDecor.css keys its animations off it.
+    // Without this the "Theme animations" toggle would stop the snow and leave the
+    // lights blinking, which reads as the toggle being broken rather than partial.
     function paint(theme, animations, showAll) {
         var painted = effective(theme, showAll);
         document.documentElement.setAttribute('data-theme', painted);
+        document.documentElement.setAttribute('data-fx-motion', animations ? 'on' : 'off');
         driveEffects(painted, animations);
         return painted;
     }

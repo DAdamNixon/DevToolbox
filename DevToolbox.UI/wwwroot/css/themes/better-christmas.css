@@ -1,0 +1,52 @@
+/* (Better)Christmas — the same pine ground as Christmas, a red that is actually red.
+ *
+ * WHY THIS EXISTS RATHER THAN AN EDIT TO christmas.css. Christmas ships and is
+ * someone's saved setting; this is a second, louder reading of the same holiday, so
+ * both are offered in December and the old one is left alone.
+ *
+ * THE RED. Christmas paired #d94040 with gold #d9b036, and the pairing was the
+ * problem rather than either colour: .text-gradient sweeps --c-accent-blue into
+ * --c-accent-purple, so every page <h1> and the brand mark interpolated red into
+ * gold and spent its middle at #d9783b — orange. #d94040 itself is a desaturated
+ * brick that reads closer to terracotta than to a Christmas red. So the primary
+ * here is #e12b3c: same hue family, far more saturation, and paired with a gradient
+ * that never leaves red (see themeDecor.css, which retargets .text-gradient for
+ * this theme).
+ *
+ * White on #e12b3c is 4.55:1, so a btn-primary label clears AA where the old red's
+ * 4.41:1 did not. As text on the ground it is 3.93:1 — the same compromise Christmas
+ * made at 4.05:1, and unavoidable while one token has to serve both a fill under
+ * white text and text on a near-black ground.
+ *
+ * --c-danger stays lighter than the primary for the reason christmas.css gives: with
+ * red as the primary accent, a destructive button is only distinguishable from an
+ * ordinary one by lightness. #f58089 against a #e12b3c btn-primary is unmistakable.
+ *
+ * The greens, the text pair, success and warning are Christmas's, deliberately
+ * unchanged — they were right, and copying them keeps the two themes recognisably
+ * the same holiday. Warning stays amber: it is the one thing here that must not be
+ * red, or it collides with both the primary and the danger.
+ */
+:root[data-theme="better-christmas"] {
+    color-scheme: dark;
+
+    --c-bg: 13 26 18;
+    --c-surface: 20 38 26;
+    --c-surface-hover: 29 53 36;
+    --c-border: 43 74 51;
+    --c-text: 238 246 239;
+    --c-text-muted: 168 196 174;
+
+    --c-accent-blue: 225 43 60;
+    --c-accent-blue-hover: 192 16 35;
+    --c-accent-purple: 224 187 69;
+    --c-accent-purple-hover: 201 162 39;
+
+    --c-success: 63 168 92;
+    --c-warning: 217 168 40;
+    --c-danger: 245 128 137;
+
+    --c-danger-text: 255 176 182;
+
+    --shadow-strength: 1;
+}

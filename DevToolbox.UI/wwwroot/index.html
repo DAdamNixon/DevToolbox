@@ -35,6 +35,10 @@
     <link href="css/bootstrap-icons.min.css" rel="stylesheet" />
     <!-- Dashboard layout; plain CSS so it does not need the Tailwind npm build -->
     <link href="css/dashboard.css" rel="stylesheet" />
+    <!-- Theme-scoped ornament (the (Better)Christmas garland, tree and footer snow).
+         Last of the stylesheets because it is the only one that has to out-specify
+         dashboard.css and the Tailwind build rather than merely be read by them. -->
+    <link href="css/themeDecor.css" rel="stylesheet" />
     <style>
         /* Allow highlighting/copying text in the Log Viewer results (independent of Tailwind build). */
         #logResultsTable,
