@@ -61,6 +61,19 @@ public class WorkspaceSourceService : IWorkspaceSourceService
         _scanned = false;
     }
 
+    string ICachedConfig.ConfigKey => ConfigKey;
+
+    /// <summary>
+    /// Drops the loaded sources and the scan built from them, so the next
+    /// <see cref="GetGroupsAsync"/> rescans. Same pair <see cref="SaveConfigAsync"/> resets —
+    /// a restored file that left a stale scan in place would show the old groups.
+    /// </summary>
+    public void Invalidate()
+    {
+        _config = null;
+        _scanned = false;
+    }
+
     public async Task<List<WorkspaceGroup>> GetGroupsAsync(bool forceRescan = false)
     {
         if (_scanned && !forceRescan)

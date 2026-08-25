@@ -6,7 +6,7 @@ namespace DevToolbox.Services.Interfaces;
 /// Resolves the icon and accent colour for a dashboard card from
 /// Config/dashboardIcons.yaml: explicit override, then name rule, then default.
 /// </summary>
-public interface IIconService
+public interface IIconService : ICachedConfig
 {
     Task<IconConfig> GetConfigAsync();
 

@@ -60,6 +60,19 @@ namespace DevToolbox.UI
             services.AddScoped<MenuStateService>();
             services.AddScoped<LogSearchStateService>();
 
+            // The same three again, as the interface ConfigRestore looks them up by. Forwarding
+            // factories, not new registrations: these resolve the instances registered above, so
+            // there is still exactly one of each. None of the three is IDisposable, so the
+            // borrowing container tracking them costs nothing — the hazard AddBorrowedSingletons
+            // warns about does not apply.
+            //
+            // Registered here rather than named at the call site so that a fourth service which
+            // starts caching a config is picked up by adding one line, not by remembering to edit
+            // the Settings page as well.
+            services.AddScoped<ICachedConfig>(sp => sp.GetRequiredService<IOpenHandlerService>());
+            services.AddScoped<ICachedConfig>(sp => sp.GetRequiredService<IIconService>());
+            services.AddScoped<ICachedConfig>(sp => sp.GetRequiredService<IWorkspaceSourceService>());
+
             return services;
         }
 
