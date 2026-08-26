@@ -1,0 +1,90 @@
+# Which program opens which kind of file, for every card on the Projects tab.
+#
+# This is the shipped default. It is copied into the config folder on first run only if
+# that folder does not already have an openHandlers.yaml — a file you already have is
+# yours, and an upgrade never replaces it. To take a newer shipped copy deliberately:
+# Settings -> Bundled Configuration -> Restore, then restart the app.
+#
+# The Open button picks, in order:
+#   1. the `openWith` on the workspace source the card came from (scanned cards only)
+#   2. the first handler below whose `match` fits
+#   3. the Windows file association
+#
+# The association is the last resort on purpose. It is not reliable here:
+#   .code-workspace  has no handler registered at all, so opening did nothing
+#   .sln             routes through VSLauncher, which resolves devenv via the App Paths
+#                    registry -> an older Visual Studio that could not open the file.
+#                    It exits silently.
+#
+#   match            glob on the file name; use a pattern containing \ to match the
+#                    whole path instead and scope a rule to one tree
+#   type             Executable | Command
+#   executablePath   program name or full path; a bare name is resolved across
+#                    PATH x PATHEXT, then the App Paths registry
+#   executableFrom   ask another program where it lives — first line of stdout is used.
+#                    Beats executablePath, which stays as the fallback.
+#   arguments        optional; {0} is the file path, {1} the line number. Leave unset
+#                    and the path is passed as a single correctly-quoted argument.
+#
+# {1} is filled in when the Log Viewer opens a row by double-click; everywhere
+# else it resolves to 1. Which switch jumps to a line is the editor's business,
+# so it lives here rather than in the app:
+#     VS Code     -g "{0}:{1}"
+#     Notepad++   -n{1} "{0}"
+#     Sublime     "{0}:{1}"
+
+handlers:
+
+# Log files open at the line you double-clicked. Listed before any general text
+# rule would be: the first matching handler wins.
+- match: '*.txt'
+  name: VS Code
+  type: Executable
+  executablePath: code
+  arguments: -g "{0}:{1}"
+  icon: bi-file-earmark-text
+
+- match: '*.log'
+  name: VS Code
+  type: Executable
+  executablePath: code
+  arguments: -g "{0}:{1}"
+  icon: bi-file-earmark-text
+
+- match: '*.code-workspace'
+  name: VS Code
+  type: Executable
+  # `code` on PATH is code.cmd, which is run through cmd /c with no window.
+  executablePath: code
+  icon: bi-window-stack
+
+# Solutions and solution filters open in the newest installed Visual Studio, asked for
+# by vswhere rather than guessed from the registry.
+#
+# The query asks for devenv.exe by name, and deliberately does NOT use
+# `-latest -products * -property productPath`. That form asks for "the newest of any
+# product the VS Installer knows about", and SQL Server Management Studio is one: SSMS
+# is built on the VS shell and installs through the same installer, so it registers as
+# an instance. On a machine with SSMS 21 it outranked Visual Studio, and every solution
+# opened in SSMS as a text query. Asking for devenv.exe cannot make that mistake —
+# SSMS ships Ssms.exe and simply has no devenv.exe to find.
+#
+# `-sort` orders newest first and the first line of output is the one used, so this
+# still means "the newest Visual Studio" without naming product IDs that change.
+- match: '*.sln'
+  name: Visual Studio
+  type: Executable
+  executableFrom:
+    command: '%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe'
+    arguments: '-products * -sort -find **\devenv.exe'
+  executablePath: devenv         # fallback if the locator finds nothing
+  icon: bi-code-square
+
+- match: '*.slnf'
+  name: Visual Studio
+  type: Executable
+  executableFrom:
+    command: '%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe'
+    arguments: '-products * -sort -find **\devenv.exe'
+  executablePath: devenv
+  icon: bi-code-square

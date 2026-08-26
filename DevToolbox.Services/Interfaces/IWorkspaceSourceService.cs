@@ -6,7 +6,7 @@ namespace DevToolbox.Services.Interfaces;
 /// Turns the folders declared in Config/workspaceSources.yaml into dashboard groups.
 /// Results are virtual — they are rebuilt from disk on every scan and never persisted.
 /// </summary>
-public interface IWorkspaceSourceService
+public interface IWorkspaceSourceService : ICachedConfig
 {
     /// <summary>Sources as configured on disk.</summary>
     Task<WorkspaceSourceConfig> GetConfigAsync();

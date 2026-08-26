@@ -5,7 +5,7 @@ namespace DevToolbox.Services.Interfaces;
 /// <summary>
 /// Maps a file to the program that should open it, from Config/openHandlers.yaml.
 /// </summary>
-public interface IOpenHandlerService
+public interface IOpenHandlerService : ICachedConfig
 {
     Task<OpenHandlerConfig> GetConfigAsync();
 

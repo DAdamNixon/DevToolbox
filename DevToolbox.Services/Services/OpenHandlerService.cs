@@ -58,6 +58,20 @@ public class OpenHandlerService : IOpenHandlerService
         _config = config;
     }
 
+    // Explicit, so the private const above keeps its name: inside an explicit implementation
+    // `ConfigKey` still resolves to the const, and no second member competes for the name.
+    string ICachedConfig.ConfigKey => ConfigKey;
+
+    /// <summary>
+    /// Drops the loaded handlers so the next <see cref="GetConfigAsync"/> reads disk again.
+    /// <para>
+    /// Restoring a shipped <c>openHandlers.yaml</c> writes the file directly, without passing
+    /// through <see cref="SaveConfigAsync"/>, so nothing here would otherwise notice. This is a
+    /// singleton, so one call covers both hosts.
+    /// </para>
+    /// </summary>
+    public void Invalidate() => _config = null;
+
     public CustomOpenOption? HandlerFor(string path)
     {
         if (string.IsNullOrWhiteSpace(path) || _config is null)

@@ -28,6 +28,13 @@
     <None Update="Scripts\*.ps1">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- The configuration a fresh machine arrives with. ConfigDefaults copies these into
+         %LOCALAPPDATA%\DevToolbox\Config on first run, never overwriting, because MSIX has no
+         install step that could put them there. Without this beside the executable there is
+         nothing to seed, and every Open falls through to the Windows file association. -->
+    <None Update="ConfigDefaults\*.yaml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

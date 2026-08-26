@@ -87,6 +87,11 @@ public class IconService : IIconService
         _config = config;
     }
 
+    string ICachedConfig.ConfigKey => ConfigKey;
+
+    /// <summary>Drops the loaded icon rules so the next read comes from disk.</summary>
+    public void Invalidate() => _config = null;
+
     public IconStyle Resolve(IconScope scope, string name, IconStyle? fallback = null)
     {
         var config = _config ?? new IconConfig();

@@ -165,9 +165,22 @@ handlers:
 A `match` containing a path separator is tested against the whole path instead of the
 file name, which scopes a rule to one tree.
 
+A default `openHandlers.yaml` **ships with the application**, in `ConfigDefaults` beside the
+executable, and is copied into the config folder on first run — never overwriting a file that
+is already there. Without it a fresh machine has no handlers at all, so every Open falls to
+step 3, and step 3 is wrong for exactly the files the dashboard is made of: on a machine with
+SQL Server Management Studio installed, the association for `.sln` is SSMS, which opens the
+solution as a text query.
+
+The shipped default claims only `*.sln`, `*.slnf` and `*.code-workspace` — the extensions the
+association actively gets wrong. `.log` and `.txt` are left to Windows on purpose: whatever it
+picks does open them, and naming an editor the machine may not have would turn a working Open
+into an error. `DevToolbox.Services/ConfigDefaults/openHandlers.yaml` carries commented rules
+for those two, ready to uncomment.
+
 ### Why the file association is the last resort
 
-It looks like the obvious default and it is not trustworthy. Both defaults failed
+It looks like the obvious default and it is not trustworthy. Every one of these failed
 silently, in different ways:
 
 - **`.code-workspace`** had no handler registered at all — VS Code only claims it when
@@ -177,8 +190,12 @@ silently, in different ways:
   reading the solution's `# Visual Studio Version` header. On a machine with more than
   one VS it can resolve to the wrong one — here an old VS 2019 that cannot open a
   `Version 18` solution. The launcher exits without a word.
+- **`.sln`**, on a machine with SSMS, is not registered to `VSLauncher.exe` at all —
+  SQL Server Management Studio claims the extension during its install and opens the
+  solution as a text query. Nothing errors: the wrong program starts and looks like it
+  worked. This is the failure the shipped default exists to prevent.
 
-Naming the program removes the guesswork for both.
+Naming the program removes the guesswork in every case.
 
 ### Resolving the executable
 
