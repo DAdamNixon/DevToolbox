@@ -105,6 +105,18 @@ else
                         <span>Search subfolders too</span>
                     </label>
 
+                    <div class="ws-field ws-span">
+                        <label class="ws-label">Skip these folders</label>
+                        <input type="text" class="ws-input" value="@ExcludeText" @oninput="SetExclude"
+                               placeholder="bin, obj, node_modules, .vs, .git, packages" />
+                        <span class="ws-hint">
+                            Same wildcards as the pattern, matched against every folder and file name on the
+                            way down. An excluded folder is never opened, which is what makes
+                            <em>Search subfolders too</em> usable over a whole repository — a website working
+                            copy is 78,000 folders, of which 3,900 are not build output.
+                        </span>
+                    </div>
+
                     <div class="ws-field">
                         <label class="ws-label">Group name</label>
                         <input type="text" class="ws-input" @bind="selected.Group" @bind:event="oninput"
@@ -117,15 +129,41 @@ else
                                @bind:after="SchedulePreview" placeholder="main" />
                     </div>
 
+                    @* The regex and what it runs against, on one line. They are one decision: a
+                       pattern written for the name is nonsense against the path and vice versa, and
+                       reading them apart is how you end up with a preview full of fallbacks. *@
                     <div class="ws-field ws-span">
                         <label class="ws-label">Name pattern (optional regex)</label>
-                        <input type="text" class="ws-input" @bind="selected.NameRegex" @bind:event="oninput"
-                               @bind:after="SchedulePreview"
-                               placeholder="^(?&lt;location&gt;dev|demo)-(?&lt;workspace&gt;.+)$" />
+                        <div class="ws-input-row">
+                            <input type="text" class="ws-input" @bind="selected.NameRegex" @bind:event="oninput"
+                                   @bind:after="SchedulePreview" placeholder="@RegexPlaceholder" />
+                            <select class="ws-input ws-input-fit" value="@selected.MatchOn" @onchange="SetMatchOn">
+                                <option value="@nameof(NameMatch.Name)">over the name</option>
+                                <option value="@nameof(NameMatch.RelativePath)">over the path</option>
+                            </select>
+                        </div>
                         <span class="ws-hint">
                             Named groups <span class="font-mono">workspace</span> and <span class="font-mono">location</span>
-                            merge related files into one card — <span class="font-mono">dev-checkout</span> and
-                            <span class="font-mono">demo-checkout</span> become one "checkout" with two locations.
+                            merge related entries into one card.
+                            @if (selected.MatchOn == NameMatch.RelativePath)
+                            {
+                                <text>
+                                    Matched against the path below the folder above, extension kept — for trees that
+                                    put the branch in a folder instead of the name, where every leaf is called
+                                    <span class="font-mono">Checkout.sln</span> and only
+                                    <span class="font-mono">development\</span> vs <span class="font-mono">demo\</span>
+                                    tells them apart.
+                                </text>
+                            }
+                            else
+                            {
+                                <text>
+                                    Matched against the entry's own name, extension dropped —
+                                    <span class="font-mono">dev-checkout</span> and <span class="font-mono">demo-checkout</span>
+                                    become one "checkout" with two locations. Switch to <em>over the path</em> when the
+                                    branch is a parent folder rather than part of the name.
+                                </text>
+                            }
                         </span>
                     </div>
 
@@ -167,7 +205,7 @@ else
                         @if (preview is not null && preview.PathExists && preview.Error is null)
                         {
                             <span class="ws-preview-stats">
-                                @preview.EntriesFound matched
+                                @preview.EntriesFound@(preview.Truncated ? "+" : "") matched
                                 <i class="bi bi-arrow-right-short"></i>
                                 @preview.WorkspaceCount card@(preview.WorkspaceCount == 1 ? "" : "s"),
                                 @preview.LocationCount location@(preview.LocationCount == 1 ? "" : "s")
@@ -202,11 +240,13 @@ else
                             </div>
                         }
 
+                        @* No total: the walk stops at the cap rather than counting the rest, so
+                           there is no honest "of N" to put here. *@
                         @if (preview.Truncated)
                         {
                             <div class="ws-scan-note">
-                                Showing the first @preview.Workspaces.Sum(w => w.Locations.Count) of
-                                @preview.EntriesFound entries. A real scan takes all of them.
+                                Showing the first @preview.Workspaces.Sum(w => w.Locations.Count) entries — there
+                                are more. A real scan takes all of them.
                             </div>
                         }
 
@@ -357,7 +397,12 @@ else
         {
             if (preview.Error is not null) return "failed";
             if (!preview.PathExists) return "folder not found";
-            return $"{preview.WorkspaceCount} card{(preview.WorkspaceCount == 1 ? "" : "s")}";
+
+            // The preview stops at its entry cap, so on a big source this is a floor, not a count.
+            // Saying "200 cards" beside a scan that found 380 reads as a disagreement rather than
+            // as a sample.
+            var more = preview.Truncated ? "+" : string.Empty;
+            return $"{preview.WorkspaceCount}{more} card{(preview.WorkspaceCount == 1 ? "" : "s")}";
         }
 
         var scan = SourceService.LastScan.FirstOrDefault(r => r.SourceName == source.Name);
@@ -494,6 +539,37 @@ else
         }
     }
 
+    private void SetMatchOn(ChangeEventArgs e)
+    {
+        if (selected is not null && Enum.TryParse<NameMatch>(e.Value?.ToString(), ignoreCase: true, out var match))
+        {
+            selected.MatchOn = match;
+            SchedulePreview();
+        }
+    }
+
+    /// <summary>An example of the right shape for whichever string the regex is being run against.</summary>
+    private string RegexPlaceholder => selected?.MatchOn == NameMatch.RelativePath
+        ? @"^(?<location>[^\\]+)\\.*\\(?<workspace>[^\\]+)\.sln$"
+        : "^(?<location>dev|demo)-(?<workspace>.+)$";
+
+    private string ExcludeText =>
+        selected is null ? string.Empty : string.Join(", ", selected.Exclude);
+
+    private void SetExclude(ChangeEventArgs e)
+    {
+        if (selected is null)
+        {
+            return;
+        }
+
+        selected.Exclude = (e.Value?.ToString() ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+
+        SchedulePreview();
+    }
+
     private string DescriptionFromText =>
         selected is null ? string.Empty : string.Join(", ", selected.DescriptionFrom);
 
@@ -582,10 +658,12 @@ else
         Pattern = s.Pattern,
         Scan = s.Scan,
         Recursive = s.Recursive,
+        Exclude = new List<string>(s.Exclude),
         Group = s.Group,
         Icon = s.Icon,
         Color = s.Color,
         NameRegex = s.NameRegex,
+        MatchOn = s.MatchOn,
         DefaultLocationName = s.DefaultLocationName,
         DescriptionFrom = new List<string>(s.DescriptionFrom),
         OpenWith = s.OpenWith

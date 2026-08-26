@@ -27,12 +27,17 @@ public class SourcePreview
     /// <summary>Set when enumerating the folder threw — a bad pattern, or no permission.</summary>
     public string? Error { get; set; }
 
-    /// <summary>Entries the pattern matched on disk, before the cap.</summary>
+    /// <summary>
+    /// Entries the pattern matched, up to the preview cap. Not the number on disk when
+    /// <see cref="Truncated"/> is set: the walk stops at the cap rather than counting the rest,
+    /// because a recursive source covers thousands of folders and this runs between keystrokes.
+    /// </summary>
     public int EntriesFound { get; set; }
 
     /// <summary>
-    /// True when <see cref="EntriesFound"/> hit the preview cap. The counts below then
-    /// describe the sample rather than the whole folder, which the dialog says out loud.
+    /// True when the walk stopped at the preview cap. The counts then describe the sample rather
+    /// than the whole folder, and there is no total to compare it against — which is why the
+    /// dialog says "the first N" and not "N of M".
     /// </summary>
     public bool Truncated { get; set; }
 

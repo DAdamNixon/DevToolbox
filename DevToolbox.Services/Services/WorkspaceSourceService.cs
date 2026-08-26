@@ -1,3 +1,4 @@
+using System.IO.Enumeration;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using DevToolbox.Services.Interfaces;
@@ -108,7 +109,14 @@ public class WorkspaceSourceService : IWorkspaceSourceService
             }
 
             var config = await GetConfigAsync();
-            Scan(config);
+
+            // Off the calling thread, which on the dashboard's first load is the renderer's.
+            // A scan is one directory stat per folder under every source; over a whole source
+            // tree that is tens of thousands of them and takes seconds, and Scan is synchronous
+            // throughout — so running it here freezes the window that is waiting for it. Same
+            // reason PreviewAsync does the same thing.
+            await Task.Run(() => Scan(config));
+
             _scanned = true;
         }
         finally
@@ -162,6 +170,13 @@ public class WorkspaceSourceService : IWorkspaceSourceService
         // one workspace per distinct name, one location per entry underneath it.
         var group = BuildGroup(source, root, collected.Entries, id: 0, nextWorkspaceId: () => 0);
 
+        // What the regex was handed, per entry. The dialog shows this rather than the file name:
+        // with MatchOn: RelativePath the regex never saw the file name, so showing it would be
+        // showing the wrong string to whoever is trying to work out why the pattern missed.
+        var subjectByPath = collected.Entries
+            .GroupBy(e => e.Path, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().Subject, StringComparer.OrdinalIgnoreCase);
+
         preview.Workspaces = group.Workspaces
             .Select(w => new PreviewWorkspace
             {
@@ -172,7 +187,7 @@ public class WorkspaceSourceService : IWorkspaceSourceService
                         Name = l.Name,
                         Path = l.Path,
                         Description = l.Description,
-                        Entry = BareName(l.Path, source),
+                        Entry = subjectByPath.TryGetValue(l.Path, out var subject) ? subject : l.Path,
                         RegexMatched = !collected.Unmatched.Contains(l.Path)
                     })
                     .ToList()
@@ -181,7 +196,7 @@ public class WorkspaceSourceService : IWorkspaceSourceService
 
         preview.Unmatched = collected.Entries
             .Where(e => !e.RegexMatched)
-            .Select(e => e.Bare)
+            .Select(e => e.Subject)
             .ToList();
 
         return preview;
@@ -241,9 +256,17 @@ public class WorkspaceSourceService : IWorkspaceSourceService
                     groups.Add(group);
                 }
 
-                var before = group.Workspaces.Count;
                 Fold(group, source, root, collected.Entries, () => nextWorkspaceId--);
-                result.WorkspacesProduced = group.Workspaces.Count - before;
+
+                // Cards this source has rows on — not cards it was the first to create. When two
+                // sources share a group the second one mostly lands on cards the first already
+                // made, and counting only the new ones reported "1 card" for a source carrying 58
+                // rows. It also disagreed with the Scan Folders preview, which has no group to
+                // add to and always counted this way, so one list showed two different meanings.
+                result.WorkspacesProduced = collected.Entries
+                    .Select(e => e.WorkspaceName)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Count();
 
                 foreach (var entry in collected.Entries)
                 {
@@ -272,9 +295,17 @@ public class WorkspaceSourceService : IWorkspaceSourceService
     }
 
     /// <summary>One entry off disk, with its name already split into workspace and location.</summary>
+    /// <param name="Bare">The entry's own name, extension dropped. The card name when nothing matches.</param>
+    /// <param name="Subject">
+    /// The string the name regex was run against — <paramref name="Bare"/>, or the path below the
+    /// scanned folder. Kept so the preview can show what the regex saw rather than what it produced;
+    /// with <see cref="NameMatch.RelativePath"/> those are not the same string, and a regex is
+    /// debugged against the former.
+    /// </param>
     private sealed record CollectedEntry(
         string Path,
         string Bare,
+        string Subject,
         string WorkspaceName,
         string LocationName,
         bool RegexMatched);
@@ -291,7 +322,10 @@ public class WorkspaceSourceService : IWorkspaceSourceService
 
         public string? RegexError { get; set; }
 
-        /// <summary>Entries on disk, which exceeds <see cref="Entries"/> when a limit applied.</summary>
+        /// <summary>
+        /// Entries looked at. Equal to <see cref="Entries"/>: when a limit applied the walk stopped
+        /// there, so how many more there were was never established — see <see cref="Truncated"/>.
+        /// </summary>
         public int TotalFound { get; set; }
 
         public bool Truncated { get; set; }
@@ -311,9 +345,13 @@ public class WorkspaceSourceService : IWorkspaceSourceService
         List<string> entries;
         try
         {
-            entries = Enumerate(root, source)
-                .OrderBy(e => e, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            var found = Enumerate(root, source);
+
+            // One past the cap rather than all of it. A preview runs between keystrokes and a
+            // recursive source covers thousands of folders, so finding out exactly how many
+            // entries are down there costs the whole walk — every keystroke. One extra entry is
+            // enough to know there are more, which is all the dialog needs to say.
+            entries = limit is { } cap ? found.Take(cap + 1).ToList() : found.ToList();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
@@ -321,22 +359,24 @@ public class WorkspaceSourceService : IWorkspaceSourceService
             return collected;
         }
 
-        collected.TotalFound = entries.Count;
-
-        if (limit is { } cap && entries.Count > cap)
+        if (limit is { } capped && entries.Count > capped)
         {
             collected.Truncated = true;
-            entries = entries.Take(cap).ToList();
+            entries.RemoveAt(entries.Count - 1);
         }
+
+        collected.TotalFound = entries.Count;
+        entries.Sort(StringComparer.OrdinalIgnoreCase);
 
         foreach (var entry in entries)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             var bare = BareName(entry, source);
-            var (workspaceName, locationName, matched) = SplitName(bare, source, regex);
+            var subject = MatchSubject(entry, root, bare, source);
+            var (workspaceName, locationName, matched) = SplitName(subject, bare, source, regex);
 
-            collected.Entries.Add(new CollectedEntry(entry, bare, workspaceName, locationName, matched));
+            collected.Entries.Add(new CollectedEntry(entry, bare, subject, workspaceName, locationName, matched));
 
             if (!matched)
             {
@@ -383,7 +423,7 @@ public class WorkspaceSourceService : IWorkspaceSourceService
                 Root = source.Scan == ScanKind.Directories
                     ? entry.Path
                     : System.IO.Path.GetDirectoryName(entry.Path) ?? root,
-                Type = source.Scan == ScanKind.Directories ? LocationType.Folder : LocationType.File,
+                Type = TypeOf(entry.Path, source.Scan),
                 Description = ReadDescription(entry.Path, source)
             });
         }
@@ -416,14 +456,83 @@ public class WorkspaceSourceService : IWorkspaceSourceService
         return group;
     }
 
+    /// <summary>
+    /// Enumerates a source's folder, skipping the directories its <see cref="WorkspaceSource.Exclude"/>
+    /// names <em>instead of descending into them</em>. Filtering after the fact would give the same
+    /// cards for 35x the walk: a website working copy is 78,000 directories, of which 3,900 are not
+    /// <c>bin</c>, <c>obj</c>, <c>node_modules</c> or <c>.vs</c> — and a preview runs on a keystroke.
+    /// <para>
+    /// Hand-driven rather than <see cref="Directory.EnumerateFiles(string, string, SearchOption)"/>
+    /// because that overload has no way to prune, and because it aborts the whole walk on the first
+    /// directory it cannot read — which over a tree this size is a scan that silently returns half
+    /// of what is there.
+    /// </para>
+    /// </summary>
     private static IEnumerable<string> Enumerate(string root, WorkspaceSource source)
     {
-        var pattern = string.IsNullOrWhiteSpace(source.Pattern) ? "*" : source.Pattern;
-        var option = source.Recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
+        var pattern = NormalizePattern(source.Pattern);
+        var excludes = source.Exclude
+            .Where(e => !string.IsNullOrWhiteSpace(e))
+            .Select(e => NormalizePattern(e))
+            .ToArray();
 
-        return source.Scan == ScanKind.Directories
-            ? Directory.EnumerateDirectories(root, pattern, option)
-            : Directory.EnumerateFiles(root, pattern, option);
+        var wantDirectories = source.Scan == ScanKind.Directories;
+
+        return new FileSystemEnumerable<string>(
+            root,
+            (ref FileSystemEntry entry) => entry.ToFullPath(),
+            new EnumerationOptions
+            {
+                RecurseSubdirectories = source.Recursive,
+                IgnoreInaccessible = true,
+
+                // What the SearchOption overloads use, so hidden and system entries keep showing up.
+                // Leaving them out belongs in Exclude, where config says so out loud.
+                AttributesToSkip = 0
+            })
+        {
+            ShouldIncludePredicate = (ref FileSystemEntry entry) =>
+                entry.IsDirectory == wantDirectories
+                && FileSystemName.MatchesWin32Expression(pattern, entry.FileName)
+                && !IsExcluded(entry.FileName, excludes),
+
+            ShouldRecursePredicate = (ref FileSystemEntry entry) => !IsExcluded(entry.FileName, excludes)
+        };
+    }
+
+    /// <summary>
+    /// Whether one path segment is excluded — a directory about to be descended into, or a matched
+    /// entry itself. Uses the same globs as <see cref="WorkspaceSource.Pattern"/>, so an exclude
+    /// reads the way the pattern beside it does.
+    /// </summary>
+    private static bool IsExcluded(ReadOnlySpan<char> segment, string[] excludes)
+    {
+        foreach (var exclude in excludes)
+        {
+            if (FileSystemName.MatchesWin32Expression(exclude, segment))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// A glob in the form the matcher wants, normalized the way <see cref="Directory"/> normalizes
+    /// it. Every existing source's pattern has to keep matching exactly what it matched before the
+    /// enumeration moved off the framework's own overload, and this is what makes that true.
+    /// </summary>
+    private static string NormalizePattern(string? pattern)
+    {
+        var expression = pattern?.Trim();
+
+        if (string.IsNullOrEmpty(expression) || expression is "." or "*" or "*.*")
+        {
+            return "*";
+        }
+
+        return FileSystemName.TranslateWin32Expression(expression);
     }
 
     private static string ExpandPath(string path)
@@ -467,19 +576,62 @@ public class WorkspaceSourceService : IWorkspaceSourceService
         }
     }
 
-    /// <summary>The part of an entry a name pattern is matched against.</summary>
+    /// <summary>An entry's own name, extension dropped.</summary>
     private static string BareName(string entry, WorkspaceSource source) =>
         source.Scan == ScanKind.Directories
             ? new DirectoryInfo(entry).Name
             : System.IO.Path.GetFileNameWithoutExtension(entry);
 
     /// <summary>
+    /// The string the name pattern is matched against. Defaults to the entry's own name, which is
+    /// enough when the copies sit side by side in one folder — <c>dev-checkout</c> beside
+    /// <c>demo-checkout</c>.
+    /// <para>
+    /// It is not enough when the branch is a directory instead: under
+    /// <c>elliottelectric_com\development\wwwroot\Checkout\</c> and
+    /// <c>…\demo\wwwroot\Checkout\</c> both leaves are called <c>Checkout.sln</c>, so no regex over
+    /// the name can tell them apart and both would land on one card as two locations named the
+    /// same thing. <see cref="NameMatch.RelativePath"/> hands the regex the path below the scanned
+    /// folder instead, extension kept so it can also pin <c>\.sln$</c>.
+    /// </para>
+    /// </summary>
+    private static string MatchSubject(string entry, string root, string bare, WorkspaceSource source) =>
+        source.MatchOn == NameMatch.RelativePath
+            ? System.IO.Path.GetRelativePath(root, entry)
+            : bare;
+
+    /// <summary>
+    /// The type a scanned location gets, inferred the same way the Add Location dialog infers it
+    /// for a hand-typed path — so a scanned solution and a hand-added one are the same kind of thing
+    /// rather than differing by how they were found.
+    /// </summary>
+    private static LocationType TypeOf(string path, ScanKind scan)
+    {
+        if (scan == ScanKind.Directories)
+        {
+            return LocationType.Folder;
+        }
+
+        return System.IO.Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            ".sln" or ".slnx" or ".slnf" => LocationType.Solution,
+            ".csproj" or ".vbproj" or ".fsproj" => LocationType.Project,
+            _ => LocationType.File
+        };
+    }
+
+    /// <summary>
     /// Derives the workspace/location pair for one entry. Without a regex every entry is
     /// its own workspace; with one, entries sharing a "workspace" capture merge into a
     /// single card holding one location each.
+    /// <para>
+    /// The regex runs against <paramref name="subject"/>, but a miss falls back to
+    /// <paramref name="bare"/> — the entry's own name is the only sane card name, and a relative
+    /// path is not one.
+    /// </para>
     /// </summary>
     private static (string Workspace, string Location, bool Matched) SplitName(
-        string bare, WorkspaceSource source, Regex? regex)
+        string subject, string bare, WorkspaceSource source, Regex? regex)
     {
         var fallbackLocation = string.IsNullOrWhiteSpace(source.DefaultLocationName)
             ? "main"
@@ -492,7 +644,7 @@ public class WorkspaceSourceService : IWorkspaceSourceService
             return (bare, fallbackLocation, true);
         }
 
-        var match = regex.Match(bare);
+        var match = regex.Match(subject);
         if (!match.Success)
         {
             return (bare, fallbackLocation, false);

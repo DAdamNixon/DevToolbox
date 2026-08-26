@@ -2264,6 +2264,14 @@ tr.log-row-expanded td {
     min-width: 0;
 }
 
+/* Opts a control out of that flex, for the two-item select on the end of the name-pattern
+   row: sharing the row evenly would give half of it to two words and leave the regex —
+   the long thing, and the thing being read — in the smaller half. */
+.ws-input-row > .ws-input-fit {
+    flex: 0 0 auto;
+    width: auto;
+}
+
 /* ── Scan preview ────────────────────────────────────────────────────────────
    The cards this source would add, worked out while you type. Bounded height and
    its own scroll: the answer for a real source is a hundred rows, and the fields

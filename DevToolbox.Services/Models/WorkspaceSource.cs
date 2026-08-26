@@ -18,6 +18,21 @@ public enum ScanKind
     Directories
 }
 
+/// <summary>What <see cref="WorkspaceSource.NameRegex"/> is matched against.</summary>
+public enum NameMatch
+{
+    /// <summary>The entry's own name, extension dropped. One folder of siblings.</summary>
+    Name,
+
+    /// <summary>
+    /// The entry's path below the scanned folder, extension kept. For layouts that put the
+    /// thing that distinguishes two copies in a parent directory rather than in the file
+    /// name — <c>&lt;repo&gt;\development\…</c> against <c>&lt;repo&gt;\demo\…</c>, where every
+    /// leaf is called <c>Checkout.sln</c> and only the path says which branch it is.
+    /// </summary>
+    RelativePath
+}
+
 /// <summary>
 /// A folder that is scanned for project entry points (.code-workspace, .sln, repo
 /// folders, …). Discovered items show up on the dashboard as a read-only group that
@@ -41,6 +56,15 @@ public class WorkspaceSource
 
     public bool Recursive { get; set; }
 
+    /// <summary>
+    /// Directory and entry names the scan skips, as the same globs <see cref="Pattern"/> uses —
+    /// <c>bin</c>, <c>.vs</c>, <c>node_modules</c>. Matched against each path segment, so an
+    /// excluded directory is never descended into rather than filtered out afterwards. On a
+    /// website working copy that is the difference between walking 3,900 directories and 78,000,
+    /// which is what makes <see cref="Recursive"/> usable over a whole repository.
+    /// </summary>
+    public List<string> Exclude { get; set; } = new();
+
     /// <summary>Dashboard group the results land in. Falls back to <see cref="Name"/>.</summary>
     public string Group { get; set; } = string.Empty;
 
@@ -55,8 +79,18 @@ public class WorkspaceSource
     /// <c>workspace</c> and <c>location</c> split one entry into a workspace/location pair,
     /// so <c>dev-checkout</c> and <c>demo-checkout</c> collapse into one "checkout" card
     /// holding a "dev" and a "demo" location.
+    /// <para>
+    /// Set <see cref="MatchOn"/> to <see cref="NameMatch.RelativePath"/> to match the path
+    /// instead, for the layouts that keep the branch in a directory rather than the name.
+    /// </para>
     /// </summary>
     public string? NameRegex { get; set; }
+
+    /// <summary>
+    /// Which string <see cref="NameRegex"/> runs against. Defaults to the entry name, which is
+    /// what every source written before this existed expects.
+    /// </summary>
+    public NameMatch MatchOn { get; set; } = NameMatch.Name;
 
     /// <summary>Location label used when <see cref="NameRegex"/> supplies none.</summary>
     public string DefaultLocationName { get; set; } = "main";
@@ -83,6 +117,13 @@ public class SourceScanResult
     public string ResolvedPath { get; set; } = string.Empty;
     public bool PathExists { get; set; }
     public int EntriesFound { get; set; }
+
+    /// <summary>
+    /// Cards this source has rows on. Not cards it created: two sources sharing a group fold onto
+    /// each other's cards, and counting only the ones a source was first to make described the
+    /// order the sources are listed in rather than anything about the source.
+    /// </summary>
     public int WorkspacesProduced { get; set; }
+
     public string? Error { get; set; }
 }

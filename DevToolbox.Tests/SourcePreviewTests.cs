@@ -41,6 +41,14 @@ public class SourcePreviewTests : IDisposable
     private void File_(string name, string content = "{}") =>
         File.WriteAllText(Path.Combine(_root, name), content);
 
+    /// <summary>A file at a path below the root, creating the folders on the way.</summary>
+    private void FileAt(string relativePath, string content = "{}")
+    {
+        var full = Path.Combine(_root, relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+        File.WriteAllText(full, content);
+    }
+
     private WorkspaceSource Source(string? nameRegex = null, string pattern = "*.code-workspace") => new()
     {
         Name = "Test source",
@@ -50,6 +58,35 @@ public class SourcePreviewTests : IDisposable
         Group = "Workspaces",
         NameRegex = nameRegex,
         DefaultLocationName = "workspace"
+    };
+
+    /// <summary>The regex that pulls a branch folder and a module out of a website path.</summary>
+    private const string BranchPathRegex = @"^(?<location>[^\\]+)\\.*\\(?<workspace>[^\\]+)\.sln$";
+
+    /// <summary>
+    /// The layout the website working copies use, and the one the entry name cannot describe:
+    /// the branch is a folder, so both copies of Checkout end in a file called
+    /// <c>Checkout.sln</c> and nothing about either name says which branch it belongs to.
+    /// </summary>
+    private void BranchTree()
+    {
+        FileAt(@"development\wwwroot\Checkout\Checkout.sln");
+        FileAt(@"demo\wwwroot\Checkout\Checkout.sln");
+        FileAt(@"development\wwwroot\Login\Login.sln");
+    }
+
+    /// <summary>A recursive source over that tree, with the regex reading the path.</summary>
+    private WorkspaceSource PathSource(string? nameRegex) => new()
+    {
+        Name = "Website",
+        Path = _root,
+        Pattern = "*.sln",
+        Scan = ScanKind.Files,
+        Recursive = true,
+        Group = "Website",
+        MatchOn = NameMatch.RelativePath,
+        NameRegex = nameRegex,
+        DefaultLocationName = "main"
     };
 
     /// <summary>
@@ -164,6 +201,135 @@ public class SourcePreviewTests : IDisposable
         Assert.Equal(new[] { "repo-one", "repo-two" }, preview.Workspaces.Select(w => w.Name));
     }
 
+    // ---- a branch that is a folder rather than part of the name -------------------------------
+
+    [Fact]
+    public async Task A_pattern_over_the_name_cannot_see_a_branch_that_is_a_folder()
+    {
+        BranchTree();
+
+        var source = PathSource(nameRegex: null);
+        source.MatchOn = NameMatch.Name;
+
+        var preview = await NewService().PreviewAsync(source);
+
+        // Two files called Checkout.sln fold into one card — right — but both rows come out
+        // labelled "main", because the entry name is the same string for both and no regex over
+        // that string could say otherwise. Nothing on the card says which branch either row is.
+        // This is the case NameMatch.RelativePath exists for.
+        var checkout = preview.Workspaces.Single(w => w.Name == "Checkout");
+        Assert.Equal(new[] { "main", "main" }, checkout.Locations.Select(l => l.Name));
+    }
+
+    [Fact]
+    public async Task A_pattern_over_the_path_splits_a_branch_that_is_a_folder()
+    {
+        BranchTree();
+
+        var preview = await NewService().PreviewAsync(PathSource(BranchPathRegex));
+
+        Assert.Null(preview.RegexError);
+        Assert.Equal(new[] { "Checkout", "Login" }, preview.Workspaces.Select(w => w.Name));
+
+        // The same fold as dev-/demo- prefixed names, off a tree where the names are identical.
+        Assert.Equal(new[] { "demo", "development" },
+            preview.Workspaces.Single(w => w.Name == "Checkout").Locations.Select(l => l.Name));
+        Assert.Equal(new[] { "development" },
+            preview.Workspaces.Single(w => w.Name == "Login").Locations.Select(l => l.Name));
+        Assert.Empty(preview.Unmatched);
+    }
+
+    [Fact]
+    public async Task A_miss_over_the_path_is_listed_as_the_path_the_pattern_was_given()
+    {
+        BranchTree();
+        FileAt("Other.sln");
+
+        var preview = await NewService().PreviewAsync(PathSource(BranchPathRegex));
+
+        // Other.sln sits at the root with no branch folder above it. It is reported by the string
+        // the regex was actually handed: listing it as "Other" would name a string the pattern
+        // never saw, which is the opposite of a debuggable preview.
+        Assert.Equal(new[] { "Other.sln" }, preview.Unmatched);
+
+        // The card still falls back to the entry's own name. A relative path is not a card name.
+        var fallback = preview.Workspaces.Single(w => w.Name == "Other");
+        Assert.False(fallback.Locations[0].RegexMatched);
+        Assert.Equal("main", fallback.Locations[0].Name);
+    }
+
+    // ---- exclusions --------------------------------------------------------------------------
+
+    [Fact]
+    public async Task An_excluded_folder_is_not_scanned()
+    {
+        FileAt(@"development\wwwroot\Checkout\Checkout.sln");
+        FileAt(@"development\wwwroot\Checkout\obj\Debug\Checkout.sln");
+
+        var source = PathSource(nameRegex: null);
+
+        Assert.Equal(2, (await NewService().PreviewAsync(source)).EntriesFound);
+
+        source.Exclude = new List<string> { "obj" };
+        var preview = await NewService().PreviewAsync(source);
+
+        Assert.Equal(1, preview.EntriesFound);
+        Assert.DoesNotContain(@"\obj\", Assert.Single(preview.Workspaces).Locations[0].Path);
+    }
+
+    [Fact]
+    public async Task An_exclude_drops_a_matched_file_as_well_as_a_folder()
+    {
+        FileAt(@"development\wwwroot\Checkout\Checkout.sln");
+        FileAt(@"development\wwwroot\Checkout\Checkout.Backup.sln");
+
+        var source = PathSource(nameRegex: null);
+        source.Exclude = new List<string> { "*.Backup.sln" };
+
+        var preview = await NewService().PreviewAsync(source);
+
+        Assert.Equal(1, preview.EntriesFound);
+        Assert.Equal(new[] { "Checkout" }, preview.Workspaces.Select(w => w.Name));
+    }
+
+    // ---- what the enumeration has to keep doing -----------------------------------------------
+
+    [Fact]
+    public async Task The_patterns_the_framework_reads_as_everything_still_mean_everything()
+    {
+        // Pinned because the enumeration no longer goes through Directory.EnumerateFiles, and
+        // these three are the inputs where that overload does not mean what it says: '*.*' takes
+        // extensionless files too, and an empty pattern is not "match nothing".
+        File_("alpha.code-workspace");
+        File_("readme.txt");
+        File_("Makefile");
+
+        foreach (var pattern in new[] { "*", "*.*", "" })
+        {
+            var preview = await NewService().PreviewAsync(Source(pattern: pattern));
+            Assert.Equal(3, preview.EntriesFound);
+        }
+    }
+
+    [Fact]
+    public async Task A_scanned_solution_is_the_same_kind_of_thing_as_a_hand_added_one()
+    {
+        FileAt(@"development\wwwroot\Checkout\Checkout.sln");
+
+        var scanning = new WorkspaceSourceService(new SeededStorage(new WorkspaceSourceConfig
+        {
+            Sources = new List<WorkspaceSource> { PathSource(nameRegex: null) }
+        }));
+
+        var group = Assert.Single(await scanning.GetGroupsAsync());
+        var location = Assert.Single(Assert.Single(group.Workspaces).Locations);
+
+        // Solution, not File — the type the Add Location dialog would have inferred for the same
+        // path. A card built by a scan and one built by hand have to be interchangeable.
+        Assert.Equal(LocationType.Solution, location.Type);
+        Assert.Equal(Path.Combine(_root, "development", "wwwroot", "Checkout"), location.Root);
+    }
+
     // ---- the ways a half-typed source is wrong -----------------------------------------------
 
     [Fact]
@@ -236,8 +402,12 @@ public class SourcePreviewTests : IDisposable
         var preview = await NewService().PreviewAsync(Source());
 
         Assert.True(preview.Truncated);
-        Assert.Equal(205, preview.EntriesFound);
         Assert.Equal(200, preview.LocationCount);
+
+        // 200, not 205. The walk stops at the cap instead of going on to count what is left —
+        // over a recursive source that tail is thousands of folders and this runs on a keystroke.
+        // Truncated is what says "there are more"; EntriesFound never claimed to be the total.
+        Assert.Equal(200, preview.EntriesFound);
     }
 
     [Fact]
@@ -281,6 +451,79 @@ public class SourcePreviewTests : IDisposable
         Assert.Equal(
             preview.Workspaces.SelectMany(w => w.Locations).Select(l => (l.Name, l.Path)),
             scanned.Workspaces.SelectMany(w => w.Locations).Select(l => (l.Name, l.Path)));
+    }
+
+    [Fact]
+    public async Task The_preview_matches_a_real_scan_over_the_path_too()
+    {
+        BranchTree();
+        FileAt(@"development\wwwroot\Checkout\obj\Debug\Checkout.sln");
+
+        var source = PathSource(BranchPathRegex);
+        source.Exclude = new List<string> { "obj" };
+
+        var preview = await NewService().PreviewAsync(source);
+
+        var scanning = new WorkspaceSourceService(new SeededStorage(new WorkspaceSourceConfig
+        {
+            Sources = new List<WorkspaceSource> { source }
+        }));
+
+        var scanned = Assert.Single(await scanning.GetGroupsAsync());
+
+        Assert.Equal(
+            preview.Workspaces.Select(w => w.Name),
+            scanned.Workspaces.Select(w => w.Name));
+        Assert.Equal(
+            preview.Workspaces.SelectMany(w => w.Locations).Select(l => (l.Name, l.Path)),
+            scanned.Workspaces.SelectMany(w => w.Locations).Select(l => (l.Name, l.Path)));
+    }
+
+    [Fact]
+    public async Task A_source_reports_the_cards_it_has_rows_on_not_the_ones_it_created()
+    {
+        // Two sources over one group, the shape the dashboard config uses: each covers a branch
+        // and they fold onto each other's cards.
+        FileAt(@"development\Checkout\Checkout.sln");
+        FileAt(@"development\Login\Login.sln");
+        FileAt(@"demo\Checkout\Checkout.sln");
+
+        WorkspaceSource Branch(string folder, string label) => new()
+        {
+            Name = $"Website ({label})",
+            Path = Path.Combine(_root, folder),
+            Pattern = "*.sln",
+            Scan = ScanKind.Files,
+            Recursive = true,
+            Group = "Website",
+            DefaultLocationName = label
+        };
+
+        var dev = Branch("development", "dev");
+        var demo = Branch("demo", "demo");
+
+        var scanning = new WorkspaceSourceService(new SeededStorage(new WorkspaceSourceConfig
+        {
+            Sources = new List<WorkspaceSource> { dev, demo }
+        }));
+
+        await scanning.GetGroupsAsync();
+
+        var devResult = scanning.LastScan.Single(r => r.SourceName == dev.Name);
+        var demoResult = scanning.LastScan.Single(r => r.SourceName == demo.Name);
+
+        Assert.Equal(2, devResult.WorkspacesProduced);
+
+        // 1: the demo source carries one row, on Checkout. Counting cards a source was first to
+        // create would say 0 here — dev got to Checkout first — so a working source reported
+        // "0 cards", and swapping the two sources in config would have swapped the numbers
+        // without anything on disk changing.
+        Assert.Equal(1, demoResult.WorkspacesProduced);
+
+        // And it agrees with the preview, which has no group to fold into and always counted the
+        // cards the source itself makes. One number, one meaning, wherever it is shown.
+        var preview = await scanning.PreviewAsync(demo);
+        Assert.Equal(preview.WorkspaceCount, demoResult.WorkspacesProduced);
     }
 
     /// <summary>Hands back one config and refuses to be written to.</summary>
