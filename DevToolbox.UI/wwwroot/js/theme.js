@@ -18,11 +18,19 @@
 // by hand. Clearing browser storage costs one frame of the wrong colour, not the
 // settings.
 //
-// SEASONS. A seasonal theme is only *painted* inside its window, but choosing one
-// never rewrites the saved setting — pick Christmas in December and January
-// quietly falls back to the default while the file still says christmas, so next
-// December it comes back on its own. "Show all themes" turns the window off
-// entirely, which is how you look at Halloween in June.
+// SEASONS. Two separate things, and they are easy to confuse:
+//
+//   'seasonal'          a rule rather than a palette. It resolves by date, so the
+//                       theme changes itself when the calendar does — this is the
+//                       only setting that ever repaints without being asked.
+//   any one season      an explicit choice, painted only inside its own window.
+//                       Choosing it never rewrites the saved setting: pick
+//                       Christmas in December and January quietly falls back to
+//                       the default while the file still says christmas, so next
+//                       December it comes back on its own.
+//
+// "Show all themes" is about neither. It only decides whether the dropdown lists
+// a season out of its window, which is how you look at Halloween in June.
 (function () {
     'use strict';
 
@@ -36,9 +44,9 @@
     // window down with it — falling back to the three original themes keeps the
     // app usable and loses only the seasons.
     var CATALOG = (window.devtoolboxThemes && window.devtoolboxThemes.themes) || [
-        { id: 'system', season: null, effect: null },
-        { id: 'dark', season: null, effect: null },
-        { id: 'light', season: null, effect: null }
+        { id: 'system', season: null, effect: null, auto: false },
+        { id: 'dark', season: null, effect: null, auto: false },
+        { id: 'light', season: null, effect: null, auto: false }
     ];
 
     function find(id) {
@@ -102,6 +110,50 @@
             : today >= parts[0] || today <= parts[1];
     }
 
+    // How many days a window covers, both ends included. Measured in a leap year so
+    // that 29 February — the far end of Winter — is a real date rather than a case to
+    // special-case. Mirrors ThemeSeason.LengthInDays on the C# side.
+    function seasonLength(season) {
+        var parts = String(season).split('..');
+        if (parts.length !== 2) return Infinity;
+
+        var from = dayOfLeapYear(parts[0]);
+        var to = dayOfLeapYear(parts[1]);
+
+        return from <= to ? to - from + 1 : 366 - from + to + 1;
+    }
+
+    function dayOfLeapYear(monthDay) {
+        var bits = monthDay.split('-');
+        var start = Date.UTC(2024, 0, 1);
+        var day = Date.UTC(2024, Number(bits[0]) - 1, Number(bits[1]));
+
+        return Math.round((day - start) / 86400000) + 1;
+    }
+
+    // What the 'seasonal' theme means today: of the themes whose window contains this
+    // date and which are allowed to be chosen automatically, the one with the shortest
+    // window. Nesting does the work — Halloween sits inside Fall, (Better)Christmas
+    // inside Winter — and the narrower window is always the more specific answer.
+    // Null when nothing is in season, which is most of the spring and summer.
+    function seasonalPick(now) {
+        var best = null;
+        var bestLength = Infinity;
+
+        for (var i = 0; i < CATALOG.length; i++) {
+            var def = CATALOG[i];
+            if (!def.season || !def.auto || !inSeason(def.season, now)) continue;
+
+            var length = seasonLength(def.season);
+            if (length < bestLength) {
+                best = def;
+                bestLength = length;
+            }
+        }
+
+        return best;
+    }
+
     function systemPrefersDark() {
         return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
     }
@@ -113,6 +165,16 @@
     function effective(theme, showAll) {
         var def = find(theme);
         if (!def) return systemPrefersDark() ? 'dark' : 'light';
+
+        // 'seasonal' is a rule, not a palette: it resolves to whichever seasonal theme
+        // the date calls for, and to the system theme the rest of the year. showAll is
+        // not consulted — that setting is about what the dropdown lists, and this
+        // choice is about what the calendar says.
+        if (def.id === 'seasonal') {
+            var pick = seasonalPick(new Date());
+            return pick ? pick.id : (systemPrefersDark() ? 'dark' : 'light');
+        }
+
         if (def.season && !showAll && !inSeason(def.season, new Date())) {
             return systemPrefersDark() ? 'dark' : 'light';
         }
@@ -142,6 +204,29 @@
         return painted;
     }
 
+    var seasonTimer = null;
+
+    // "Arrives on its own" has to survive the session it arrives during: this is a
+    // desktop window that stays open for days, and without this the first of December
+    // would only be noticed at the next launch.
+    //
+    // Half-hourly rather than a timer set for midnight: a single long timer is the one
+    // a sleeping laptop misses, and this costs a date comparison. Nothing is repainted
+    // unless the resolved theme actually changed, so the particle layer is not rebuilt
+    // for the sake of it.
+    function watchSeason() {
+        if (seasonTimer) { return; }
+
+        seasonTimer = window.setInterval(function () {
+            if (storedTheme() !== 'seasonal') { return; }
+
+            var next = effective(storedTheme(), storedShowAll());
+            if (next === document.documentElement.getAttribute('data-theme')) { return; }
+
+            paint(storedTheme(), storedAnimations(), storedShowAll());
+        }, 30 * 60 * 1000);
+    }
+
     var mediaListenerAttached = false;
 
     function watchSystem() {
@@ -161,6 +246,7 @@
         boot: function () {
             paint(storedTheme(), storedAnimations(), storedShowAll());
             watchSystem();
+            watchSeason();
             return true;
         },
 
@@ -179,6 +265,7 @@
 
             var painted = paint(theme, !!animations, !!showAll);
             watchSystem();
+            watchSeason();
             return painted;
         },
 

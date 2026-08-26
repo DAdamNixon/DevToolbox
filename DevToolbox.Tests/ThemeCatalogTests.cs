@@ -47,7 +47,7 @@ public class ThemeCatalogTests
 
     // ---- the JS catalog, as data ------------------------------------------------------------
 
-    private sealed record JsTheme(string Id, string? Season, string? Effect);
+    private sealed record JsTheme(string Id, string? Season, string? Effect, bool Auto);
 
     /// <summary>
     /// Parses <c>themeCatalog.js</c> with a regex rather than a JS engine. That is why the file is
@@ -65,14 +65,15 @@ public class ThemeCatalogTests
 
         var entries = Regex.Matches(
             source,
-            @"\{\s*id:\s*'(?<id>[a-z][a-z-]*)',\s*season:\s*(?:null|'(?<season>[^']*)'),\s*effect:\s*(?:null|'(?<effect>[^']*)')\s*\}");
+            @"\{\s*id:\s*'(?<id>[a-z][a-z-]*)',\s*season:\s*(?:null|'(?<season>[^']*)'),\s*effect:\s*(?:null|'(?<effect>[^']*)'),\s*auto:\s*(?<auto>true|false)\s*\}");
 
         Assert.NotEmpty(entries);
 
         return entries.Select(m => new JsTheme(
             m.Groups["id"].Value,
             m.Groups["season"].Success ? m.Groups["season"].Value : null,
-            m.Groups["effect"].Success ? m.Groups["effect"].Value : null)).ToList();
+            m.Groups["effect"].Success ? m.Groups["effect"].Value : null,
+            m.Groups["auto"].Value == "true")).ToList();
     }
 
     [Fact]
@@ -80,7 +81,7 @@ public class ThemeCatalogTests
     {
         var fromJs = ParseJsCatalog();
         var fromCs = ThemeCatalog.All
-            .Select(t => new JsTheme(t.Id, t.Season?.Wire, t.Effect))
+            .Select(t => new JsTheme(t.Id, t.Season?.Wire, t.Effect, t.Automatic))
             .ToList();
 
         // Order matters as well as content: the dropdown is built from the C# list and the paint
@@ -217,12 +218,14 @@ public class ThemeCatalogTests
     // ---- what is offered ---------------------------------------------------------------------
 
     [Fact]
-    public void Out_of_season_only_the_three_standard_themes_are_offered()
+    public void Out_of_season_only_the_always_available_themes_are_offered()
     {
         var july = new DateOnly(2026, 7, 4);
 
+        // Seasonal belongs here rather than in the seasonal group: it is the rule that follows the
+        // calendar, so the calendar must never be able to remove it.
         Assert.Equal(
-            new[] { ThemeOptions.System, ThemeOptions.Dark, ThemeOptions.Light },
+            new[] { ThemeOptions.Seasonal, ThemeOptions.System, ThemeOptions.Dark, ThemeOptions.Light },
             ThemeCatalog.Offered(july, showAll: false).Select(t => t.Id));
     }
 
@@ -283,5 +286,150 @@ public class ThemeCatalogTests
         Assert.Equal(ThemeOptions.System, defaults.Theme);
         Assert.True(defaults.ThemeAnimations);
         Assert.False(defaults.ShowAllThemes);
+    }
+
+    // ---- the seasonal rule -------------------------------------------------------------------
+    //
+    // The "seasonal" theme is the only setting in the app that repaints without being asked, so
+    // these are the tests for the promise the Settings page makes: that the seasons arrive on their
+    // own, and that where two windows cover the same day there is exactly one answer.
+
+    [Theory]
+    [InlineData(9, 15, "fall")]
+    [InlineData(10, 1, "halloween")]     // Halloween's window opens inside Fall's
+    [InlineData(10, 31, "halloween")]
+    [InlineData(11, 1, "thanksgiving")]  // and Thanksgiving's inside the rest of it
+    [InlineData(11, 30, "thanksgiving")]
+    [InlineData(12, 1, "better-christmas")]
+    [InlineData(12, 25, "better-christmas")]
+    [InlineData(12, 31, "better-christmas")]
+    [InlineData(1, 1, "winter")]         // Christmas is over; Winter runs on
+    [InlineData(2, 28, "winter")]
+    public void The_narrower_window_wins_where_two_seasons_cover_the_same_day(int month, int day, string expected)
+    {
+        var pick = ThemeCatalog.SeasonalPick(new DateOnly(2026, month, day));
+
+        Assert.NotNull(pick);
+        Assert.Equal(expected, pick!.Id);
+    }
+
+    [Theory]
+    [InlineData(3, 1)]
+    [InlineData(5, 20)]
+    [InlineData(8, 31)]   // the day before Fall opens
+    public void Out_of_season_there_is_nothing_to_pick(int month, int day)
+    {
+        Assert.Null(ThemeCatalog.SeasonalPick(new DateOnly(2026, month, day)));
+    }
+
+    [Fact]
+    public void Plain_christmas_is_never_chosen_automatically()
+    {
+        // It covers exactly the same days as (Better)Christmas, so the shortest-window rule has no
+        // way to separate them; the catalog resolves it by leaving this one out of the running. It
+        // stays selectable by hand, which is the whole reason it is still in the catalog.
+        for (var day = 1; day <= 31; day++)
+        {
+            Assert.NotEqual("christmas", ThemeCatalog.SeasonalPick(new DateOnly(2026, 12, day))?.Id);
+        }
+
+        Assert.NotNull(ThemeCatalog.Find("christmas"));
+    }
+
+    [Fact]
+    public void Every_day_of_the_year_has_at_most_one_shortest_window()
+    {
+        // The rule has one failure mode: two automatic themes sharing a day *and* a window length,
+        // where the winner would come down to catalog order and change under a reorder. Adding a
+        // season that collides with an existing one fails here rather than silently.
+        var date = new DateOnly(2024, 1, 1);   // a leap year, so 29 February is covered
+
+        for (var i = 0; i < 366; i++, date = date.AddDays(1))
+        {
+            var candidates = ThemeCatalog.All
+                .Where(t => t.Automatic && t.Season is not null && t.Season.Contains(date))
+                .ToList();
+
+            if (candidates.Count < 2) continue;
+
+            var shortest = candidates.Min(t => t.Season!.LengthInDays);
+            var tied = candidates.Where(t => t.Season!.LengthInDays == shortest).Select(t => t.Id).ToList();
+
+            Assert.True(
+                tied.Count == 1,
+                $"{date:MMMM d} is claimed by {string.Join(" and ", tied)}, which share a window length.");
+        }
+    }
+
+    [Theory]
+    [InlineData(12, 1, 2, 29, 91)]    // Winter, and the wrap round the new year with it
+    [InlineData(12, 1, 12, 31, 31)]   // December
+    [InlineData(11, 1, 11, 30, 30)]   // November
+    [InlineData(10, 1, 10, 31, 31)]   // October — the same length as December, which is fine:
+                                      // they never overlap, so the rule is never asked to choose
+    [InlineData(9, 1, 9, 1, 1)]       // a single day, both ends the same
+    [InlineData(1, 1, 12, 31, 366)]   // the whole of a leap year, which is the yardstick
+    public void A_window_measures_both_of_its_ends(int startMonth, int startDay, int endMonth, int endDay, int expected)
+    {
+        Assert.Equal(expected, new ThemeSeason(startMonth, startDay, endMonth, endDay).LengthInDays);
+    }
+
+    [Fact]
+    public void The_next_season_is_the_one_the_settings_page_promises()
+    {
+        // Late August: nothing is in season, and Fall is what turns up.
+        var next = ThemeCatalog.SeasonalNext(new DateOnly(2026, 8, 26));
+
+        Assert.NotNull(next);
+        Assert.Equal("fall", next!.Value.Theme.Id);
+        Assert.Equal(new DateOnly(2026, 9, 1), next.Value.On);
+    }
+
+    [Fact]
+    public void The_next_season_is_the_next_change_and_not_merely_the_next_window()
+    {
+        // Mid-October is Halloween. The next *change* is Thanksgiving on 1 November — not Fall,
+        // whose window is already open and running underneath.
+        var next = ThemeCatalog.SeasonalNext(new DateOnly(2026, 10, 15));
+
+        Assert.NotNull(next);
+        Assert.Equal("thanksgiving", next!.Value.Theme.Id);
+        Assert.Equal(new DateOnly(2026, 11, 1), next.Value.On);
+    }
+
+    [Fact]
+    public void Seasonal_is_offered_every_day_of_the_year()
+    {
+        // It is a rule, not a season, so the calendar must never take it out of the dropdown —
+        // which is where a user who wants the seasons to arrive by themselves goes to say so.
+        foreach (var month in Enumerable.Range(1, 12))
+        {
+            var offered = ThemeCatalog.Offered(new DateOnly(2026, month, 15), showAll: false);
+            Assert.Contains(ThemeOptions.Seasonal, offered.Select(t => t.Id));
+        }
+    }
+
+    [Fact]
+    public void A_light_grounded_palette_is_listed_in_the_chevron_override()
+    {
+        // The dropdown chevron is a background image on <select>, so it cannot inherit
+        // currentColor and has to be pre-coloured — once for dark grounds and once for light. That
+        // second rule names its themes explicitly, and a new light palette that is not added to it
+        // gets a pale grey chevron on a white field.
+        var dashboard = ReadWeb("css", "dashboard.css");
+
+        var chevronOverride = Regex.Match(
+            dashboard,
+            @"(?<selectors>(?::root\[data-theme=""[a-z-]+""\],?\s*)+)\{[^}]*--chevron-image");
+
+        Assert.True(chevronOverride.Success, "dashboard.css has no light-ground --chevron-image override to check.");
+
+        foreach (var theme in ThemeCatalog.All.Where(t => t.IsSeasonal))
+        {
+            var palette = File.ReadAllText(Path.Combine(WebRoot, "css", "themes", $"{theme.Id}.css"));
+            if (!Regex.IsMatch(palette, @"color-scheme:\s*light")) continue;
+
+            Assert.Contains($@"[data-theme=""{theme.Id}""]", chevronOverride.Groups["selectors"].Value);
+        }
     }
 }
