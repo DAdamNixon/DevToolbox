@@ -51,7 +51,8 @@ public sealed class HostsTrayIcon : IDisposable
         _menu = new ContextMenuStrip();
 
         // Rebuilt each time it opens, from the freshest parse. The file is a few kilobytes, and this
-        // is how the legacy tray behaved — it means the menu can never show a stale answer.
+        // is how the legacy tray behaved — it means the menu can never show a stale answer. It is
+        // also built once at the end of this constructor; see the note there.
         _menu.Opening += OnMenuOpening;
 
         // Registered with the form's container so disposal comes for free.
@@ -68,6 +69,27 @@ public sealed class HostsTrayIcon : IDisposable
         _hosts.Changed += OnHostsChanged;
 
         Refresh();
+
+        // Primed, or the first click on the tray icon does nothing at all and only the
+        // second one opens the menu.
+        //
+        // Two things are being warmed up here, because the fault has two candidate
+        // causes and both are a one-liner to remove:
+        //
+        //   the items   a ToolStripDropDown will not become visible while it holds
+        //               nothing, and this menu is built in its Opening handler — so on
+        //               the very first click there is a window in which it is still
+        //               empty. Building it once now means the click always finds a menu
+        //               with something in it, and Opening still rebuilds it from the
+        //               freshest parse every time after.
+        //   the handle  a dropdown that has never been shown has no window yet, and
+        //               creating one on the click itself is what the first click gets
+        //               spent on.
+        //
+        // Neither costs anything measurable at startup, and neither changes what the
+        // menu shows: the Opening rebuild remains the only thing that decides that.
+        BuildMenu();
+        _ = _menu.Handle;
     }
 
     /// <summary>Shows a one-off balloon explaining that closing the window did not quit.</summary>
@@ -134,7 +156,13 @@ public sealed class HostsTrayIcon : IDisposable
 
     // ── the menu ─────────────────────────────────────────────────────────────
 
-    private void OnMenuOpening(object? sender, CancelEventArgs e)
+    private void OnMenuOpening(object? sender, CancelEventArgs e) => BuildMenu();
+
+    /// <summary>
+    /// Fills the menu from the current parse. Called on every open, so the menu can never show a
+    /// stale answer, and once at construction so the first click has something to open.
+    /// </summary>
+    private void BuildMenu()
     {
         _menu.Items.Clear();
 

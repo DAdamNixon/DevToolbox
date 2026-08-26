@@ -1,6 +1,8 @@
+@using DevToolbox.Services.Interfaces
 @using DevToolbox.Services.Models
 @using DevToolbox.UI.Components
 @using System.IO
+@inject IUiSettingsService UiSettings
 
 <div class="space-y-4">
     <div>
@@ -18,6 +20,7 @@
         <label class="block text-sm font-medium text-dark-text mb-2">Location Root</label>
         <PathBrowser SelectedPath="@NewLocationRoot"
                     OnPathSelected="OnRootSelected"
+                    StartIn="@defaultLocation"
                     isFileSelector="false" />
     </div>
 
@@ -25,6 +28,7 @@
         <label class="block text-sm font-medium text-dark-text mb-2">Location Path (Optional)</label>
         <PathBrowser SelectedPath="@NewLocationPath"
                     OnPathSelected="OnPathSelected"
+                    StartIn="@defaultLocation"
                     Filter="All Files (*.*)|*.*|Project Files (*.csproj,*.sln)|*.csproj;*.sln|Solution Files (*.sln)|*.sln|Project Files (*.csproj)|*.csproj" />
         <p class="text-xs text-dark-text-muted mt-1">Leave empty to use the root directory</p>
     </div>
@@ -40,6 +44,20 @@
     public string NewLocationName { get; set; } = string.Empty;
     public string NewLocationRoot { get; set; } = string.Empty;
     public string NewLocationPath { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Where the pickers open from, per Settings. Read here rather than passed in: this form is
+    /// placed from three different components, none of which has any other reason to know about
+    /// ui_settings.yaml.
+    /// <para>
+    /// It seeds the dialog only, never the field. Prefilling the root with a path nobody chose is
+    /// how you end up with a workspace registered at the default by accident.
+    /// </para>
+    /// </summary>
+    private string defaultLocation = string.Empty;
+
+    protected override async Task OnInitializedAsync() =>
+        defaultLocation = (await UiSettings.GetAsync()).DefaultWorkspaceLocation;
 
     [Parameter]
     public EventCallback<WorkspaceLocation> OnLocationSubmitted{ get; set; }

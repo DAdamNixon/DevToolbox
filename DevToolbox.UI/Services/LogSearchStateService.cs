@@ -14,7 +14,6 @@ public sealed class LogSearchStateService : IDisposable
     // --- filter inputs ---
     public List<LogLocation> LogLocations { get; set; } = new();
     public List<LogLocation> SelectedLocations { get; set; } = new();
-    public bool ShowLocationMenu { get; set; }
     public DateTime StartDate { get; set; } = DateTime.Today.AddDays(-7);
     public DateTime EndDate { get; set; } = DateTime.Today;
     public string LogFile { get; set; } = string.Empty;
@@ -64,6 +63,14 @@ public sealed class LogSearchStateService : IDisposable
     /// box itself bigger.
     /// </summary>
     public bool ResultsFullscreen { get; set; }
+
+    /// <summary>
+    /// The filter card floats over the full-screen results instead of lying under
+    /// them in page flow. Ctrl+F raises it; Escape and the toolbar button put it
+    /// back. Only meaningful while <see cref="ResultsFullscreen"/> is set, since
+    /// outside full screen the card is on the page anyway.
+    /// </summary>
+    public bool FilterOverlayVisible { get; set; }
 
     /// <summary>Results rendered as raw delimited lines instead of the table.</summary>
     public bool PlainTextView { get; set; }
