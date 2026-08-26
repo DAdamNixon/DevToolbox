@@ -1,210 +1,354 @@
 ﻿@page "/powershell"
 @namespace DevToolbox.UI.Pages
+@using DevToolbox.Services.Models
+@using DevToolbox.UI.Components
+@using DevToolbox.UI.Components.Dialogs
 
-<!-- Page Header -->
-<div class="mb-8">
-    <h1 class="text-4xl font-bold text-gradient">PowerShell Scripts</h1>
-    <p class="text-dark-text-muted mt-2">Create, edit, and execute PowerShell scripts with built-in validation.</p>
+@* One row, like the Projects tab: the nav bar already names this screen, and the
+   subtitle here only said what the tab is. The count that replaced it is at least
+   a fact about what is in front of you. *@
+<div class="ws-page-head">
+    <h1 class="ws-page-title text-gradient">PowerShell Scripts</h1>
+    <span class="ws-page-meta">
+        @availableScripts.Count @(availableScripts.Count == 1 ? "script" : "scripts")
+        @if (FilteredScripts.Count() != availableScripts.Count)
+        {
+            <text>· @FilteredScripts.Count() matching</text>
+        }
+    </span>
 </div>
 
-<div class="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-200px)]">
+<div class="ps-layout">
     <!-- Left Sidebar -->
-    <div class="lg:col-span-1">
-        <div class="modern-card h-full flex flex-col">
-            <div class="p-6 border-b border-dark-border">
-                <div class="relative">
-                    <input type="text" 
-                        @bind-value="searchText" 
-                        @bind-value:event="oninput" 
-                        placeholder="Search scripts..." 
-                        class="input-modern w-full pl-10" />
-                    <i class="bi bi-search absolute left-3 top-1/2 transform -translate-y-1/2 text-dark-text-muted"></i>
+    <div class="modern-card ps-pane">
+        <div class="ps-pane-head">
+            <div class="relative">
+                <input type="text"
+                    @bind-value="searchText"
+                    @bind-value:event="oninput"
+                    placeholder="Search scripts..."
+                    class="input-modern w-full pl-10" />
+                <i class="bi bi-search absolute left-3 top-1/2 transform -translate-y-1/2 text-dark-text-muted"></i>
+            </div>
+        </div>
+
+        <div class="ps-script-list">
+            @foreach (var script in FilteredScripts)
+            {
+                <button type="button" class="ps-script @(script.Name == selectedScript ? "is-active" : null)"
+                        title="@script.Name"
+                        @onclick="() => LoadScript(script.Name)">
+                    <i class="bi bi-file-earmark-code"></i>
+                    <span>@script.Name</span>
+                </button>
+            }
+        </div>
+
+        <button class="btn-primary w-full flex items-center justify-center space-x-2" @onclick="CreateNewScript">
+            <i class="bi bi-plus-circle"></i>
+            <span>New Script</span>
+        </button>
+    </div>
+
+    <!-- Main Content -->
+    <div class="modern-card ps-pane">
+        @if (!string.IsNullOrEmpty(selectedScript))
+        {
+            <div class="ps-editor-head">
+                <h2 class="ps-editor-title">
+                    <i class="bi bi-file-earmark-code text-accent-blue"></i>
+                    <span>@selectedScript</span>
+                </h2>
+
+                <div class="flex items-center space-x-3">
+                    <label class="flex items-center space-x-2 cursor-pointer">
+                        <input type="checkbox" id="enableValidation" @bind="enableScriptValidation" class="checkbox-modern">
+                        <span class="text-xs text-dark-text-muted">Validate on save</span>
+                    </label>
+                    <button class="btn-secondary btn-sm flex items-center space-x-2" @onclick="ValidateCurrentScript">
+                        <i class="bi bi-shield-check"></i>
+                        <span>Validate</span>
+                    </button>
                 </div>
             </div>
-            
-            <div class="flex-1 p-4 overflow-y-auto">
-                <div class="space-y-2 mb-4">
-                    @foreach (var script in FilteredScripts)
+            @if (showValidationResults)
+            {
+                <div class="mb-3 space-y-2">
+                    @if (validationErrors.Any())
                     {
-                        <button class="w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-colors @(script.Name == selectedScript ? "bg-accent-blue text-white" : "text-dark-text hover:bg-dark-surface")"
-                            @onclick="() => LoadScript(script.Name)">
-                            <i class="bi bi-file-earmark-code mr-2"></i>
-                            @script.Name
-                        </button>
+                        <div class="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+                            <div class="flex items-start space-x-3">
+                                <i class="bi bi-exclamation-triangle text-red-400 text-lg"></i>
+                                <div>
+                                    <h5 class="font-medium text-red-400 mb-2">Validation Errors:</h5>
+                                    <ul class="text-red-300 text-sm space-y-1 list-disc list-inside">
+                                        @foreach (var error in validationErrors)
+                                        {
+                                            <li>@error</li>
+                                        }
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    
+                    @if (validationWarnings.Any())
+                    {
+                        <div class="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3">
+                            <div class="flex items-start space-x-3">
+                                <i class="bi bi-exclamation-triangle text-yellow-400 text-lg"></i>
+                                <div>
+                                    <h5 class="font-medium text-yellow-400 mb-2">Validation Warnings:</h5>
+                                    <ul class="text-yellow-300 text-sm space-y-1 list-disc list-inside">
+                                        @foreach (var warning in validationWarnings)
+                                        {
+                                            <li>@warning</li>
+                                        }
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
                     }
                 </div>
+            }
+            <div class="ps-editor-body">
+                @* The pane is a flex column and the textarea flexes inside it.
+                   It used to be h-full, which is 100% of the pane on top of the
+                   label above it — so the editor overflowed its own section by
+                   the label's height and ran over the Path field below. *@
+                <div class="flex-1 ps-editor-pane">
+                    <label class="block text-sm font-medium text-dark-text mb-2">Script Editor</label>
+                    @* No whitespace before the closing tag: a textarea's content is
+                       its initial value, so a newline and indentation here is a
+                       blank first line in every script. *@
+                    @* bind:after rebuilds the parameter form from the text. The default bind
+                       event is onchange, so this happens when the editor loses focus rather
+                       than on every keystroke — a form that reshuffled itself mid-word would
+                       be unusable. *@
+                    <textarea @bind="scriptText" @bind:after="SyncParameters"
+                        rows="15"
+                        class="input-modern w-full font-mono text-sm resize-none"
+                        placeholder="Enter your PowerShell script here..."></textarea>
+                </div>
+
+                @* Parameters, read off the script's own param() block.
+
+                   This was one box labelled "Path to run against", wired to -ProjectPath. It
+                   worked for the four bundled scripts and for nothing else: a script wanting
+                   an output file or a mode had nowhere to be given one, so running it from
+                   this tab meant editing that parameter's default and saving. The form is
+                   rebuilt whenever the editor's text changes, so a parameter you add turns
+                   into a field without anything having to be kept in step by hand. *@
+                <div class="ps-params">
+                    <div class="ps-params-head">
+                        <label class="text-sm font-medium text-dark-text">Parameters</label>
+                        @if (parameters.Count > 0)
+                        {
+                            <span class="text-xs text-dark-text-muted">
+                                Read from this script's <span class="font-mono">param()</span> block. Required ones are marked.
+                            </span>
+                        }
+                    </div>
+
+                    @if (parameters.Count == 0)
+                    {
+                        @* A script with no param block can still read $ProjectPath — the service
+                           sets a variable for anything it cannot bind — so the old single box
+                           stays for that case rather than leaving nothing to type into. *@
+                        <div class="ps-param-row">
+                            <label for="legacy-path" class="ps-param-label">Project path</label>
+                            <div class="ps-param-control">
+                                <div class="ps-param-input-group">
+                                    <input id="legacy-path" type="text" class="input-modern w-full"
+                                           placeholder="C:\TFS\Tools\DevToolbox"
+                                           value="@projectPath" @oninput="e => projectPath = e.Value?.ToString() ?? string.Empty" />
+                                    <button type="button" class="btn-secondary px-3" title="Browse for a folder"
+                                            @onclick="BrowseLegacyPath">
+                                        <i class="bi bi-folder2"></i>
+                                    </button>
+                                </div>
+                                <p class="ps-param-hint">
+                                    This script declares no parameters, so this is set as the variable
+                                    <span class="font-mono">$ProjectPath</span> before it runs. Leave it empty if the
+                                    script does not use one.
+                                </p>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var parameter in parameters)
+                        {
+                            var name = parameter.Name;
+                            var fieldId = "param-" + name;
+                            <div class="ps-param-row">
+                                <label for="@fieldId" class="ps-param-label">
+                                    @parameter.Label
+                                    @if (parameter.IsMandatory)
+                                    {
+                                        <span class="ps-param-required" title="Required by the script">*</span>
+                                    }
+                                </label>
+                                <div class="ps-param-control">
+                                    @switch (parameter.Kind)
+                                    {
+                                        case ScriptParameterKind.Switch:
+                                            <label class="ps-param-switch">
+                                                <input type="checkbox" id="@fieldId"
+                                                       checked="@IsChecked(name)"
+                                                       @onchange="e => SetValue(name, e.Value is true ? bool.TrueString : string.Empty)" />
+                                                <span class="text-sm text-dark-text-muted">
+                                                    Pass <span class="font-mono">-@name</span>
+                                                </span>
+                                            </label>
+                                            break;
+
+                                        case ScriptParameterKind.Choice:
+                                            <select id="@fieldId" class="input-modern w-full"
+                                                    value="@Value(name)" @onchange="e => SetValue(name, e.Value?.ToString())">
+                                                @* An optional choice needs a way back to unset, or the first
+                                                   option silently becomes a value nobody picked. *@
+                                                @if (!parameter.IsMandatory)
+                                                {
+                                                    <option value="">(not set)</option>
+                                                }
+                                                @foreach (var allowed in parameter.AllowedValues)
+                                                {
+                                                    <option value="@allowed">@allowed</option>
+                                                }
+                                            </select>
+                                            break;
+
+                                        case ScriptParameterKind.Number:
+                                            <input type="number" id="@fieldId" class="input-modern w-full"
+                                                   value="@Value(name)" @oninput="e => SetValue(name, e.Value?.ToString())" />
+                                            break;
+
+                                        case ScriptParameterKind.Folder:
+                                        case ScriptParameterKind.File:
+                                            <div class="ps-param-input-group">
+                                                <input type="text" id="@fieldId" class="input-modern w-full"
+                                                       value="@Value(name)" @oninput="e => SetValue(name, e.Value?.ToString())" />
+                                                <button type="button" class="btn-secondary px-3"
+                                                        title="@(parameter.Kind == ScriptParameterKind.Folder ? "Browse for a folder" : "Browse for a file")"
+                                                        @onclick="() => BrowseFor(parameter)">
+                                                    <i class="bi @(parameter.Kind == ScriptParameterKind.Folder ? "bi-folder2" : "bi-file-earmark")"></i>
+                                                </button>
+                                            </div>
+                                            break;
+
+                                        default:
+                                            <input type="text" id="@fieldId" class="input-modern w-full"
+                                                   value="@Value(name)" @oninput="e => SetValue(name, e.Value?.ToString())" />
+                                            break;
+                                    }
+
+                                    @* Razor trims trailing whitespace out of markup, so the
+                                       separator has to be a character rather than a space. *@
+                                    <p class="ps-param-hint">
+                                        @if (!string.IsNullOrEmpty(parameter.HelpMessage))
+                                        {
+                                            <span>@parameter.HelpMessage</span>
+                                            <span class="ps-param-hint-sep">&middot;</span>
+                                        }
+                                        <span class="font-mono">@ParameterSignature(parameter)</span>
+                                    </p>
+                                </div>
+                            </div>
+                        }
+
+                        @* Only after a Run has been asked for. Shown on sight it was an
+                           error message about something you had not done yet, on every
+                           script in the library — the asterisk on the field is how a
+                           required value announces itself before then. *@
+                        @if (showMissingRequired && MissingRequired.Count > 0)
+                        {
+                            <div class="ws-notice">
+                                <i class="bi bi-exclamation-triangle"></i>
+                                <span>
+                                    @string.Join(", ", MissingRequired) still needs a value. The script declares it
+                                    as required, so PowerShell would stop to prompt — and there is no console here
+                                    to prompt on.
+                                </span>
+                            </div>
+                        }
+                    }
+                </div>
+
+                @if (!string.IsNullOrEmpty(error))
+                {
+                    <div class="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+                        <div class="flex items-start space-x-3">
+                            <i class="bi bi-exclamation-circle text-red-400 text-lg"></i>
+                            <div>
+                                <h5 class="font-medium text-red-400 mb-2">Error:</h5>
+                                <div class="text-red-300 text-sm font-mono whitespace-pre-wrap">@error</div>
+                            </div>
+                        </div>
+                    </div>
+                }
                 
-                <button class="btn-primary w-full flex items-center justify-center space-x-2" @onclick="CreateNewScript">
+                @if (!string.IsNullOrEmpty(output))
+                {
+                    <div class="bg-green-500/10 border border-green-500/20 rounded-lg p-3">
+                        <div class="flex items-start space-x-3">
+                            <i class="bi bi-check-circle text-green-400 text-lg"></i>
+                            <div class="flex-1">
+                                <h5 class="font-medium text-green-400 mb-2">Output:</h5>
+                                <pre class="text-green-300 text-sm font-mono whitespace-pre-wrap bg-dark-surface rounded-lg p-3 max-h-48 overflow-y-auto">@output</pre>
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                <div class="ps-actions">
+                    <button class="btn-primary flex items-center space-x-2" @onclick="SaveScript" disabled="@isExecuting">
+                        <i class="bi bi-save"></i>
+                        <span>Save</span>
+                    </button>
+                    @* One Run button, not two. "Run Script" and "Run With Parameters" differed only in
+                       whether the path was passed, and the one that did not pass it could never work:
+                       every bundled script declares ProjectPath as mandatory. *@
+                    @* Enabled even when a required value is missing, and the run stops itself
+                       with a message. A disabled button is a dead end: it will not tell you
+                       which value it is waiting for, and the alternative — letting the run
+                       go through — fails with a PowerShell binding error that reads like the
+                       tab is broken. *@
+                    <button class="btn-secondary flex items-center space-x-2" @onclick="ExecuteScript"
+                            disabled="@isExecuting"
+                            title="@(MissingRequired.Count > 0 ? $"Needs a value for {string.Join(", ", MissingRequired)}" : "Run this script with the parameters above")">
+                        <i class="bi bi-play"></i>
+                        <span>@(isExecuting ? "Running..." : "Run Script")</span>
+                    </button>
+                    <button class="btn-danger flex items-center space-x-2" @onclick="DeleteScript" disabled="@isExecuting">
+                        <i class="bi bi-trash"></i>
+                        <span>Delete</span>
+                    </button>
+                    <button class="btn-ghost flex items-center space-x-2" @onclick="ClearOutput" disabled="@isExecuting">
+                        <i class="bi bi-eraser"></i>
+                        <span>Clear Output</span>
+                    </button>
+                </div>
+            </div>
+        }
+        else
+        {
+            @* Centred in the pane rather than padded into it: the pane has its own padding
+               now, and this state is one sentence and a button. *@
+            <div class="flex flex-col items-center justify-center flex-1 text-center gap-2">
+                <i class="bi bi-file-earmark-code text-3xl text-dark-text-muted"></i>
+                <h3 class="text-base font-semibold text-dark-text">No script selected</h3>
+                <p class="text-xs text-dark-text-muted mb-1">Pick one from the list, or start a new one.</p>
+                <button class="btn-primary flex items-center space-x-2" @onclick="CreateNewScript">
                     <i class="bi bi-plus-circle"></i>
                     <span>New Script</span>
                 </button>
             </div>
-        </div>
-    </div>
-
-    <!-- Main Content -->
-    <div class="lg:col-span-3">
-        <div class="modern-card h-full">
-            @if (!string.IsNullOrEmpty(selectedScript))
-            {
-                <div class="p-6 h-full flex flex-col">
-                    <div class="flex items-center justify-between mb-6">
-                        <h2 class="text-2xl font-semibold text-dark-text flex items-center space-x-2">
-                            <i class="bi bi-file-earmark-code text-accent-blue"></i>
-                            <span>@selectedScript</span>
-                        </h2>
-                        
-                        <div class="flex items-center space-x-4">
-                            <label class="flex items-center space-x-2 cursor-pointer">
-                                <input type="checkbox" id="enableValidation" @bind="enableScriptValidation" class="checkbox-modern">
-                                <span class="text-sm text-dark-text">Enable Script Validation</span>
-                            </label>
-                            <button class="btn-secondary flex items-center space-x-2" @onclick="ValidateCurrentScript">
-                                <i class="bi bi-shield-check"></i>
-                                <span>Validate Script</span>
-                            </button>
-                        </div>
-                    </div>
-                    
-                    @if (showValidationResults)
-                    {
-                        <div class="mb-4 space-y-3">
-                            @if (validationErrors.Any())
-                            {
-                                <div class="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
-                                    <div class="flex items-start space-x-3">
-                                        <i class="bi bi-exclamation-triangle text-red-400 text-lg"></i>
-                                        <div>
-                                            <h5 class="font-medium text-red-400 mb-2">Validation Errors:</h5>
-                                            <ul class="text-red-300 text-sm space-y-1 list-disc list-inside">
-                                                @foreach (var error in validationErrors)
-                                                {
-                                                    <li>@error</li>
-                                                }
-                                            </ul>
-                                        </div>
-                                    </div>
-                                </div>
-                            }
-                            
-                            @if (validationWarnings.Any())
-                            {
-                                <div class="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
-                                    <div class="flex items-start space-x-3">
-                                        <i class="bi bi-exclamation-triangle text-yellow-400 text-lg"></i>
-                                        <div>
-                                            <h5 class="font-medium text-yellow-400 mb-2">Validation Warnings:</h5>
-                                            <ul class="text-yellow-300 text-sm space-y-1 list-disc list-inside">
-                                                @foreach (var warning in validationWarnings)
-                                                {
-                                                    <li>@warning</li>
-                                                }
-                                            </ul>
-                                        </div>
-                                    </div>
-                                </div>
-                            }
-                        </div>
-                    }
-                    <div class="flex-1 flex flex-col space-y-4">
-                        @* The pane is a flex column and the textarea flexes inside it.
-                           It used to be h-full, which is 100% of the pane on top of the
-                           label above it — so the editor overflowed its own section by
-                           the label's height and ran over the Path field below. *@
-                        <div class="flex-1 ps-editor-pane">
-                            <label class="block text-sm font-medium text-dark-text mb-2">Script Editor</label>
-                            @* No whitespace before the closing tag: a textarea's content is
-                               its initial value, so a newline and indentation here is a
-                               blank first line in every script. *@
-                            <textarea @bind="scriptText"
-                                rows="15"
-                                class="input-modern w-full font-mono text-sm resize-none"
-                                placeholder="Enter your PowerShell script here..."></textarea>
-                        </div>
-
-                        <div>
-                            <label class="block text-sm font-medium text-dark-text mb-2">
-                                Path to run against
-                                @if (RequiredParameters.Any())
-                                {
-                                    <span class="font-normal text-dark-text-muted">
-                                        &mdash; this script requires @string.Join(", ", RequiredParameters)
-                                    </span>
-                                }
-                            </label>
-                            <input type="text" @bind="projectPath"
-                                   class="input-modern w-full"
-                                   placeholder="C:\TFS\Tools\DevToolbox" />
-                            <p class="text-xs text-dark-text-muted mt-1">
-                                Passed to the script as <span class="font-mono">-ProjectPath</span>, the same way the
-                                Run Script menu on a workspace location passes it.
-                            </p>
-                        </div>
-
-                        @if (!string.IsNullOrEmpty(error))
-                        {
-                            <div class="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
-                                <div class="flex items-start space-x-3">
-                                    <i class="bi bi-exclamation-circle text-red-400 text-lg"></i>
-                                    <div>
-                                        <h5 class="font-medium text-red-400 mb-2">Error:</h5>
-                                        <div class="text-red-300 text-sm font-mono whitespace-pre-wrap">@error</div>
-                                    </div>
-                                </div>
-                            </div>
-                        }
-                        
-                        @if (!string.IsNullOrEmpty(output))
-                        {
-                            <div class="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
-                                <div class="flex items-start space-x-3">
-                                    <i class="bi bi-check-circle text-green-400 text-lg"></i>
-                                    <div class="flex-1">
-                                        <h5 class="font-medium text-green-400 mb-2">Output:</h5>
-                                        <pre class="text-green-300 text-sm font-mono whitespace-pre-wrap bg-dark-surface rounded-lg p-3 max-h-48 overflow-y-auto">@output</pre>
-                                    </div>
-                                </div>
-                            </div>
-                        }
-
-                        <div class="flex flex-wrap gap-2 pt-4 border-t border-dark-border">
-                            <button class="btn-primary flex items-center space-x-2" @onclick="SaveScript" disabled="@isExecuting">
-                                <i class="bi bi-save"></i>
-                                <span>Save</span>
-                            </button>
-                            @* One Run button, not two. "Run Script" and "Run With Parameters" differed only in
-                               whether the path was passed, and the one that did not pass it could never work:
-                               every bundled script declares ProjectPath as mandatory. *@
-                            <button class="btn-secondary flex items-center space-x-2" @onclick="ExecuteScript" disabled="@isExecuting">
-                                <i class="bi bi-play"></i>
-                                <span>@(isExecuting ? "Running..." : "Run Script")</span>
-                            </button>
-                            <button class="btn-danger flex items-center space-x-2" @onclick="DeleteScript" disabled="@isExecuting">
-                                <i class="bi bi-trash"></i>
-                                <span>Delete</span>
-                            </button>
-                            <button class="btn-ghost flex items-center space-x-2" @onclick="ClearOutput" disabled="@isExecuting">
-                                <i class="bi bi-eraser"></i>
-                                <span>Clear Output</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            }
-            else
-            {
-                <div class="flex flex-col items-center justify-center h-full text-center p-8">
-                    <div class="w-20 h-20 bg-dark-surface rounded-full flex items-center justify-center mb-4">
-                        <i class="bi bi-file-earmark-code text-3xl text-dark-text-muted"></i>
-                    </div>
-                    <h3 class="text-xl font-semibold text-dark-text mb-2">No Script Selected</h3>
-                    <p class="text-dark-text-muted mb-6">Select a script from the sidebar or create a new one to get started.</p>
-                    <button class="btn-primary flex items-center space-x-2" @onclick="CreateNewScript">
-                        <i class="bi bi-plus-circle"></i>
-                        <span>Create New Script</span>
-                    </button>
-                </div>
-            }
-        </div>
+        }
     </div>
 </div>
+
+<NewScriptDialog IsVisible="newScriptVisible"
+                 IsVisibleChanged="visible => newScriptVisible = visible"
+                 ExistingNames="ScriptNames"
+                 OnCreate="CreateScriptNamed" />

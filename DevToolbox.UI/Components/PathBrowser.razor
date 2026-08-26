@@ -54,7 +54,37 @@
     [Parameter]
     public bool isFolderSelector { get; set; } = true;
 
+    /// <summary>
+    /// Where to open when nothing has been picked yet — the "Default Workspace Location" from
+    /// Settings. Only ever a starting point: an unset or unreachable value falls back to the
+    /// dialog's own default, which is what every picker did before.
+    /// </summary>
+    [Parameter]
+    public string? StartIn { get; set; }
+
     private string ErrorMessage { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The folder a dialog should open on: what is already selected, else the configured default.
+    /// Checked for existence here so a stale path costs nothing — passing a missing directory to
+    /// FolderBrowserDialog silently drops it, and to OpenFileDialog it lands you somewhere
+    /// unrelated.
+    /// </summary>
+    private string? StartingDirectory()
+    {
+        var candidates = new[]
+        {
+            Directory.Exists(SelectedPath) ? SelectedPath : Path.GetDirectoryName(SelectedPath),
+            StartIn
+        };
+
+        foreach (var candidate in candidates)
+        {
+            if (!string.IsNullOrWhiteSpace(candidate) && Directory.Exists(candidate)) return candidate;
+        }
+
+        return null;
+    }
 
     private async Task OpenFileBrowser()
     {
@@ -66,7 +96,7 @@
                 Filter = Filter,
                 CheckFileExists = true,
                 CheckPathExists = true,
-                InitialDirectory = Path.GetDirectoryName(SelectedPath) ?? Environment.GetFolderPath(Environment.SpecialFolder.MyComputer)
+                InitialDirectory = StartingDirectory() ?? Environment.GetFolderPath(Environment.SpecialFolder.MyComputer)
             };
 
             if (dialog.ShowDialog() == DialogResult.OK)
@@ -92,16 +122,10 @@
                 RootFolder = Environment.SpecialFolder.MyComputer
             };
 
-            // Set the initial directory if we have a selected path
-            if (!string.IsNullOrEmpty(SelectedPath))
+            // What is already selected, else the configured default workspace location.
+            if (StartingDirectory() is { } initialDir)
             {
-                var initialDir = Directory.Exists(SelectedPath) 
-                    ? SelectedPath 
-                    : Path.GetDirectoryName(SelectedPath);
-                if (!string.IsNullOrEmpty(initialDir))
-                {
-                    dialog.SelectedPath = initialDir;
-                }
+                dialog.SelectedPath = initialDir;
             }
 
             if (dialog.ShowDialog() == DialogResult.OK)

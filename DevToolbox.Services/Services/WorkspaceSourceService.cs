@@ -10,10 +10,23 @@ namespace DevToolbox.Services.Services;
 /// onto the dashboard as read-only groups. Nothing here knows about VS Code, Visual
 /// Studio or any particular directory — the pattern, grouping and open command all come
 /// from config, so the same code covers *.code-workspace, *.sln or bare repo folders.
+/// <para>
+/// The same code also answers <see cref="PreviewAsync"/>, which is what the Scan Folders
+/// dialog renders while you type. Sharing <see cref="Collect"/> and <see cref="BuildGroup"/>
+/// between the two is the point: a preview computed by a parallel implementation would only
+/// be as trustworthy as the last time someone remembered to change both.
+/// </para>
 /// </summary>
 public class WorkspaceSourceService : IWorkspaceSourceService
 {
     private const string ConfigKey = "workspaceSources";
+
+    /// <summary>
+    /// Entries a preview will look at. A preview runs on every keystroke, and a recursive
+    /// <c>*</c> pointed at a drive root is one keystroke away — so it samples rather than
+    /// enumerates, and says so when it has.
+    /// </summary>
+    private const int PreviewEntryCap = 200;
 
     private readonly IYamlStorageService _storage;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -116,6 +129,64 @@ public class WorkspaceSourceService : IWorkspaceSourceService
         return _sourceByPath.TryGetValue(location.Path, out var source) ? source.OpenWith : null;
     }
 
+    public Task<SourcePreview> PreviewAsync(WorkspaceSource source, CancellationToken cancellationToken = default)
+    {
+        // Off the UI thread: this is file I/O on a keystroke, and a network share that has gone
+        // quiet would otherwise freeze the dialog it is meant to be describing.
+        return Task.Run(() => Preview(source, cancellationToken), cancellationToken);
+    }
+
+    private static SourcePreview Preview(WorkspaceSource source, CancellationToken cancellationToken)
+    {
+        var preview = new SourcePreview { GroupName = source.GroupName };
+
+        var root = ExpandPath(source.Path);
+        preview.ResolvedPath = root;
+
+        if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
+        {
+            return preview;
+        }
+
+        preview.PathExists = true;
+
+        var collected = Collect(source, root, PreviewEntryCap, cancellationToken);
+        preview.Error = collected.Error;
+        preview.RegexError = collected.RegexError;
+        preview.EntriesFound = collected.TotalFound;
+        preview.Truncated = collected.Truncated;
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // The same fold the real scan does, into preview shapes rather than domain models —
+        // one workspace per distinct name, one location per entry underneath it.
+        var group = BuildGroup(source, root, collected.Entries, id: 0, nextWorkspaceId: () => 0);
+
+        preview.Workspaces = group.Workspaces
+            .Select(w => new PreviewWorkspace
+            {
+                Name = w.Name,
+                Locations = w.Locations
+                    .Select(l => new PreviewLocation
+                    {
+                        Name = l.Name,
+                        Path = l.Path,
+                        Description = l.Description,
+                        Entry = BareName(l.Path, source),
+                        RegexMatched = !collected.Unmatched.Contains(l.Path)
+                    })
+                    .ToList()
+            })
+            .ToList();
+
+        preview.Unmatched = collected.Entries
+            .Where(e => !e.RegexMatched)
+            .Select(e => e.Bare)
+            .ToList();
+
+        return preview;
+    }
+
     private void Scan(WorkspaceSourceConfig config)
     {
         var groups = new List<WorkspaceGroup>();
@@ -145,8 +216,14 @@ public class WorkspaceSourceService : IWorkspaceSourceService
 
                 result.PathExists = true;
 
-                var entries = Enumerate(root, source).OrderBy(e => e, StringComparer.OrdinalIgnoreCase).ToList();
-                result.EntriesFound = entries.Count;
+                var collected = Collect(source, root, limit: null, CancellationToken.None);
+                result.EntriesFound = collected.TotalFound;
+
+                if (collected.Error is not null)
+                {
+                    result.Error = collected.Error;
+                    continue;
+                }
 
                 var group = groups.FirstOrDefault(g => g.Name.Equals(source.GroupName, StringComparison.OrdinalIgnoreCase));
                 if (group is null)
@@ -164,40 +241,13 @@ public class WorkspaceSourceService : IWorkspaceSourceService
                     groups.Add(group);
                 }
 
-                var regex = BuildRegex(source);
+                var before = group.Workspaces.Count;
+                Fold(group, source, root, collected.Entries, () => nextWorkspaceId--);
+                result.WorkspacesProduced = group.Workspaces.Count - before;
 
-                foreach (var entry in entries)
+                foreach (var entry in collected.Entries)
                 {
-                    var (workspaceName, locationName) = SplitName(entry, source, regex);
-
-                    var workspace = group.Workspaces.FirstOrDefault(
-                        w => w.Name.Equals(workspaceName, StringComparison.OrdinalIgnoreCase));
-
-                    if (workspace is null)
-                    {
-                        workspace = new Workspace
-                        {
-                            Id = nextWorkspaceId--,
-                            Name = workspaceName,
-                            GroupName = group.Name,
-                            SourceName = source.Name
-                        };
-                        group.Workspaces.Add(workspace);
-                        result.WorkspacesProduced++;
-                    }
-
-                    workspace.Locations.Add(new WorkspaceLocation
-                    {
-                        Name = locationName,
-                        Path = entry,
-                        Root = source.Scan == ScanKind.Directories
-                            ? entry
-                            : System.IO.Path.GetDirectoryName(entry) ?? root,
-                        Type = source.Scan == ScanKind.Directories ? LocationType.Folder : LocationType.File,
-                        Description = ReadDescription(entry, source)
-                    });
-
-                    pathMap[entry] = source;
+                    pathMap[entry.Path] = source;
                 }
             }
             catch (Exception ex)
@@ -221,6 +271,151 @@ public class WorkspaceSourceService : IWorkspaceSourceService
         _sourceByPath = pathMap;
     }
 
+    /// <summary>One entry off disk, with its name already split into workspace and location.</summary>
+    private sealed record CollectedEntry(
+        string Path,
+        string Bare,
+        string WorkspaceName,
+        string LocationName,
+        bool RegexMatched);
+
+    /// <summary>Everything <see cref="Collect"/> found, including the reasons it found less.</summary>
+    private sealed class Collected
+    {
+        public List<CollectedEntry> Entries { get; } = new();
+
+        /// <summary>Paths whose name the regex did not match. Empty when there is no regex.</summary>
+        public HashSet<string> Unmatched { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public string? Error { get; set; }
+
+        public string? RegexError { get; set; }
+
+        /// <summary>Entries on disk, which exceeds <see cref="Entries"/> when a limit applied.</summary>
+        public int TotalFound { get; set; }
+
+        public bool Truncated { get; set; }
+    }
+
+    /// <summary>
+    /// Enumerates a source's folder and works out the workspace/location split for each entry.
+    /// <paramref name="limit"/> caps how many are kept — null for a real scan, a small number
+    /// for a preview that has to return between keystrokes.
+    /// </summary>
+    private static Collected Collect(WorkspaceSource source, string root, int? limit, CancellationToken cancellationToken)
+    {
+        var collected = new Collected();
+        var regex = BuildRegex(source, out var regexError);
+        collected.RegexError = regexError;
+
+        List<string> entries;
+        try
+        {
+            entries = Enumerate(root, source)
+                .OrderBy(e => e, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            collected.Error = ex.Message;
+            return collected;
+        }
+
+        collected.TotalFound = entries.Count;
+
+        if (limit is { } cap && entries.Count > cap)
+        {
+            collected.Truncated = true;
+            entries = entries.Take(cap).ToList();
+        }
+
+        foreach (var entry in entries)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var bare = BareName(entry, source);
+            var (workspaceName, locationName, matched) = SplitName(bare, source, regex);
+
+            collected.Entries.Add(new CollectedEntry(entry, bare, workspaceName, locationName, matched));
+
+            if (!matched)
+            {
+                collected.Unmatched.Add(entry);
+            }
+        }
+
+        return collected;
+    }
+
+    /// <summary>
+    /// Folds entries into a group: one workspace per distinct workspace name, one location
+    /// under it per entry. Called by both the scan and the preview, which is what keeps the
+    /// two showing the same cards.
+    /// </summary>
+    private static void Fold(
+        WorkspaceGroup group,
+        WorkspaceSource source,
+        string root,
+        IEnumerable<CollectedEntry> entries,
+        Func<int> nextWorkspaceId)
+    {
+        foreach (var entry in entries)
+        {
+            var workspace = group.Workspaces.FirstOrDefault(
+                w => w.Name.Equals(entry.WorkspaceName, StringComparison.OrdinalIgnoreCase));
+
+            if (workspace is null)
+            {
+                workspace = new Workspace
+                {
+                    Id = nextWorkspaceId(),
+                    Name = entry.WorkspaceName,
+                    GroupName = group.Name,
+                    SourceName = source.Name
+                };
+                group.Workspaces.Add(workspace);
+            }
+
+            workspace.Locations.Add(new WorkspaceLocation
+            {
+                Name = entry.LocationName,
+                Path = entry.Path,
+                Root = source.Scan == ScanKind.Directories
+                    ? entry.Path
+                    : System.IO.Path.GetDirectoryName(entry.Path) ?? root,
+                Type = source.Scan == ScanKind.Directories ? LocationType.Folder : LocationType.File,
+                Description = ReadDescription(entry.Path, source)
+            });
+        }
+    }
+
+    /// <summary>A standalone group holding the fold, sorted the way the dashboard shows it.</summary>
+    private static WorkspaceGroup BuildGroup(
+        WorkspaceSource source,
+        string root,
+        IEnumerable<CollectedEntry> entries,
+        int id,
+        Func<int> nextWorkspaceId)
+    {
+        var group = new WorkspaceGroup
+        {
+            Id = id,
+            Name = source.GroupName,
+            SourceName = source.Name,
+            SourcePath = root
+        };
+
+        Fold(group, source, root, entries, nextWorkspaceId);
+
+        group.Workspaces.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
+        foreach (var workspace in group.Workspaces)
+        {
+            workspace.Locations.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return group;
+    }
+
     private static IEnumerable<string> Enumerate(string root, WorkspaceSource source)
     {
         var pattern = string.IsNullOrWhiteSpace(source.Pattern) ? "*" : source.Pattern;
@@ -238,12 +433,23 @@ public class WorkspaceSourceService : IWorkspaceSourceService
             return string.Empty;
         }
 
-        var expanded = Environment.ExpandEnvironmentVariables(path.Trim());
-        return System.IO.Path.GetFullPath(expanded);
+        try
+        {
+            var expanded = Environment.ExpandEnvironmentVariables(path.Trim());
+            return System.IO.Path.GetFullPath(expanded);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            // A path being typed is invalid for most of the time it takes to type it, and the
+            // preview asks about it on every keystroke. "Folder not found" is the honest answer.
+            return string.Empty;
+        }
     }
 
-    private static Regex? BuildRegex(WorkspaceSource source)
+    private static Regex? BuildRegex(WorkspaceSource source, out string? error)
     {
+        error = null;
+
         if (string.IsNullOrWhiteSpace(source.NameRegex))
         {
             return null;
@@ -255,35 +461,41 @@ public class WorkspaceSourceService : IWorkspaceSourceService
         }
         catch (ArgumentException ex)
         {
+            error = ex.Message;
             Console.WriteLine($"WorkspaceSourceService: source '{source.Name}' has an invalid nameRegex — {ex.Message}");
             return null;
         }
     }
+
+    /// <summary>The part of an entry a name pattern is matched against.</summary>
+    private static string BareName(string entry, WorkspaceSource source) =>
+        source.Scan == ScanKind.Directories
+            ? new DirectoryInfo(entry).Name
+            : System.IO.Path.GetFileNameWithoutExtension(entry);
 
     /// <summary>
     /// Derives the workspace/location pair for one entry. Without a regex every entry is
     /// its own workspace; with one, entries sharing a "workspace" capture merge into a
     /// single card holding one location each.
     /// </summary>
-    private static (string Workspace, string Location) SplitName(string entry, WorkspaceSource source, Regex? regex)
+    private static (string Workspace, string Location, bool Matched) SplitName(
+        string bare, WorkspaceSource source, Regex? regex)
     {
-        var bare = source.Scan == ScanKind.Directories
-            ? new DirectoryInfo(entry).Name
-            : System.IO.Path.GetFileNameWithoutExtension(entry);
-
         var fallbackLocation = string.IsNullOrWhiteSpace(source.DefaultLocationName)
             ? "main"
             : source.DefaultLocationName;
 
         if (regex is null)
         {
-            return (bare, fallbackLocation);
+            // No regex is not a failed match: one card per entry is the intended result, and
+            // flagging it would fill a preview with warnings about working as configured.
+            return (bare, fallbackLocation, true);
         }
 
         var match = regex.Match(bare);
         if (!match.Success)
         {
-            return (bare, fallbackLocation);
+            return (bare, fallbackLocation, false);
         }
 
         var workspace = match.Groups["workspace"];
@@ -291,7 +503,8 @@ public class WorkspaceSourceService : IWorkspaceSourceService
 
         return (
             workspace.Success && workspace.Value.Length > 0 ? workspace.Value : bare,
-            location.Success && location.Value.Length > 0 ? location.Value : fallbackLocation);
+            location.Success && location.Value.Length > 0 ? location.Value : fallbackLocation,
+            true);
     }
 
     /// <summary>

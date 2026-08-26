@@ -1,9 +1,11 @@
 @using DevToolbox.UI.Components
 @using DevToolbox.Services.Interfaces
 @using DevToolbox.Services.Models
+@using DevToolbox.UI.Services
 @using Microsoft.JSInterop
 @inject IJSRuntime JS
 @inject IUiSettingsService UiSettings
+@inject CardStateService Cards
 
 <Router AppAssembly="@typeof(App).Assembly">
     <Found Context="routeData">
@@ -60,6 +62,15 @@
     // All three values go over together: the animation and show-all flags are
     // cached alongside the theme for the same timing reason, and re-sending only
     // the theme would leave a stale flag deciding whether it snows.
+    // Before the router renders anything, because this one is not a correction after the fact:
+    // it decides what a group card looks like the first time it is drawn. The read is cached, so
+    // the theme reconciliation below costs nothing extra.
+    protected override async Task OnInitializedAsync()
+    {
+        var settings = await UiSettings.GetAsync();
+        Cards.DefaultGroupsExpanded = settings.ExpandGroupsByDefault;
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;

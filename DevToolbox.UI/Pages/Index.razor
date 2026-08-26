@@ -17,74 +17,94 @@
 @inject PowerShellService PowerShellService
 @inject IWorkspaceService WorkspaceService
 @inject IWorkspaceSourceService WorkspaceSourceService
+@inject IDashboardLayoutService Layout
 @inject IOpenHandlerService OpenHandlers
 @inject IIconService IconService
 @inject ISystemService SystemService
+@inject IUiSettingsService UiSettings
 @inject IConfiguration Configuration
 @inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>DevToolbox</PageTitle>
 
-<!-- Dashboard Header -->
-<div class="mb-8">
-    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-            <h1 class="text-4xl font-bold text-gradient">Projects</h1>
-            <p class="text-dark-text-muted mt-2">Manage your development workspaces and projects</p>
-        </div>
-        <div class="ws-toolbar">
-            <!-- Search -->
-            <div class="relative">
-                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <i class="bi bi-search text-dark-text-muted"></i>
-                </div>
-                <input type="text"
-                    class="search-input pl-10 w-80"
-                    placeholder="Search across all workspaces..."
-                    @ref="searchInput"
-                    value="@searchText"
-                    @oninput="HandleSearchInput" />
-            </div>
+@* One row instead of a title block plus a toolbar plus a subtitle. The subtitle said
+   "manage your development workspaces", which is what the tab is; the count that replaced
+   it is at least a fact about this screen. *@
+<div class="ws-page-head">
+    <h1 class="ws-page-title text-gradient">Projects</h1>
+    <span class="ws-page-meta">@GroupViewModels.Count groups · @TotalWorkspaces workspaces</span>
 
-            <button class="btn-secondary flex items-center gap-2" title="Rescan every workspace source"
-                    @onclick="RescanSources" disabled="@isScanning">
-                <i class="bi @(isScanning ? "bi-hourglass-split" : "bi-arrow-repeat")"></i>
-                <span>Rescan</span>
-            </button>
-
-            <button class="btn-secondary flex items-center gap-2" title="Folders scanned for projects"
-                    @onclick="ShowSourcesModal">
-                <i class="bi bi-folder-symlink"></i>
-                <span>Scan Folders</span>
-            </button>
-        </div>
-    </div>
-
-    @if (scanProblems.Any())
-    {
-        <div class="ws-scan-note is-error mt-3">
-            @foreach (var problem in scanProblems)
+    <div class="ws-toolbar">
+        <div class="ws-search">
+            <i class="bi bi-search"></i>
+            <input type="text"
+                class="ws-input"
+                placeholder="Search or abbreviate — Ctrl+F"
+                @ref="searchInput"
+                value="@searchText"
+                @oninput="HandleSearchInput" />
+            @if (!string.IsNullOrEmpty(searchText))
             {
-                <div>@problem</div>
+                <button type="button" class="ws-search-clear" title="Clear search" @onclick="ClearSearch">
+                    <i class="bi bi-x-lg"></i>
+                </button>
             }
         </div>
-    }
 
-    @if (!string.IsNullOrEmpty(openError))
-    {
-        <div class="ws-notice mt-3">
-            <i class="bi bi-exclamation-triangle"></i>
-            <span>@openError</span>
-            <button type="button" class="btn-ghost btn-sm" title="Dismiss" @onclick="() => openError = null">
-                <i class="bi bi-x-lg"></i>
-            </button>
-        </div>
-    }
+        @* Disabled rather than absent when there is nothing to collapse: a button that comes
+           and goes moves the three next to it, and this one sits where the pointer already is. *@
+        <button class="ws-tool" title="Collapse every group and card"
+                @onclick="CollapseAll" disabled="@(!AnythingExpanded)">
+            <i class="bi bi-chevron-bar-contract"></i>
+            <span>Collapse All</span>
+        </button>
+
+        <button class="ws-tool" title="Rescan every workspace source"
+                @onclick="RescanSources" disabled="@isScanning">
+            <i class="bi @(isScanning ? "bi-hourglass-split" : "bi-arrow-repeat")"></i>
+            <span>Rescan</span>
+        </button>
+
+        <button class="ws-tool" title="Folders scanned for projects" @onclick="ShowSourcesModal">
+            <i class="bi bi-folder-symlink"></i>
+            <span>Scan Folders</span>
+        </button>
+
+        @* Was a full-width call to action at the bottom of the page, below every card. It is
+           pressed once a month and cost a screenful of scrolling to reach. *@
+        <button class="ws-tool is-primary" title="Create a new group" @onclick="ShowAddGroupModal">
+            <i class="bi bi-folder-plus"></i>
+            <span>New Group</span>
+        </button>
+    </div>
 </div>
 
+@if (scanProblems.Any())
+{
+    <div class="ws-scan-note is-error">
+        @foreach (var problem in scanProblems)
+        {
+            <div>@problem</div>
+        }
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(openError))
+{
+    @* mb-3, not a margin on .ws-notice: that class is shared with the Host Changer and Log
+       Viewer dialogs, which space it themselves. *@
+    <div class="ws-notice mb-3">
+        <i class="bi bi-exclamation-triangle"></i>
+        <span>@openError</span>
+        <button type="button" class="btn-ghost btn-sm" title="Dismiss" @onclick="() => openError = null">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </div>
+}
+
 <!-- Workspace Groups -->
-<div class="space-y-6">
+<div class="ws-groups">
     @foreach (var groupViewModel in FilteredGroupViewModels)
     {
         @* Keyed by name, not Id: group ids in workspaceGroups.yaml are not actually
@@ -96,6 +116,9 @@
             AvailableScripts="AvailableScripts"
             AllWorkspaces="AllWorkspaces"
             AllGroups="WorkspaceService.WorkspaceGroups"
+            QuickOpenCount="quickOpenCount"
+            IsDragging="@(dragGroup == groupViewModel.Group.Name)"
+            IsDropTarget="@(dragGroup is not null && dragOverGroup == groupViewModel.Group.Name && dragGroup != groupViewModel.Group.Name)"
             OnDeleteGroup="DeleteGroup"
             OnOpenWorkspaceLocation="OpenWorkspaceLocation"
             OnOpenInExplorer="OpenLocationInExplorer"
@@ -105,16 +128,28 @@
             OnAddWorkspace="SaveWorkspaces"
             OnMoveToGroup="HandleMoveToGroup"
             OnRescan="RescanSources"
-            OnIconChanged="StateHasChanged" />
+            OnIconChanged="StateHasChanged"
+            OnTogglePin="HandleTogglePin"
+            OnAliasesChanged="HandleAliasesChanged"
+            OnDragStarted="HandleGroupDragStart"
+            OnDragEntered="HandleGroupDragOver"
+            OnDropped="HandleGroupDrop"
+            OnDragEnded="HandleGroupDragEnd" />
     }
 
-    <!-- Add New Group Button -->
-    <div class="flex justify-center mt-8">
-        <button class="btn-primary flex items-center space-x-2 px-6 py-3 text-lg" @onclick="ShowAddGroupModal">
-            <i class="bi bi-folder-plus"></i>
-            <span>Add New Group</span>
-        </button>
-    </div>
+    @if (!FilteredGroupViewModels.Any())
+    {
+        <div class="ws-empty">
+            @if (string.IsNullOrWhiteSpace(searchText))
+            {
+                <span>No groups yet. <strong>New Group</strong> adds one by hand, <strong>Scan Folders</strong> finds them on disk.</span>
+            }
+            else
+            {
+                <span>Nothing matches “@searchText”.</span>
+            }
+        </div>
+    }
 </div>
 
 <Modal @bind-IsVisible="IsAddGroupModalVisible" Title="Create New Group">
@@ -144,6 +179,14 @@
     private bool isScanning;
     private List<string> scanProblems = new();
     private string? openError;
+
+    /// <summary>How many one-click Open buttons a collapsed card gets. From ui_settings.yaml.</summary>
+    private int quickOpenCount = 3;
+
+    // Drag state for reordering groups. Held here rather than in the cards because a drag is a
+    // relationship between two of them and neither one can see the other.
+    private string? dragGroup;
+    private string? dragOverGroup;
 
     // Component references for the dialogs
     private AddWorkspaceGroupDialog? addGroupDialog;
@@ -175,6 +218,17 @@
 
     private string? GetModalError(string modalKey) => ModalStateService.GetError(modalKey);
 
+    private int TotalWorkspaces => GroupViewModels.Sum(g => g.Workspaces.Count);
+
+    /// <summary>
+    /// Whether anything at all is open, read from <see cref="CardStateService"/> rather than off
+    /// the view models: the view models are refreshed by each card during its own render, so
+    /// reading them here would describe the previous frame.
+    /// </summary>
+    private bool AnythingExpanded => GroupViewModels.Any(g =>
+        CardStateService.IsExpanded("group", g.Group.Name)
+        || g.Workspaces.Any(w => CardStateService.IsExpanded("workspace", w.StateKey)));
+
     /// <summary>
     /// Render key for a group card. A scanned group and a saved group could share a
     /// name, so the origin is part of the key.
@@ -182,37 +236,63 @@
     private static string GroupKey(WorkspaceGroup group) =>
         $"{(group.IsFromSource ? "src" : "saved")}:{group.Name}";
 
-    private List<WorkspaceGroupViewModel> FilteredGroupViewModels => string.IsNullOrWhiteSpace(searchText)
-        ? GroupViewModels
-        : GroupViewModels
-            .Select(g => new WorkspaceGroupViewModel
+    private List<WorkspaceGroupViewModel> FilteredGroupViewModels
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(searchText))
             {
-                Group = g.Group,
-                IsExpanded = !string.IsNullOrWhiteSpace(searchText) || g.IsExpanded,
-                Workspaces = FilterWorkspaceViewModels(g.Workspaces)
-            })
-            .Where(g => g.Workspaces.Any())
-            .ToList();
+                return GroupViewModels;
+            }
+
+            return GroupViewModels
+                .Select(g => new WorkspaceGroupViewModel
+                {
+                    Group = g.Group,
+                    IsExpanded = true,
+
+                    // A group whose own name (or alias) matches keeps all of its cards: typing
+                    // the group's shorthand is a request for the group, not for whichever cards
+                    // inside it happen to be spelled like it.
+                    Workspaces = GroupMatches(g) ? g.Workspaces : FilterWorkspaceViewModels(g.Workspaces)
+                })
+                .Where(g => g.Workspaces.Any())
+                .ToList();
+        }
+    }
+
+    private bool GroupMatches(WorkspaceGroupViewModel group) =>
+        WorkspaceSearch.MatchesName(searchText, group.Name, Layout.AliasesFor(AliasScope.Group, group.Name));
 
     private List<WorkspaceViewModel> FilterWorkspaceViewModels(List<WorkspaceViewModel> workspaces)
     {
         if (string.IsNullOrWhiteSpace(searchText))
+        {
             return workspaces;
+        }
 
         return workspaces
-            .Where(w => w.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase)
-                     || w.Locations.Any(l => l.Path.Contains(searchText, StringComparison.OrdinalIgnoreCase)))
+            .Where(w => WorkspaceSearch.MatchesName(searchText, w.Name, Layout.AliasesFor(AliasScope.Workspace, w.Name))
+                     || w.Locations.Any(l => WorkspaceSearch.MatchesPath(searchText, l.Path)))
             .ToList();
     }
 
     protected override async Task OnInitializedAsync()
     {
+        // Collapse All has to know whether anything is open, and what opens a card is a click
+        // handled inside the card — which re-renders the card and nothing above it. Without
+        // this the button stays greyed out after the first group is expanded.
+        CardStateService.OnStateChanged += OnCardStateChanged;
+
         LoadScripts();
 
-        // Both of these are read synchronously later (icon rules during render, open
-        // handlers on click), so they have to be in memory first.
+        // All three of these are read synchronously later — icon rules and aliases during
+        // render, open handlers on click — so they have to be in memory first.
         await IconService.GetConfigAsync();
         await OpenHandlers.GetConfigAsync();
+        await Layout.GetAsync();
+
+        quickOpenCount = (await UiSettings.GetAsync()).QuickOpenButtonCount;
 
         await LoadWorkspacesAsync();
     }
@@ -232,9 +312,11 @@
         var scanned = await WorkspaceSourceService.GetGroupsAsync(forceRescan);
         CollectScanProblems();
 
-        // Convert domain models to view models
-        GroupViewModels = groups.Concat(scanned)
-            .Select(g => ViewModelFactory.CreateWorkspaceGroupViewModel(g))
+        // Both halves go through the same ordering and the same pin lookup, which is the point
+        // of keying dashboardLayout.yaml on names: a scanned group can be dragged above a saved
+        // one, and a scanned card can be pinned, without either being persisted as a workspace.
+        GroupViewModels = Layout.OrderGroups(groups.Concat(scanned))
+            .Select(g => ViewModelFactory.CreateWorkspaceGroupViewModel(g, Layout.OrderWorkspaces(g.Name, g.Workspaces)))
             .ToList();
 
         StateHasChanged();
@@ -310,6 +392,94 @@
         StateHasChanged();
     }
 
+    // ---- collapse all ----------------------------------------------------------------------
+
+    /// <summary>
+    /// Shuts everything: the groups and the workspace cards inside them. Both, because a group
+    /// closed over a dozen open cards is a group that reopens full of them.
+    /// <para>
+    /// There is no matching Expand. Opening all of them meant 457 cards and 756 location rows
+    /// in one frame, with a disk check on every one of those paths on the way — not something
+    /// anyone wants a button for.
+    /// </para>
+    /// </summary>
+    private void CollapseAll()
+    {
+        CardStateService.SetAllExpanded(
+            false,
+            GroupViewModels.Select(g => g.Group.Name),
+            GroupViewModels.SelectMany(g => g.Workspaces).Select(w => w.StateKey));
+
+        // The cards read their state in OnParametersSet, so this render already picks it up.
+        StateHasChanged();
+    }
+
+    // ---- pinning ---------------------------------------------------------------------------
+
+    private async Task HandleTogglePin((string groupName, string workspaceName) args)
+    {
+        await Layout.TogglePinAsync(args.groupName, args.workspaceName);
+
+        // Rebuilt rather than nudged: the pinned card has to move to the front of its group,
+        // and that order is decided where the view models are made.
+        await LoadWorkspacesAsync();
+    }
+
+    private void HandleAliasesChanged() => StateHasChanged();
+
+    // ---- reordering groups -----------------------------------------------------------------
+
+    private void HandleGroupDragStart(string groupName)
+    {
+        dragGroup = groupName;
+        dragOverGroup = null;
+    }
+
+    private void HandleGroupDragOver(string groupName)
+    {
+        // dragover fires continuously while the pointer is over a card; only a change is worth
+        // a render.
+        if (dragGroup is null || dragOverGroup == groupName)
+        {
+            return;
+        }
+
+        dragOverGroup = groupName;
+        StateHasChanged();
+    }
+
+    private async Task HandleGroupDrop(string groupName)
+    {
+        var moved = dragGroup;
+        dragGroup = null;
+        dragOverGroup = null;
+
+        if (moved is null || moved == groupName)
+        {
+            StateHasChanged();
+            return;
+        }
+
+        // The order on screen is passed along so a first-ever drag writes a complete list
+        // rather than a two-name one that leaves every other group floating at the end.
+        await Layout.MoveGroupAsync(moved, groupName, GroupViewModels.Select(g => g.Group.Name));
+        await LoadWorkspacesAsync();
+    }
+
+    private void HandleGroupDragEnd()
+    {
+        // Fires on a cancelled drag too — Escape, or a drop outside any card — so the
+        // highlight cannot be left behind.
+        if (dragGroup is null && dragOverGroup is null)
+        {
+            return;
+        }
+
+        dragGroup = null;
+        dragOverGroup = null;
+        StateHasChanged();
+    }
+
     /// <summary>Surfaces a failed open instead of letting it disappear into the console.</summary>
     private void Report(OpenResult result)
     {
@@ -380,16 +550,29 @@
         StateHasChanged();
     }
 
-    [JSInvokable]
-    public void HandleSearchCleared()
+    private void ClearSearch()
     {
         searchText = string.Empty;
         CardStateService.SetSearchExpanded(false, Array.Empty<string>());
         StateHasChanged();
     }
 
+    [JSInvokable]
+    public void HandleSearchCleared()
+    {
+        ClearSearch();
+    }
+
+    /// <summary>
+    /// A card somewhere opened or shut. Only the toolbar depends on it — the cards themselves
+    /// read their own state — so this is a re-render and nothing more.
+    /// </summary>
+    private void OnCardStateChanged(object? sender, CardStateChangedEventArgs e) =>
+        _ = InvokeAsync(StateHasChanged);
+
     public void Dispose()
     {
+        CardStateService.OnStateChanged -= OnCardStateChanged;
         objRef?.Dispose();
     }
 }

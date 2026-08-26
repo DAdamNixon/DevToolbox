@@ -2,13 +2,16 @@
 @using DevToolbox.Services.Interfaces
 @using DevToolbox.Services.Models
 @using DevToolbox.Services.Services
+@using DevToolbox.UI.Services
 @using DevToolbox.UI.Web
 @using Microsoft.JSInterop
+@using System.IO
 @inject IUiSettingsService UiSettings
 @inject IYamlStorageService YamlStorage
 @inject IEnumerable<ICachedConfig> CachedConfigs
 @inject IJSRuntime JS
 @inject WebPreviewInfo WebPreview
+@inject CardStateService Cards
 
 <!-- Page Header -->
 <div class="mb-8">
@@ -33,7 +36,11 @@
                     @* Seasonal themes are listed only inside their own window unless "Show all
                        themes" is on. The exception is one that is already saved: it stays in the
                        list year-round, because a select whose value matches no option displays the
-                       first one instead and would quietly misreport the setting. *@
+                       first one instead and would quietly misreport the setting.
+
+                       "Seasonal" is not in that group. It is a rule rather than a palette, it is on
+                       offer every day of the year, and it belongs beside System Default as the
+                       other answer to "decide this for me". *@
                     <select class="input-modern w-full" value="@selectedTheme" @onchange="OnThemeChangedAsync">
                         @foreach (var theme in offered.Where(t => !t.IsSeasonal))
                         {
@@ -49,12 +56,40 @@
                             </optgroup>
                         }
                     </select>
-                    <p class="text-xs text-dark-text-muted">Choose your preferred color scheme</p>
+                    @if (selectedTheme == ThemeOptions.Seasonal)
+                    {
+                        @* The whole point of this option is that it changes on its own, so it has to
+                           say what it is doing now and what it will do next. Without that, "Seasonal"
+                           in July looks identical to a setting that has been ignored. *@
+                        <p class="text-xs text-dark-text-muted">
+                            Follows the calendar. Nothing to do at the turn of a season — the theme
+                            changes itself, whether or not the app is restarted.
+                        </p>
+                        <p class="text-xs text-dark-text">
+                            @if (ThemeCatalog.SeasonalPick(today) is { } current)
+                            {
+                                <span>Right now: <strong>@current.Label</strong>.</span>
+                            }
+                            else
+                            {
+                                <span>Nothing is in season, so you get your system theme.</span>
+                            }
+                            @if (ThemeCatalog.SeasonalNext(today) is { } next)
+                            {
+                                <span> Next: <strong>@next.Theme.Label</strong> on @next.On.ToString("MMMM d").</span>
+                            }
+                        </p>
+                    }
+                    else
+                    {
+                        <p class="text-xs text-dark-text-muted">Choose your preferred color scheme</p>
+                    }
                     @if (WaitingFor is { } season)
                     {
                         <p class="text-xs text-warning">
                             Saved, but out of season, so the app is showing your system theme until
-                            @season. Turn on "Show all themes" below to use it now.
+                            @season. Pick <strong>Seasonal</strong> above to have the seasons arrive
+                            on their own, or turn on "Show all themes" below to use this one now.
                         </p>
                     }
                     @if (UnseenEffect is { } effect)
@@ -108,8 +143,10 @@
                 <div>
                     <label for="show-all-themes" class="text-sm font-medium text-dark-text cursor-pointer">Show all themes</label>
                     <p class="text-xs text-dark-text-muted">
-                        Offer every seasonal theme year-round. Off by default, so they arrive on
-                        their own when the date comes round.
+                        List every seasonal theme whatever the date, so you can pick one out of its
+                        window and see it now. This only changes what the dropdown offers — for a
+                        theme that changes itself when the season does, choose <strong>Seasonal</strong>
+                        above.
                     </p>
                 </div>
                 <label class="relative inline-flex items-center cursor-pointer">
@@ -133,25 +170,79 @@
     </div>
 
     <!-- Workspace Settings -->
+    @* Two defaults for the Projects tab, and nothing that changes what is already on it: one
+       decides where its folder pickers open, the other what a group card looks like before
+       anyone has touched it. *@
     <div class="modern-card">
         <div class="border-b border-dark-border pb-4 mb-6">
             <h2 class="text-2xl font-semibold text-dark-text flex items-center space-x-2">
                 <i class="bi bi-folder text-accent-blue"></i>
                 <span>Workspace Settings</span>
             </h2>
+            <p class="text-sm text-dark-text-muted mt-2">
+                Defaults for the Projects tab. Neither one moves or rewrites anything you already
+                have — they decide where a new dialog starts.
+            </p>
         </div>
-        
-        <div class="space-y-4">
+
+        <div class="space-y-6">
             <div class="space-y-2">
                 <label for="default-workspace" class="block text-sm font-medium text-dark-text">Default Workspace Location</label>
                 <div class="flex space-x-2">
-                    <input type="text" id="default-workspace" value="C:\Projects" class="input-modern flex-1" />
-                    <button class="btn-secondary flex items-center space-x-2">
+                    @* Editable rather than a read-only PathBrowser: the folders these projects
+                       live in are as often a UNC share as a local drive, and typing
+                       \fileserver01\... beats browsing to it. *@
+                    <input type="text" id="default-workspace" class="input-modern flex-1"
+                           placeholder="No default — pickers open on This PC"
+                           @bind="defaultWorkspaceLocation" @bind:after="OnWorkspaceDefaultsChangedAsync" />
+                    <button type="button" class="btn-secondary flex items-center space-x-2" @onclick="BrowseDefaultWorkspaceLocationAsync">
                         <i class="bi bi-folder"></i>
                         <span>Browse</span>
                     </button>
                 </div>
-                <p class="text-xs text-dark-text-muted">Default location for new workspaces and projects</p>
+                <p class="text-xs text-dark-text-muted">
+                    Where the folder pickers start when you add a workspace, a location or a scan
+                    folder. Leave it empty for no opinion.
+                </p>
+                @if (DefaultLocationMissing)
+                {
+                    @* Saved anyway. A share that is merely offline is still the right answer
+                       tomorrow, and refusing it would be worse than opening on This PC today. *@
+                    <p class="text-xs text-warning">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        Not reachable right now, so pickers will fall back to This PC. Saved as typed.
+                    </p>
+                }
+            </div>
+
+            @* Same switch markup as the Appearance toggles, character for character: the Tailwind
+               build is prebuilt, so a class this project does not already use is a class that is
+               not in output.css. *@
+            <div class="flex items-center justify-between p-4 bg-dark-surface rounded-lg">
+                <div>
+                    <label for="expand-groups" class="text-sm font-medium text-dark-text cursor-pointer">Expand groups by default</label>
+                    <p class="text-xs text-dark-text-muted">
+                        Open every group card on the Projects tab instead of showing it collapsed.
+                        Expanding or collapsing a card by hand still wins for the rest of the session.
+                    </p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="expand-groups" class="sr-only peer"
+                           checked="@expandGroupsByDefault" @onchange="OnExpandGroupsChangedAsync" />
+                    <div class="w-11 h-6 bg-dark-border peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-accent-blue/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent-blue"></div>
+                </label>
+            </div>
+
+            <div class="flex items-center justify-between p-4 bg-dark-surface rounded-lg">
+                <div>
+                    <label for="quick-open" class="text-sm font-medium text-dark-text cursor-pointer">Quick-open buttons per card</label>
+                    <p class="text-xs text-dark-text-muted">
+                        One-click Open buttons on a collapsed card, one per location, up to this many.
+                        0 turns them off; 5 is the most a card can show without wrapping.
+                    </p>
+                </div>
+                <input type="number" id="quick-open" class="input-modern w-20" min="0" max="5"
+                       @bind="quickOpenButtons" @bind:after="OnQuickOpenChangedAsync" />
             </div>
         </div>
     </div>
@@ -470,7 +561,23 @@
     private string selectedTheme = ThemeOptions.System;
     private bool themeAnimations = true;
     private bool showAllThemes;
+
     private string? themeError;
+
+    // --- workspace defaults ---
+
+    private string defaultWorkspaceLocation = "";
+    private bool expandGroupsByDefault;
+
+    /// <summary>Bound to a number input, so it is clamped on save rather than trusted.</summary>
+    private int quickOpenButtons = 3;
+
+    /// <summary>
+    /// A default location that is set but not currently reachable. Worth saying out loud and not
+    /// worth refusing: an offline share is still the right answer once it is back.
+    /// </summary>
+    private bool DefaultLocationMissing =>
+        !string.IsNullOrWhiteSpace(defaultWorkspaceLocation) && !Directory.Exists(defaultWorkspaceLocation.Trim());
     private string? statusMessage;
     private bool statusIsError;
 
@@ -534,6 +641,9 @@
         selectedTheme = settings.Theme;
         themeAnimations = settings.ThemeAnimations;
         showAllThemes = settings.ShowAllThemes;
+        defaultWorkspaceLocation = settings.DefaultWorkspaceLocation;
+        expandGroupsByDefault = settings.ExpandGroupsByDefault;
+        quickOpenButtons = settings.QuickOpenButtonCount;
         RefreshOffered();
 
         // A malformed ui_settings.yaml leaves the dropdown showing defaults that
@@ -572,7 +682,92 @@
         selectedTheme = defaults.Theme;
         themeAnimations = defaults.ThemeAnimations;
         showAllThemes = defaults.ShowAllThemes;
+        defaultWorkspaceLocation = defaults.DefaultWorkspaceLocation;
+        expandGroupsByDefault = defaults.ExpandGroupsByDefault;
+        quickOpenButtons = defaults.QuickOpenButtonCount;
+        Cards.DefaultGroupsExpanded = expandGroupsByDefault;
         await ApplyAndSaveThemeAsync();
+    }
+
+    // --- workspace defaults ---
+
+    /// <summary>
+    /// Opens a folder picker at whatever is already in the box. WinForms directly, the way
+    /// <c>PathBrowser</c> does it: this is a desktop application and the native dialog is the one
+    /// that can reach a mapped drive and a UNC share.
+    /// </summary>
+    private async Task BrowseDefaultWorkspaceLocationAsync()
+    {
+        try
+        {
+            // Fully qualified rather than a using: System.Windows.Forms carries a Label, a Button
+            // and a Timer, and importing it into a Razor page is how those start colliding with
+            // the framework's own types.
+            using var dialog = new System.Windows.Forms.FolderBrowserDialog
+            {
+                Description = "Default workspace location",
+                UseDescriptionForTitle = true,
+                ShowNewFolderButton = true,
+                RootFolder = Environment.SpecialFolder.MyComputer
+            };
+
+            var current = defaultWorkspaceLocation.Trim();
+            if (current.Length > 0 && Directory.Exists(current)) dialog.SelectedPath = current;
+
+            if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+
+            defaultWorkspaceLocation = dialog.SelectedPath;
+            await SaveWorkspaceDefaultsAsync();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException)
+        {
+            SetStatus($"Could not open the folder picker: {ex.Message}", isError: true);
+        }
+    }
+
+    private Task OnWorkspaceDefaultsChangedAsync() => SaveWorkspaceDefaultsAsync();
+
+    private async Task OnQuickOpenChangedAsync()
+    {
+        // Reflected straight back into the box, so a 9 typed into it visibly becomes the 5 that
+        // was saved rather than sitting there disagreeing with the file.
+        quickOpenButtons = Math.Clamp(quickOpenButtons, 0, 5);
+        await SaveWorkspaceDefaultsAsync();
+    }
+
+    private async Task OnExpandGroupsChangedAsync(ChangeEventArgs e)
+    {
+        expandGroupsByDefault = e.Value is true;
+
+        // Pushed into the live service as well as the file, so the Projects tab agrees with this
+        // switch the moment you get back to it rather than at the next launch.
+        Cards.DefaultGroupsExpanded = expandGroupsByDefault;
+        await SaveWorkspaceDefaultsAsync();
+    }
+
+    private async Task SaveWorkspaceDefaultsAsync()
+    {
+        try
+        {
+            var settings = await UiSettings.GetAsync();
+
+            // Trimmed on the way in: a trailing space survives YAML round-tripping intact and then
+            // fails Directory.Exists for a reason nobody can see.
+            settings.DefaultWorkspaceLocation = defaultWorkspaceLocation.Trim();
+            settings.ExpandGroupsByDefault = expandGroupsByDefault;
+
+            // Clamped here rather than trusted from the input: a number box accepts anything
+            // typed into it, min and max only stop the spinner.
+            settings.QuickOpenButtons = Math.Clamp(quickOpenButtons, 0, 5);
+            await UiSettings.SaveAsync(settings);
+
+            defaultWorkspaceLocation = settings.DefaultWorkspaceLocation;
+            SetStatus("Settings saved", isError: false);
+        }
+        catch (InvalidOperationException ex)
+        {
+            SetStatus($"Not saved: {ex.Message}", isError: true);
+        }
     }
 
     private async Task ApplyAndSaveThemeAsync()

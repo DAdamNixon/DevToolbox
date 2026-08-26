@@ -17,6 +17,87 @@
  * The rule is min-width: 0 on every ancestor between the card and the path.
  */
 
+
+/* ── One chevron for every dropdown ──────────────────────────────────────────
+   There were three different ones on screen at once: Chromium's own arrow on a
+   <select>, Bootstrap Icons' chevron-down on the hand-rolled panels, and
+   Bootstrap CSS's arrow on the one .form-select left in the app. Three shapes,
+   three sizes, three greys.
+
+   The shape is declared once, here, as a path rather than as an icon-font glyph.
+   A <select> is a replaced element and cannot carry a ::before to hang a glyph
+   on, so a background image is the only way to give it this shape at all — and
+   once the selects need a path, the buttons may as well use the same one instead
+   of a font that merely resembles it.
+
+   The colour is deliberately not the theme's muted text. A <select> can only take
+   this shape as a background image, and a background image cannot read a custom
+   property for its fill — so the colour has to be baked into the URI. Every
+   palette tints its muted text differently (green under Christmas, orange under
+   Fall), which would leave a select's chevron and a button's chevron visibly
+   different hues in the same row. One neutral for both instead: the chevron is
+   chrome, not text, and every dropdown in the app now agrees.
+
+   Hence --chevron-color for the masked buttons and a URI baked to match it. Two
+   values, one for dark grounds and one for light, and only two because there are
+   only two light-grounded palettes — ThemeCatalogTests fails if that changes.
+
+   These four literals are the exception to this file's no-hardcoded-colour rule,
+   and the only one. They cannot be rgb(var(--c-…)) because a background image's
+   fill is not a place a custom property can be read, and the button has to match
+   the select rather than the other way round. They are not arbitrary either: both
+   are the base palette's own --c-text-muted, dark ground and light ground, as
+   written in theme.css. */
+:root {
+    --chevron-shape: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
+    --chevron-color: #a1a1aa;
+    --chevron-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23a1a1aa'%3E%3Cpath d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
+}
+
+/* The light-grounded palettes. Keep in step with the `color-scheme: light`
+   declarations in theme.css and css/themes/. */
+:root[data-theme="light"],
+:root[data-theme="winter"] {
+    --chevron-color: #52525b;
+    --chevron-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%2352525b'%3E%3Cpath d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
+}
+
+/* Every dropdown in the app, whatever class it happens to carry. :not([multiple])
+   because a list box is not a dropdown and has no arrow to replace. */
+select:not([multiple]) {
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: var(--chevron-image);
+    background-repeat: no-repeat;
+    background-position: right 0.625rem center;
+    background-size: 0.75rem 0.75rem;
+    padding-right: 2rem;
+}
+
+/* The same shape for the hand-rolled dropdowns — the location picker, the log
+   file box — where currentColor keeps it in step with the text beside it. */
+.dropdown-chevron {
+    display: inline-block;
+    flex: none;
+    width: 0.75rem;
+    height: 0.75rem;
+    background-color: var(--chevron-color);
+    -webkit-mask-image: var(--chevron-shape);
+    mask-image: var(--chevron-shape);
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    transition: transform 150ms ease;
+}
+
+/* Open panels turn the chevron over rather than swapping it for chevron-up: one
+   glyph to keep consistent, and the turn is what reads as "this is open". */
+.dropdown-chevron.is-open {
+    transform: rotate(180deg);
+}
 /*
  * Utilities the committed output.css does not contain. Tailwind only emits classes
  * it saw at build time, and these were never used before, so the markup that asks
@@ -33,29 +114,135 @@
 .mb-3 { margin-bottom: 0.75rem; }
 .mt-3 { margin-top: 0.75rem; }
 
+/* ── Page header ──────────────────────────────────────────────────────────────
+   One row: title, count, toolbar. It was a 4xl heading over a subtitle over a
+   separate toolbar row, with mb-8 under the lot — about 150px before the first
+   card, on a screen whose whole job is showing cards. */
+
+.ws-page-head {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.75rem;
+    margin-bottom: 0.75rem;
+    min-width: 0;
+}
+
+.ws-page-title {
+    font-size: 1.375rem;
+    font-weight: 700;
+    line-height: 1.2;
+    flex: 0 0 auto;
+}
+
+.ws-page-meta {
+    font-size: 0.8125rem;
+    color: rgb(var(--c-text-muted));
+    white-space: nowrap;
+    flex: 0 0 auto;
+}
+
 /* ── Group card ──────────────────────────────────────────────────────────── */
+
+/* Stacked with a gap rather than space-y-6: 1.5rem between full-width cards is a
+   lot of nothing once the cards themselves are dense. 0.75rem rather than 0.5rem
+   because at 0.5rem the rows read as one block instead of seven cards. */
+.ws-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+/* Overrides .glow-card's p-6/rounded-xl. Editing the Tailwind source instead would
+   mean an npm rebuild of a committed output.css, and would change every other panel
+   in the app along with these. */
+.ws-group-card {
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+}
+
+/* The lift and the glow are wrong for a list. A full-width card rising 4px on hover
+   moves every card below it, and with cards this close together the pointer crosses
+   several on the way anywhere. Colour is enough of a hover signal. */
+.ws-group-card:hover,
+.ws-card:hover {
+    transform: none;
+}
+
+.ws-group-card.is-expanded,
+.ws-card.is-expanded {
+    border-color: rgb(var(--c-accent-blue) / 0.5);
+}
+
+/* Halved rather than hidden: a card that vanishes mid-drag takes the drop targets
+   around it with it, because the list reflows under the cursor. */
+.ws-group-card.is-dragging {
+    opacity: 0.45;
+}
+
+/* Where the dragged card lands. A top border rather than a ring, because the
+   answer to "where exactly" is a line, not an area. */
+.ws-group-card.is-drop-target {
+    box-shadow: inset 0 3px 0 0 rgb(var(--c-accent-blue));
+    border-color: rgb(var(--c-accent-blue) / 0.6);
+}
 
 .ws-group-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.75rem;
+    gap: 0.5rem;
     min-width: 0;
 }
 
 .ws-group-title {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 0.5rem;
     min-width: 0;
     flex: 1 1 auto;
+}
+
+/* The drag handle. Faint until the card is hovered, because it is scenery the rest
+   of the time — but never invisible, or nobody would find out the cards move. */
+.ws-grip {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    padding: 0 0.0625rem;
+    margin-left: -0.25rem;
+    color: rgb(var(--c-text-muted));
+    opacity: 0.35;
+    cursor: grab;
+    transition: opacity 0.15s ease-out, color 0.15s ease-out;
+}
+
+.ws-group-card:hover .ws-grip {
+    opacity: 0.9;
+}
+
+.ws-grip:active {
+    cursor: grabbing;
+}
+
+/* Expand state, stated rather than implied by a ring. */
+.ws-chev {
+    flex: 0 0 auto;
+    font-size: 0.75rem;
+    color: rgb(var(--c-text-muted));
 }
 
 .ws-group-title > .ws-icon {
     flex: 0 0 auto;
 }
 
+/* Was .workspace-card-title (text-lg, and blue on hover, which is a link's colour on
+   something that is not a link). Sized here so the header is one line at this density. */
 .ws-group-name {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: rgb(var(--c-text));
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -88,11 +275,14 @@
 
 /* ── Workspace grid ──────────────────────────────────────────────────────── */
 
+/* 17rem columns, not 20rem: a collapsed card holds a name, a count and up to three
+   short chips, and the extra 3rem bought nothing but a narrower grid. On a 1900px
+   window this is six columns where it was five. */
 .ws-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
-    gap: 1rem;
-    margin-top: 1.5rem;
+    grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+    gap: 0.5rem;
+    margin-top: 0.5rem;
     min-width: 0;
     /* Without this, grid's default stretch makes every collapsed card as tall as the
        one expanded card in its row — a row of empty boxes with a title floating at
@@ -110,23 +300,40 @@
     min-width: 0;
 }
 
+/* Overrides .workspace-card's p-6 and its hover:scale-[1.02]. The scale was the worse
+   of the two: scaling a card of 13px text resamples the glyphs and everything on it
+   goes momentarily soft. */
+.ws-card {
+    padding: 0.5rem 0.625rem;
+    border-radius: 0.5rem;
+}
+
+/* Pinned cards read as promoted without a second colour: a left edge in the accent,
+   which also survives being next to a card that is merely hovered. */
+.ws-card.is-pinned {
+    border-left: 2px solid rgb(var(--c-warning));
+}
+
 .ws-card-header {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
-    gap: 0.5rem;
+    gap: 0.375rem;
     min-width: 0;
 }
 
 .ws-card-title {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.375rem;
     min-width: 0;
     flex: 1 1 auto;
 }
 
 .ws-card-name {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: rgb(var(--c-text));
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -155,24 +362,146 @@
     opacity: 1;
 }
 
+/* A pinned card keeps its star lit even unhovered: it is state, not an action, and a
+   pin you cannot see is a pin you set twice. */
+.ws-card.is-pinned .ws-actions {
+    opacity: 1;
+}
+
+/* The ⋮ buttons. Was `p-2 rounded-lg` — 0.5rem of padding round a 16px glyph, which
+   set the height of the whole card header. */
+.ws-icon-btn {
+    padding: 0.125rem 0.25rem;
+    border-radius: 0.375rem;
+    line-height: 1;
+}
+
+/* ── Pin ─────────────────────────────────────────────────────────────────── */
+
+.ws-pin {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    padding: 0.125rem 0.25rem;
+    border: none;
+    border-radius: 0.375rem;
+    background: transparent;
+    color: rgb(var(--c-text-muted));
+    font-size: 0.8125rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: color 0.15s ease-out, background-color 0.15s ease-out;
+}
+
+.ws-pin:hover {
+    background-color: rgb(var(--c-surface-hover));
+    color: rgb(var(--c-warning));
+}
+
+.ws-pin.is-on {
+    color: rgb(var(--c-warning));
+}
+
+/* ── Quick open ──────────────────────────────────────────────────────────────
+   The whole point of the collapsed card: the two or three things you actually open,
+   one click each, without expanding anything. Sized as chips rather than buttons so
+   three of them fit on one line of a 17rem column. */
+
+.ws-quick {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3125rem;
+    margin-top: 0.375rem;
+    min-width: 0;
+}
+
+/* The anchor a chip's right-click menu hangs off. It carries the width constraint the chip used
+   to hold, since the chip is no longer the flex item. */
+.ws-quick-anchor {
+    display: inline-flex;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.ws-quick-btn,
+.ws-quick-more {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3125rem;
+    max-width: 100%;
+    padding: 0.1875rem 0.5625rem;
+    border: 1px solid rgb(var(--c-border));
+    border-radius: 9999px;
+    background-color: rgb(var(--c-bg) / 0.55);
+    color: rgb(var(--c-text));
+    font-size: 0.8125rem;
+    line-height: 1.35;
+    cursor: pointer;
+    transition: border-color 0.15s ease-out, background-color 0.15s ease-out;
+}
+
+.ws-quick-btn > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.ws-quick-btn:hover,
+.ws-quick-more:hover {
+    border-color: rgb(var(--c-accent-blue));
+    background-color: rgb(var(--c-surface-hover));
+}
+
+.ws-quick-more {
+    color: rgb(var(--c-text-muted));
+}
+
+/* ── Add-workspace tile ──────────────────────────────────────────────────────
+   Was a dashed box the height of a real card with a 2xl icon centred in it, which
+   left the last row of every group half empty. One row, same affordance. */
+
+.ws-add-tile {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px dashed rgb(var(--c-border));
+    border-radius: 0.5rem;
+    background: transparent;
+    color: rgb(var(--c-text-muted));
+    font-size: 0.8125rem;
+    cursor: pointer;
+    transition: border-color 0.15s ease-out, color 0.15s ease-out;
+}
+
+.ws-add-tile:hover {
+    border-color: rgb(var(--c-accent-blue) / 0.6);
+    color: rgb(var(--c-accent-blue));
+}
+
 /* ── Location row ────────────────────────────────────────────────────────── */
 
 .ws-locations {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    margin-top: 1rem;
+    gap: 0.25rem;
+    margin-top: 0.5rem;
     min-width: 0;
 }
 
 .ws-loc {
     display: flex;
     align-items: center;
-    gap: 0.625rem;
+    gap: 0.5rem;
     min-width: 0;
-    padding: 0.5rem 0.625rem;
+    padding: 0.3125rem 0.5rem;
     border: 1px solid rgb(var(--c-border));
-    border-radius: 0.5rem;
+    border-radius: 0.375rem;
     background-color: rgb(var(--c-bg) / 0.55);
     transition: border-color 0.15s ease-out, background-color 0.15s ease-out;
 }
@@ -267,11 +596,17 @@
    claiming otherwise is simply wrong. The items inside the menu set their own pointer back. */
 .ws-locations,
 .ws-grid,
+.ws-quick,
 .ws-menu {
     cursor: default;
 }
 
-/* Menus were clipping inside the card and running off the right edge of narrow cards. */
+/* Menus were clipping inside the card and running off the right edge of narrow cards.
+
+   right: 0 is correct for what opens most of them — a ⋮ at a card's top-right, with all the
+   room to its left. A quick-open chip is the opposite case and overrides it below. Neither
+   alignment can be right at every screen position, so js/dashboard.js nudges whatever is left
+   hanging off an edge back into the window. */
 .ws-menu {
     position: absolute;
     right: 0;
@@ -286,6 +621,14 @@
     border-radius: 0.75rem;
     box-shadow: 0 10px 25px -3px rgb(0 0 0 / calc(0.5 * var(--shadow-strength))), 0 4px 6px -2px rgb(0 0 0 / calc(0.35 * var(--shadow-strength)));
     padding: 0.375rem;
+}
+
+/* A chip sits at the left of its card with the room to its right, so right-aligning a 13rem
+   menu to one threw it 13rem leftward — off the window entirely for anything in the first
+   column, which is what a right-click on the left-most card did. */
+.ws-quick-anchor > .ws-menu {
+    right: auto;
+    left: 0;
 }
 
 .ws-menu .dropdown-item {
@@ -320,14 +663,118 @@
 
 /* ── Header toolbar ──────────────────────────────────────────────────────── */
 
+/* One row with the title, rather than the flex column that collapsed at md:.
+   flex: 1 1 auto and justify-content, not margin-left: auto — an auto margin absorbs
+   the free space instead of handing it to the item, so the toolbar was sized as if the
+   room were not there and wrapped its last button onto a second line at 1280px. */
 .ws-toolbar {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    justify-content: flex-end;
+    gap: 0.375rem;
+    flex: 1 1 auto;
     flex-wrap: wrap;
+    min-width: 0;
+}
+
+/* The search box, with its icon inside it rather than absolutely positioned over a
+   pl-10 input. Same look, one element to size. Shrinks a long way before anything
+   wraps: a narrow search box is better than a second row of chrome. */
+.ws-search {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    flex: 0 1 20rem;
+    min-width: 8rem;
+    padding: 0 0.5rem;
+    border: 1px solid rgb(var(--c-border));
+    border-radius: 0.375rem;
+    background-color: rgb(var(--c-surface));
+}
+
+.ws-search:focus-within {
+    border-color: rgb(var(--c-accent-blue));
+}
+
+.ws-search > i {
+    flex: 0 0 auto;
+    font-size: 0.8125rem;
+    color: rgb(var(--c-text-muted));
+}
+
+/* The input keeps .ws-input for its typography and loses its own box, which is now
+   the wrapper's job. */
+.ws-search > .ws-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0.3125rem 0;
+    border: none;
+    background: transparent;
+}
+
+.ws-search > .ws-input:focus {
+    border: none;
+    box-shadow: none;
+    outline: none;
+}
+
+.ws-search-clear {
+    flex: 0 0 auto;
+    padding: 0 0.125rem;
+    border: none;
+    background: transparent;
+    color: rgb(var(--c-text-muted));
+    font-size: 0.6875rem;
+    cursor: pointer;
+}
+
+.ws-search-clear:hover {
+    color: rgb(var(--c-text));
+}
+
+/* Toolbar buttons. .btn-secondary is px-4 py-2 with a 300ms transition and a hover
+   glow — fine for one button on a form, four of them across a header is a band of
+   chrome. These are the same shape as the location rows they sit above. */
+.ws-tool {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    flex: 0 0 auto;
+    padding: 0.3125rem 0.625rem;
+    border: 1px solid rgb(var(--c-border));
+    border-radius: 0.375rem;
+    background-color: rgb(var(--c-surface));
+    color: rgb(var(--c-text));
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: border-color 0.15s ease-out, background-color 0.15s ease-out;
+}
+
+.ws-tool:hover:not(:disabled) {
+    border-color: rgb(var(--c-accent-blue) / 0.6);
+    background-color: rgb(var(--c-surface-hover));
+}
+
+.ws-tool:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.ws-tool.is-primary {
+    border-color: rgb(var(--c-accent-blue));
+    background-color: rgb(var(--c-accent-blue));
+    color: #fff;
+}
+
+.ws-tool.is-primary:hover:not(:disabled) {
+    background-color: rgb(var(--c-accent-blue-hover));
+    border-color: rgb(var(--c-accent-blue-hover));
 }
 
 .ws-scan-note {
+    margin-bottom: 0.5rem;
     font-size: 0.75rem;
     color: rgb(var(--c-text-muted));
 }
@@ -336,7 +783,39 @@
     color: rgb(var(--c-danger-text));
 }
 
-/* Failed opens used to vanish into Console.WriteLine; this is where they land now. */
+/* ── Chips ───────────────────────────────────────────────────────────────────
+   A short label in a pill: a location name in the scan preview, an alias in the
+   alias dialog. */
+
+.ws-chip {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    padding: 0.0625rem 0.375rem;
+    border: 1px solid rgb(var(--c-border));
+    border-radius: 9999px;
+    background-color: rgb(var(--c-bg) / 0.5);
+    color: rgb(var(--c-text));
+    font-size: 0.6875rem;
+    white-space: nowrap;
+}
+
+.ws-chip.is-warn {
+    border-color: rgb(var(--c-warning) / 0.5);
+    color: rgb(var(--c-warning));
+}
+
+.ws-alias-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-top: 0.5rem;
+}
+
+/* Failed opens used to vanish into Console.WriteLine; this is where they land now.
+   Spacing stays out of this rule: the class is shared with the Host Changer and Log Viewer
+   dialogs, several of which set their own mb-4 — and dashboard.css loads after output.css,
+   so a margin here would win and silently shrink theirs. Callers space it. */
 .ws-notice {
     display: flex;
     align-items: flex-start;
@@ -1119,6 +1598,87 @@
     padding: 0.625rem 1rem;
 }
 
+/* ── Log Viewer: a field with its own chevron and clear button ───────────────
+   Chromium draws a datalist's arrow inside the input's right *padding*, not
+   against its border. So reserving space on that side for the clear button moved
+   the arrow inward with it, and the two ended up floating apart in the middle of
+   the field. Hiding the native one and drawing our own is the only way to decide
+   where either sits: chevron against the right edge, clear button just inboard of
+   it, and the clear button only rendered when there is something to clear.
+
+   The hide rule is on the input's own class with no combinator in front of it.
+   Chromium's UA shadow pseudo-elements do not match through a child combinator —
+   `.wrapper > input::-webkit-calendar-picker-indicator` silently does nothing,
+   which is how the native arrow survived the first attempt at this.
+
+   Padding on the input rather than a bordered wrapper: input-modern owns the
+   border and the focus ring, and reproducing those on a container is how you get
+   two rings that disagree. */
+.log-input-clearable {
+    position: relative;
+}
+
+/* !important is doing real work here: Chromium's own sheet styles this thing, and a
+   UA rule marked important outranks a plain author one. The second selector is the
+   name Blink used for the same button before it was folded into the indicator, and
+   costs nothing where it is not recognised. */
+.log-input-with-list::-webkit-calendar-picker-indicator {
+    display: none !important;
+}
+
+.log-input-with-list::-webkit-list-button {
+    display: none !important;
+}
+
+.log-input-with-list {
+    /* Room for both, always — the field must not reflow when the clear button
+       appears on the first keystroke. */
+    padding-right: 3.75rem;
+}
+
+.log-input-list,
+.log-input-clear {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
+    border: 0;
+    border-radius: 0.375rem;
+    background: transparent;
+    color: rgb(var(--c-text-muted));
+    line-height: 1;
+    cursor: pointer;
+    transition: color 150ms ease, background-color 150ms ease;
+}
+
+.log-input-list:hover,
+.log-input-clear:hover {
+    background-color: rgb(var(--c-surface-hover));
+    color: rgb(var(--c-text));
+}
+
+.log-input-clear:focus-visible {
+    outline: 2px solid rgb(var(--c-accent-blue));
+    outline-offset: 1px;
+}
+
+.log-input-list {
+    right: 0.375rem;
+    font-size: 0.75rem;
+}
+
+/* Immediately inboard of the chevron, with a hair of space so the two read as two
+   controls rather than one wide one. */
+.log-input-clear {
+    right: 2rem;
+    font-size: 0.6875rem;
+}
+
 /* ── results table, dense ─────────────────────────────────────────────────── */
 
 /* Fills the window rather than a hardcoded 600px. The subtracted constant is
@@ -1348,6 +1908,140 @@ tr.log-row-expanded td {
     }
 }
 
+
+/* ── PowerShell tab: layout ──────────────────────────────────────────────────
+   This tab was the last one still carrying the original chrome: a 4xl heading, a
+   subtitle restating what the tab is, and — the expensive part — an inner p-6
+   inside each modern-card, which already pads itself. Every pane was therefore
+   3rem from its own edge, and the editor and the parameter form were paying for
+   it in the only direction that matters here.
+
+   Padding lives on .ps-pane and nowhere else, so it cannot double up again. The
+   grid is a fixed sidebar and a column that takes the rest: minmax(0, …) on both,
+   because a grid track sized by content refuses to shrink below its longest
+   unbreakable string, and a script name is exactly that. */
+.ps-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 15rem) minmax(0, 1fr);
+    gap: 0.75rem;
+    /* The shell owns the scroll, so this is the window minus the nav, the footer
+       and this tab's own one-line head. */
+    height: calc(100dvh - 8.5rem);
+    min-height: 24rem;
+}
+
+/* One column on a narrow window, and no fixed height — stacked panes need to be
+   able to grow past the viewport rather than squeeze into half of it. */
+@media (max-width: 1024px) {
+    .ps-layout {
+        grid-template-columns: minmax(0, 1fr);
+        height: auto;
+    }
+}
+
+.ps-pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    padding: 0.75rem;
+}
+
+/* The divider under the search box reaches the card's edges. Inset by the pane's
+   padding it read as an underline on the input rather than as a division of the
+   card, which is what made the sidebar look like two floating things. */
+.ps-pane-head {
+    margin: -0.75rem -0.75rem 0.625rem;
+    padding: 0.75rem;
+    border-bottom: 1px solid rgb(var(--c-border));
+}
+
+.ps-script-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    margin-bottom: 0.625rem;
+}
+
+.ps-script {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.375rem 0.5rem;
+    border: 0;
+    border-radius: 0.375rem;
+    background: transparent;
+    color: rgb(var(--c-text));
+    font-size: 0.8125rem;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 150ms ease;
+}
+
+.ps-script > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ps-script:hover {
+    background-color: rgb(var(--c-surface-hover));
+}
+
+.ps-script.is-active {
+    background-color: rgb(var(--c-accent-blue));
+    color: #fff;
+}
+
+/* The row above the editor: name on the left, the validation controls on the
+   right, and no 2xl heading — the sidebar already says which script is open. */
+.ps-editor-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.75rem;
+    margin-bottom: 0.625rem;
+}
+
+.ps-editor-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: rgb(var(--c-text));
+}
+
+.ps-editor-title > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* The stack between the head and the buttons. 0.625rem rather than space-y-4:
+   with the editor, the parameter form, the output pane and a button row all in
+   one column, 1rem between each was most of a screen of nothing. */
+.ps-editor-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.ps-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding-top: 0.625rem;
+    border-top: 1px solid rgb(var(--c-border));
+}
 /* ── PowerShell tab: script editor ───────────────────────────────────────────
    The editor pane holds a label and a textarea that fills what is left. Plain
    CSS because Tailwind's min-h-0 is not in the committed output.css, and a
@@ -1366,8 +2060,313 @@ tr.log-row-expanded td {
     overflow: auto;
 }
 
+/* ── PowerShell tab: the parameter form ──────────────────────────────────────
+   One row per parameter the script declares, built from its param() block. The
+   label column is fixed so a script with six parameters reads as a form rather
+   than as six differently-indented lines; the control column takes the rest.
+
+   The whole block scrolls rather than the card: a script can declare more
+   parameters than there is room for below a 300px editor, and pushing the Run
+   button off the bottom of the pane is how it stops being clickable. */
+.ps-params {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 16rem;
+    overflow-y: auto;
+    padding-right: 0.25rem;
+}
+
+.ps-params-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.ps-param-row {
+    display: grid;
+    /* minmax(0, 1fr) rather than 1fr: a grid column sized by content will not let
+       a long path shrink, and the field pushes the Browse button off the edge. */
+    grid-template-columns: 10rem minmax(0, 1fr);
+    gap: 0.25rem 0.75rem;
+    align-items: start;
+}
+
+@media (max-width: 900px) {
+    .ps-param-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.ps-param-label {
+    padding-top: 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: rgb(var(--c-text));
+    overflow-wrap: anywhere;
+}
+
+/* Not colour alone — the tooltip and the notice below the form both name it. */
+.ps-param-required {
+    margin-left: 0.125rem;
+    color: rgb(var(--c-danger));
+    font-weight: 600;
+}
+
+.ps-param-control {
+    min-width: 0;
+}
+
+.ps-param-input-group {
+    display: flex;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.ps-param-hint {
+    margin-top: 0.25rem;
+    font-size: 0.6875rem;
+    color: rgb(var(--c-text-muted));
+    overflow-wrap: anywhere;
+}
+
+.ps-param-hint-sep {
+    margin: 0 0.375rem;
+    opacity: 0.6;
+}
+
+.ps-param-switch {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding-top: 0.5rem;
+    cursor: pointer;
+}
+
 /* ── Scan Folders dialog ─────────────────────────────────────────────────────
-   Eight stacked fields per source made a card taller than most screens, and
+   Master-detail: the sources down the left, one editor and its live preview on the
+   right. The previous shape — every source as a full card, stacked — meant the
+   dialog's height was the sum of all of them, and there was nothing to compare a
+   source against anyway. */
+
+.ws-sources {
+    display: grid;
+    grid-template-columns: 12rem minmax(0, 1fr);
+    gap: 1rem;
+    align-items: start;
+    min-width: 0;
+}
+
+@media (max-width: 760px) {
+    .ws-sources {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.ws-source-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.ws-source-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    text-align: left;
+    padding: 0.375rem 0.5rem;
+    border: 1px solid transparent;
+    border-radius: 0.375rem;
+    background: transparent;
+    color: rgb(var(--c-text));
+    cursor: pointer;
+    min-width: 0;
+    transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
+}
+
+.ws-source-item:hover {
+    background-color: rgb(var(--c-surface-hover) / 0.6);
+}
+
+.ws-source-item.is-active {
+    border-color: rgb(var(--c-accent-blue) / 0.6);
+    background-color: rgb(var(--c-surface-hover));
+}
+
+/* A disabled source is still listed — it is the thing you came here to re-enable. */
+.ws-source-item.is-off .ws-source-item-name {
+    text-decoration: line-through;
+    color: rgb(var(--c-text-muted));
+}
+
+.ws-source-item-name {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.ws-source-item-meta {
+    font-size: 0.6875rem;
+    color: rgb(var(--c-text-muted));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.ws-source-add {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin-top: 0.25rem;
+    padding: 0.375rem 0.5rem;
+    border: 1px dashed rgb(var(--c-border));
+    border-radius: 0.375rem;
+    background: transparent;
+    color: rgb(var(--c-text-muted));
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+
+.ws-source-add:hover {
+    border-color: rgb(var(--c-accent-blue) / 0.6);
+    color: rgb(var(--c-accent-blue));
+}
+
+.ws-source-editor {
+    min-width: 0;
+}
+
+.ws-editor-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+/* A field with a button on the end of it — the path, with Browse. */
+.ws-input-row {
+    display: flex;
+    align-items: stretch;
+    gap: 0.375rem;
+    min-width: 0;
+}
+
+.ws-input-row > .ws-input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* ── Scan preview ────────────────────────────────────────────────────────────
+   The cards this source would add, worked out while you type. Bounded height and
+   its own scroll: the answer for a real source is a hundred rows, and the fields
+   above it have to stay reachable. */
+
+.ws-preview {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid rgb(var(--c-border));
+    min-width: 0;
+}
+
+.ws-preview-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.5rem;
+}
+
+.ws-preview-stats {
+    font-size: 0.75rem;
+    color: rgb(var(--c-text-muted));
+}
+
+.ws-preview-empty {
+    padding: 0.75rem;
+    border: 1px dashed rgb(var(--c-border));
+    border-radius: 0.375rem;
+    font-size: 0.8125rem;
+    color: rgb(var(--c-text-muted));
+}
+
+.ws-preview-tree {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    max-height: 18rem;
+    overflow-y: auto;
+    padding: 0.5rem;
+    border: 1px solid rgb(var(--c-border));
+    border-radius: 0.375rem;
+    background-color: rgb(var(--c-bg) / 0.5);
+    min-width: 0;
+}
+
+.ws-preview-ws {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    min-width: 0;
+}
+
+.ws-preview-ws-head {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    min-width: 0;
+    font-size: 0.8125rem;
+}
+
+.ws-preview-ws-name {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+/* Indented under its card, so the workspace/location split the regex produced is
+   the shape of the list rather than something to be read off it. */
+.ws-preview-loc {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin-left: 1.25rem;
+    min-width: 0;
+    font-size: 0.75rem;
+    color: rgb(var(--c-text-muted));
+}
+
+/* An entry the name pattern did not match. Flagged, not hidden: a preview full of
+   these is the signal that the regex is wrong, and hiding them would make the
+   fallback look like the intended result. */
+.ws-preview-loc.is-fallback {
+    color: rgb(var(--c-warning));
+}
+
+.ws-preview-loc-path {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+.ws-preview-loc-desc {
+    flex: 0 0 auto;
+    font-style: italic;
+}
+
+/* Eight stacked fields per source made a card taller than most screens, and
    with several sources configured the dialog had no chance of fitting. Pairing
    them into two columns roughly halves that; the long ones still span. */
 .ws-source-grid {
@@ -1387,12 +2386,20 @@ tr.log-row-expanded td {
     }
 }
 
-/* Add and Save ride at the bottom of the scrolling body rather than after the
-   last source, so neither walks off the screen as sources are added. The
-   negative margins let the bar span the body's padding and sit flush. */
+/* Save rides at the bottom of the scrolling body rather than after the last source, so it
+   cannot walk off the screen as sources are added. The negative margins let the bar span
+   the body's padding and sit flush.
+
+   bottom: -1.5rem, not 0. A sticky box is clamped to its containing block's content box,
+   and the modal body is p-6 — so bottom: 0 parked the bar 1.5rem above the visible bottom
+   and the scan fields scrolled through the uncovered strip underneath it. The negative
+   bottom margin does not compensate for that on its own: it shrinks the container, which
+   makes the bar sit flush once you have scrolled to the end, but says nothing about where
+   the sticky clamp is while you are still scrolling. Offsetting by the same 1.5rem puts the
+   bar's bottom edge on the scrollport's bottom edge for the whole scroll. */
 .ws-sources-actions {
     position: sticky;
-    bottom: 0;
+    bottom: -1.5rem;
     z-index: 1;
     display: flex;
     align-items: center;
@@ -1608,6 +2615,51 @@ tr.log-row-expanded td {
     flex: 1 1 auto;
     min-height: 0;
     max-height: none;
+}
+
+/* ── Log Viewer: filters over the full-screen results ────────────────────────
+   Full screen covers the filter card, and Ctrl+F has to bring it back. This
+   raises the card that is already in page flow instead of the page rendering a
+   second copy of it: one set of inputs, so no duplicate ids and no second set
+   of handlers to keep in step.
+
+   No backdrop on purpose — the point of typing here is watching the rows behind
+   it change. z-index one above the results card (35), still below modals (40/50)
+   so a dialog opened from the row menu lands on top. */
+.log-filter-card.is-floating {
+    position: fixed;
+    top: 1rem;
+    left: 1rem;
+    right: 1rem;
+    z-index: 36;
+    max-width: 56rem;
+    margin: 0 auto;
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
+    border-color: rgb(var(--c-accent-blue) / 0.5);
+    box-shadow: 0 20px 45px -5px rgb(0 0 0 / calc(var(--shadow-strength) * 0.55));
+}
+
+/* modern-card lifts a quarter-rem on hover, which on a panel you are typing in
+   is just the field moving under the pointer. */
+.log-filter-card.is-floating:hover {
+    transform: none;
+}
+
+.log-filter-floating-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid rgb(var(--c-border));
+}
+
+/* Pushed to the far side of the header, next to the close button it describes. */
+.log-filter-floating-hint {
+    margin-left: auto;
+    font-size: 0.6875rem;
+    color: rgb(var(--c-text-muted));
 }
 
 /* ── Log Viewer: stripes across the whole line ───────────────────────────────

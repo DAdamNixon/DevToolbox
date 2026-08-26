@@ -99,6 +99,15 @@ namespace DevToolbox.UI
             services.AddSingleton<IYamlStorageService, YamlStorageService>();
             services.AddSingleton<IUiSettingsService, UiSettingsService>();
 
+            // Singleton for the reason named at the top of this method: it holds a cached config
+            // snapshot, and every writer of dashboardLayout.yaml writes the whole file from that
+            // snapshot. Two of them means last-writer-wins — and there are two ways to get two.
+            // The obvious one is the app's two hosts. The less obvious one is that Blazor Server
+            // builds a fresh DI scope per circuit, so a page reload gives the Projects tab a second
+            // cache while the outgoing circuit is still alive, and a pin or a drag from either can
+            // land on top of the other's file. One instance, one snapshot, no race.
+            services.AddSingleton<IDashboardLayoutService, DashboardLayoutService>();
+
             // Owns background monitor loops that must outlive any one page, and is
             // started from MainWindow rather than from the Service Pulse tab. As a
             // scoped service its Dispose tore down every timer whenever a scope
@@ -133,6 +142,7 @@ namespace DevToolbox.UI
             services.Borrow<IOpenHandlerService>(owner);
             services.Borrow<IYamlStorageService>(owner);
             services.Borrow<IUiSettingsService>(owner);
+            services.Borrow<IDashboardLayoutService>(owner);
             services.Borrow<IHealthMonitoringService>(owner);
             services.Borrow<IHostsSettingsService>(owner);
             services.Borrow<IHostsBackupService>(owner);

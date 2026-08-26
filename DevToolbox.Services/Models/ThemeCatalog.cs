@@ -39,6 +39,28 @@ public sealed record ThemeSeason(int StartMonth, int StartDay, int EndMonth, int
     /// </summary>
     public string Wire => $"{StartMonth:00}-{StartDay:00}..{EndMonth:00}-{EndDay:00}";
 
+    /// <summary>
+    /// How many days the window covers, both ends included. This is what decides overlaps:
+    /// Halloween sits inside Fall and Christmas inside Winter, and in both cases the narrower
+    /// window is the more specific answer — see <see cref="ThemeCatalog.SeasonalPick"/>.
+    /// <para>
+    /// Measured against a leap year so that 29 February — the far end of Winter — is a real date
+    /// here rather than one that has to be special-cased.
+    /// </para>
+    /// </summary>
+    public int LengthInDays
+    {
+        get
+        {
+            const int daysInLeapYear = 366;
+
+            var from = new DateOnly(2024, StartMonth, StartDay).DayOfYear;
+            var to = new DateOnly(2024, EndMonth, EndDay).DayOfYear;
+
+            return from <= to ? to - from + 1 : daysInLeapYear - from + to + 1;
+        }
+    }
+
     /// <summary>For the Settings hint: "Sep 1 – Nov 30".</summary>
     public string Describe()
     {
@@ -54,7 +76,11 @@ public sealed record ThemeSeason(int StartMonth, int StartDay, int EndMonth, int
 /// <param name="Season">When it is offered, or <c>null</c> for one that always is.</param>
 /// <param name="Effect">The animation it runs — <c>snow</c>, <c>leaves</c>, <c>bats</c> — or
 /// <c>null</c> for a still theme. Only ever honoured when the user has animations enabled.</param>
-public sealed record ThemeDefinition(string Id, string Label, ThemeSeason? Season, string? Effect)
+/// <param name="Automatic">Whether the <c>seasonal</c> mode is allowed to choose this one. False for
+/// a theme that exists only to be picked by hand — plain Christmas, which (Better)Christmas
+/// supersedes — and meaningless for a theme with no season, which the mode never considers anyway.
+/// </param>
+public sealed record ThemeDefinition(string Id, string Label, ThemeSeason? Season, string? Effect, bool Automatic = false)
 {
     public bool IsSeasonal => Season is not null;
 
@@ -86,17 +112,60 @@ public static class ThemeCatalog
     /// </summary>
     public static readonly IReadOnlyList<ThemeDefinition> All = new[]
     {
+        new ThemeDefinition(ThemeOptions.Seasonal, "Seasonal", null, null),
         new ThemeDefinition(ThemeOptions.System, "System Default", null, null),
         new ThemeDefinition(ThemeOptions.Dark, "Dark Theme", null, null),
         new ThemeDefinition(ThemeOptions.Light, "Light Theme", null, null),
 
-        new ThemeDefinition("fall", "Fall", new ThemeSeason(9, 1, 11, 30), "leaves"),
-        new ThemeDefinition("halloween", "Halloween", new ThemeSeason(10, 1, 10, 31), "bats"),
-        new ThemeDefinition("thanksgiving", "Thanksgiving", new ThemeSeason(11, 1, 11, 30), "leaves"),
-        new ThemeDefinition("winter", "Winter", new ThemeSeason(12, 1, 2, 29), "snow"),
+        new ThemeDefinition("fall", "Fall", new ThemeSeason(9, 1, 11, 30), "leaves", Automatic: true),
+        new ThemeDefinition("halloween", "Halloween", new ThemeSeason(10, 1, 10, 31), "bats", Automatic: true),
+        new ThemeDefinition("thanksgiving", "Thanksgiving", new ThemeSeason(11, 1, 11, 30), "leaves", Automatic: true),
+        new ThemeDefinition("winter", "Winter", new ThemeSeason(12, 1, 2, 29), "snow", Automatic: true),
+
+        // Not Automatic, deliberately: it shares its window with (Better)Christmas exactly, and
+        // (Better)Christmas is the one to arrive on its own. Still selectable by hand.
         new ThemeDefinition("christmas", "Christmas", new ThemeSeason(12, 1, 12, 31), "snow"),
-        new ThemeDefinition("better-christmas", "(Better)Christmas", new ThemeSeason(12, 1, 12, 31), "snow"),
+        new ThemeDefinition("better-christmas", "(Better)Christmas", new ThemeSeason(12, 1, 12, 31), "snow", Automatic: true),
     };
+
+    /// <summary>
+    /// The theme <c>seasonal</c> resolves to on this date, or null when nothing is in season and it
+    /// falls back to the system theme.
+    /// <para>
+    /// The rule is the shortest window wins. Windows nest rather than merely overlap — Halloween
+    /// inside Fall, Christmas inside Winter — and the narrower one is always the more specific
+    /// answer, so no hand-written priority list is needed and adding a season cannot silently
+    /// reorder the others. <c>ThemeCatalogTests</c> checks every day of the year for a tie, which is
+    /// the one way this rule can fail to have an answer.
+    /// </para>
+    /// </summary>
+    public static ThemeDefinition? SeasonalPick(DateOnly today) =>
+        All.Where(t => t.Automatic && t.Season is not null && t.Season.Contains(today))
+            .OrderBy(t => t.Season!.LengthInDays)
+            .FirstOrDefault();
+
+    /// <summary>
+    /// The next theme <c>seasonal</c> will switch to, and the date it does — so Settings can say
+    /// what is coming rather than only that nothing is happening.
+    /// <para>
+    /// Found by walking forward a day at a time. A year of iterations costs nothing and needs no
+    /// reasoning about wrapping windows, which is where a cleverer version would go wrong.
+    /// </para>
+    /// </summary>
+    public static (ThemeDefinition Theme, DateOnly On)? SeasonalNext(DateOnly today)
+    {
+        var current = SeasonalPick(today);
+
+        for (var ahead = 1; ahead <= 366; ahead++)
+        {
+            var date = today.AddDays(ahead);
+            var pick = SeasonalPick(date);
+
+            if (pick is not null && pick.Id != current?.Id) return (pick, date);
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// A phrase for an effect id, for a sentence like "This theme animates falling snow". A new

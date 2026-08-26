@@ -8,8 +8,8 @@
 // copy is checked rather than merely hoped for.
 //
 // The test parses this array with a regex. Keep one theme per line and keep the
-// field order — id, season, effect. Labels are deliberately absent: only the
-// Settings page renders a name and that comes from the C# side.
+// field order — id, season, effect, auto. Labels are deliberately absent: only
+// the Settings page renders a name and that comes from the C# side.
 //
 //   season   'MM-DD..MM-DD', or null for a theme that is always offered.
 //            A window may wrap the new year (Winter is '12-01..02-29'); the
@@ -17,17 +17,23 @@
 //            wrong and 02-29 simply includes the 28th every year.
 //   effect   the id of an animation in `effects` below, or null for a still
 //            theme. Standard themes never animate.
+//   auto     whether the 'seasonal' theme may resolve to this one. Where two
+//            windows overlap the shorter one wins, so nesting is enough to
+//            express "Halloween beats Fall in October" — but Christmas and
+//            (Better)Christmas cover exactly the same days, and that tie is
+//            broken here by leaving plain Christmas out of the running.
 window.devtoolboxThemes = {
     themes: [
-        { id: 'system',           season: null,           effect: null },
-        { id: 'dark',             season: null,           effect: null },
-        { id: 'light',            season: null,           effect: null },
-        { id: 'fall',             season: '09-01..11-30', effect: 'leaves' },
-        { id: 'halloween',        season: '10-01..10-31', effect: 'bats' },
-        { id: 'thanksgiving',     season: '11-01..11-30', effect: 'leaves' },
-        { id: 'winter',           season: '12-01..02-29', effect: 'snow' },
-        { id: 'christmas',        season: '12-01..12-31', effect: 'snow' },
-        { id: 'better-christmas', season: '12-01..12-31', effect: 'snow' }
+        { id: 'seasonal',         season: null,           effect: null,     auto: false },
+        { id: 'system',           season: null,           effect: null,     auto: false },
+        { id: 'dark',             season: null,           effect: null,     auto: false },
+        { id: 'light',            season: null,           effect: null,     auto: false },
+        { id: 'fall',             season: '09-01..11-30', effect: 'leaves', auto: true },
+        { id: 'halloween',        season: '10-01..10-31', effect: 'bats',   auto: true },
+        { id: 'thanksgiving',     season: '11-01..11-30', effect: 'leaves', auto: true },
+        { id: 'winter',           season: '12-01..02-29', effect: 'snow',   auto: true },
+        { id: 'christmas',        season: '12-01..12-31', effect: 'snow',   auto: false },
+        { id: 'better-christmas', season: '12-01..12-31', effect: 'snow',   auto: true }
     ],
 
     // Per-effect tuning. `count` is the whole cost of the feature — every

@@ -11,6 +11,7 @@
 @inject IYamlStorageService YamlStorage
 @inject IJSRuntime JS
 @inject LogSearchStateService State
+@inject MenuStateService Menu
 @inject ISystemService SystemService
 @inject IOpenHandlerService OpenHandlers
 @implements IDisposable
@@ -83,7 +84,11 @@
                     }
                 </select>
             </div>
-            <div class="md:col-span-2 relative">
+            @* data-menu-anchor is what keeps a click in here from being treated as a click
+               outside: MainLayout has a document-level pointerdown listener (see
+               wwwroot/js/menu.js) that closes the open menu for every click that lands
+               outside one, and this panel had no way of hearing it. *@
+            <div class="md:col-span-2 relative" data-menu-anchor>
                 <div class="log-field-head">
                     <span class="text-sm font-medium text-dark-text">Location</span>
                     <button type="button" class="log-config-open" title="Add or remove locations"
@@ -91,11 +96,15 @@
                         <i class="bi bi-sliders"></i>
                     </button>
                 </div>
-                <button type="button" class="input-modern w-full text-left flex items-center justify-between" @onclick="ToggleLocationMenu">
+                @* aria-expanded is the string and not the bool: Blazor drops an attribute whose
+                   value is false, and a missing aria-expanded reads as "not expandable" rather
+                   than as "collapsed". *@
+                <button type="button" class="input-modern w-full text-left flex items-center justify-between"
+                        @onclick="ToggleLocationMenu" aria-expanded="@(LocationMenuOpen ? "true" : "false")">
                     <span class="truncate">@State.LocationSummary</span>
-                    <i class="bi bi-chevron-down text-dark-text-muted ml-2"></i>
+                    <span class="dropdown-chevron ml-2 @(LocationMenuOpen ? "is-open" : null)"></span>
                 </button>
-                @if (State.ShowLocationMenu)
+                @if (LocationMenuOpen)
                 {
                     <div class="absolute z-20 mt-1 w-full bg-dark-surface border border-dark-border rounded-lg shadow-lg max-h-64 overflow-auto">
                         <label class="flex items-center space-x-2 px-3 py-2 hover:bg-dark-surface-hover cursor-pointer border-b border-dark-border">
@@ -139,7 +148,36 @@
                    list is a convenience, and typing a name that is not on it — because
                    a share is offline, or the location has no name pattern — has to keep
                    working exactly as before. *@
-                <input id="logFile" class="input-modern w-full" list="logFiles" placeholder="Log file..." @bind="State.LogFile" />
+                @* Both controls live inside the field rather than beside it: this box sits in a
+                   six-column grid, and a sibling button would take width off the input on every
+                   screen — including the many where there is nothing to clear.
+
+                   The chevron is ours, and Chromium's own is hidden. Its arrow is drawn inside the
+                   input's right *padding* rather than against the border, so the moment room was
+                   reserved on that side for the clear button the arrow drifted inward with it and
+                   the two ended up floating apart mid-field. Owning both is the only way to put
+                   them where they belong: chevron against the right edge, clear button beside it. *@
+                <div class="log-input-clearable">
+                    @* oninput rather than the default change event: the clear button keys off this
+                       value, and bound on change it only turned up once the field lost focus —
+                       which is a while after there is something to clear. *@
+                    <input id="logFile" class="input-modern log-input-with-list w-full" list="logFiles"
+                           placeholder="Log file..." @bind="State.LogFile" @bind:event="oninput" />
+                    @if (!string.IsNullOrEmpty(State.LogFile))
+                    {
+                        <button type="button" class="log-input-clear" title="Clear the log file name" aria-label="Clear the log file name"
+                                @onclick="ClearLogFile">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    }
+                    @* tabindex=-1 on purpose: Down in the box already opens the list, so a tab stop
+                       here would only duplicate a key that already works. *@
+                    <button type="button" class="log-input-list" tabindex="-1" aria-hidden="true"
+                            title="Show the names found in the selected locations"
+                            @onclick="ShowLogFileList">
+                        <span class="dropdown-chevron"></span>
+                    </button>
+                </div>
                 <datalist id="logFiles">
                     @foreach (var file in State.AvailableLogFiles)
                     {
@@ -228,8 +266,24 @@
 </div>
 
 <!-- Filter bar. Always visible: keyword groups re-query the ingested table
-     live, so they belong next to the results, not folded away with the source. -->
-<div class="modern-card log-card-compact mb-4">
+     live, so they belong next to the results, not folded away with the source.
+
+     Full screen covers this card with the results, and Ctrl+F lifts this very
+     element back over them rather than rendering a second copy of it: one set of
+     inputs means no duplicate ids, no second set of handlers, and the caret is
+     still where it was when the panel was last closed. -->
+<div id="logFilterCard" class="modern-card log-card-compact mb-4 log-filter-card @(FilterPanelFloating ? "is-floating" : null)">
+    @if (FilterPanelFloating)
+    {
+        <div class="log-filter-floating-head">
+            <i class="bi bi-funnel text-accent-blue"></i>
+            <span class="text-sm font-medium text-dark-text">Filters</span>
+            <span class="log-filter-floating-hint">Enter applies · Esc closes</span>
+            <button type="button" class="btn-ghost p-1" title="Close the filters (Esc)" @onclick="HideFilterPanel">
+                <i class="bi bi-x-lg text-dark-text-muted"></i>
+            </button>
+        </div>
+    }
     <div class="flex items-center justify-between mb-3">
         <label class="flex items-center space-x-2 cursor-pointer">
             <input type="checkbox" @bind="State.AdvancedRawMode" @bind:after="OnAdvancedToggled" />
@@ -383,6 +437,16 @@ else
                     <option value="500">500</option>
                     <option value="1000">1000</option>
                 </select>
+                @* Only in full screen: outside it the filter card is on the page
+                   already, and a button that raises what you can see reads as broken. *@
+                @if (State.ResultsFullscreen)
+                {
+                    <button type="button" class="btn-secondary flex items-center space-x-2" @onclick="ToggleFilterPanel"
+                            title="@(State.FilterOverlayVisible ? "Hide the filters (Esc)" : "Show the filters over the results (Ctrl+F)")"
+                            aria-pressed="@State.FilterOverlayVisible">
+                        <i class="bi bi-funnel"></i>
+                    </button>
+                }
                 @* Beside page size and CSV: the controls that decide how much you see
                    at once, rather than off with the row counts. *@
                 <button type="button" class="btn-secondary flex items-center space-x-2" @onclick="ToggleResultsFullscreen"
@@ -628,9 +692,10 @@ else
         _sourceConfigTab = tab;
         _sourceConfigVisible = true;
 
-        // The location dropdown is a hand-rolled panel with no outside-click handler of its own, so
-        // it would sit over the dialog's backdrop.
-        State.ShowLocationMenu = false;
+        // The dropdown is absolutely positioned and would sit over the dialog's backdrop.
+        // The click that opened this landed inside the anchor, so the document listener
+        // deliberately left the menu alone; closing it is this handler's job.
+        Menu.Close();
     }
 
     private void OnSourceConfigVisibleChanged(bool visible) => _sourceConfigVisible = visible;
@@ -646,12 +711,71 @@ else
 
     private DotNetObjectReference<Logs>? _self;
 
-    private void ToggleResultsFullscreen() => State.ResultsFullscreen = !State.ResultsFullscreen;
+    /// <summary>Focus the filter field once the render that shows it has reached the DOM.</summary>
+    private bool _focusFilterPending;
 
-    /// <summary>Called from the document keydown listener; see wwwroot/js/logTools.js.</summary>
-    [JSInvokable]
-    public Task ExitFullscreen()
+    /// <summary>
+    /// The filter card is raised over the full-screen results rather than sitting in
+    /// page flow underneath them. Only ever true in full screen: outside it the card
+    /// is on the page and there is nothing to raise.
+    /// </summary>
+    private bool FilterPanelFloating => State.ResultsFullscreen && State.FilterOverlayVisible;
+
+    private void ToggleResultsFullscreen()
     {
+        State.ResultsFullscreen = !State.ResultsFullscreen;
+
+        // Leaving full screen returns the card to page flow, where it is visible
+        // anyway; a flag left set would pop it open again on the next entry.
+        if (!State.ResultsFullscreen) State.FilterOverlayVisible = false;
+    }
+
+    private void ToggleFilterPanel()
+    {
+        State.FilterOverlayVisible = !State.FilterOverlayVisible;
+        _focusFilterPending = State.FilterOverlayVisible;
+    }
+
+    private void HideFilterPanel() => State.FilterOverlayVisible = false;
+
+    /// <summary>
+    /// Ctrl+F, from the document keydown listener; see wwwroot/js/logTools.js. It
+    /// means "put me in the filters": in full screen that has to raise them over the
+    /// results card first, and outside it they are already on the page, so it is only
+    /// a focus move.
+    /// </summary>
+    [JSInvokable]
+    public Task ShowFilters()
+    {
+        if (State.ResultsFullscreen) State.FilterOverlayVisible = true;
+
+        // Focused after the render, not here: on the first Ctrl+F the field is not
+        // in the DOM yet, and the batch that puts it there has not reached the
+        // WebView by the time this returns.
+        _focusFilterPending = true;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Escape, from the same listener. Closes one layer per press.</summary>
+    [JSInvokable]
+    public Task HandleEscape()
+    {
+        // Innermost first. The location dropdown is the smallest thing on screen that
+        // Escape can dismiss, and dismissing it must not also cost you full screen.
+        if (LocationMenuOpen)
+        {
+            Menu.Close();
+            return Task.CompletedTask;
+        }
+
+        // Then the floating filter panel, so full screen survives; a second press
+        // after that leaves full screen.
+        if (FilterPanelFloating)
+        {
+            State.FilterOverlayVisible = false;
+            return InvokeAsync(StateHasChanged);
+        }
+
         // Only a state change when there is something to exit, so Escape elsewhere on
         // the page does not cost a render.
         if (!State.ResultsFullscreen) return Task.CompletedTask;
@@ -896,13 +1020,52 @@ else
     protected override async Task OnInitializedAsync()
     {
         State.OnChanged += HandleStateChanged;
+
+        // The click that closes the location dropdown usually lands somewhere else
+        // entirely — MenuStateService is told, and this is how the page hears about it.
+        Menu.Changed += HandleStateChanged;
         await State.InitializeAsync();
     }
 
     // Marshal state-change notifications from background threads back to the Blazor sync context
     private async void HandleStateChanged() => await InvokeAsync(StateHasChanged);
 
-    private void ToggleLocationMenu() => State.ShowLocationMenu = !State.ShowLocationMenu;
+    /// <summary>
+    /// Empties the Log File box. Nothing is re-queried: this name decides which files the
+    /// *next* Load Logs reads off disk, so clearing it is a change to the pending search
+    /// and not to the rows already on screen.
+    /// </summary>
+    private void ClearLogFile() => State.LogFile = string.Empty;
+
+    /// <summary>
+    /// Opens the Log File box's suggestion list from our own chevron, the native one having been
+    /// hidden — see the markup, and logTools.showFileList for why it takes JavaScript at all.
+    /// </summary>
+    private async Task ShowLogFileList()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("logTools.showFileList", "logFile");
+        }
+        catch (JSException)
+        {
+            // Non-fatal: the list still drops down on Down or on the first keystroke.
+        }
+    }
+
+    // --- location dropdown ---
+
+    /// <summary>
+    /// Identifies this dropdown to <see cref="MenuStateService"/>, which owns the one
+    /// menu that can be open anywhere in the window. Going through it rather than a
+    /// private bool is what buys click-outside dismissal — and means opening a card
+    /// menu on another page closes this one on the way.
+    /// </summary>
+    private const string LocationMenuId = "logLocations";
+
+    private bool LocationMenuOpen => Menu.IsOpen(LocationMenuId);
+
+    private void ToggleLocationMenu() => Menu.Toggle(LocationMenuId);
 
     private async Task OnTemplateChanged() => await State.OnTemplateChangedAsync();
 
@@ -1076,11 +1239,25 @@ else
             _self = DotNetObjectReference.Create(this);
             try
             {
-                await JS.InvokeVoidAsync("logTools.watchEscape", _self, nameof(ExitFullscreen));
+                await JS.InvokeVoidAsync("logTools.watchKeys", _self, nameof(HandleEscape), nameof(ShowFilters));
             }
             catch (JSException)
             {
-                // Non-fatal: the toolbar button still leaves full screen.
+                // Non-fatal: the toolbar buttons still leave full screen and raise
+                // the filters.
+            }
+        }
+
+        if (_focusFilterPending)
+        {
+            _focusFilterPending = false;
+            try
+            {
+                await JS.InvokeVoidAsync("logTools.focusFilter");
+            }
+            catch (JSException)
+            {
+                // Non-fatal: the panel is up, it just did not take the caret.
             }
         }
 
@@ -1155,12 +1332,18 @@ else
     {
         // Unsubscribe only — do NOT cancel the token so searches continue in the background
         State.OnChanged -= HandleStateChanged;
+        Menu.Changed -= HandleStateChanged;
+
+        // Nothing else clears it: the panel is gone with the page, but the service would
+        // still report a menu open, so the next click anywhere would be spent closing
+        // something that no longer exists.
+        Menu.Close();
         _searchDebounceTimer?.Dispose();
         _pageDebounceTimer?.Dispose();
 
         // The listener is on the document and would outlive this page otherwise,
         // holding a reference to a component that is no longer rendering.
-        _ = JS.InvokeVoidAsync("logTools.stopEscape");
+        _ = JS.InvokeVoidAsync("logTools.stopKeys");
         _self?.Dispose();
     }
 }

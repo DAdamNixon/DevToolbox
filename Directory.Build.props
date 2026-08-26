@@ -30,8 +30,14 @@
     Promotion to beta is a bar, not a date — see
     [[03-Projects/DevToolbox/Plans/2026-08-18-alpha-launch-feedback]] in the vault.
   -->
+  <!--
+    Beta, opening the 0.9.x band this file reserves for it. 0.9.0.0 is numerically above the
+    0.4.5.0 it replaces, so App Installer upgrades to it rather than declining; and the suffix
+    is what AppVersion.ChannelFrom reads, so the status bar and Settings relabel themselves
+    without a copy change anywhere.
+  -->
   <PropertyGroup>
-    <VersionPrefix>0.4.7</VersionPrefix>
-    <VersionSuffix>alpha.8</VersionSuffix>
+    <VersionPrefix>0.9.0</VersionPrefix>
+    <VersionSuffix>beta.1</VersionSuffix>
   </PropertyGroup>
 </Project>

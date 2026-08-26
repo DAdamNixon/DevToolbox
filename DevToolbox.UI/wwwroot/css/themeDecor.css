@@ -213,10 +213,26 @@
     }
 }
 
-/* Room for the garland. The grid's 1rem gap is exactly the two 0.5rem rings, which
-   would leave neighbouring garlands touching. */
+/* Room for the garland. A gap of exactly 1rem is exactly the two 0.5rem rings, which
+   would leave neighbouring garlands touching — so both of the dashboard's stacks get
+   their own gap under this theme. The dense pass took the grid to 0.5rem and the group
+   list to 0.75rem, either of which puts the rings well inside each other. */
 :root[data-theme="better-christmas"] .ws-grid {
     gap: 1.75rem;
+}
+
+:root[data-theme="better-christmas"] .ws-groups {
+    gap: 1.5rem;
+}
+
+/* The ring's outer radius has to be the card's radius plus the 0.5rem inset, or the
+   corners cut the garland off — and the two dashboard cards are 0.5rem, not the 0.75rem
+   the shared rule above assumes. */
+:root[data-theme="better-christmas"] .ws-group-card::before,
+:root[data-theme="better-christmas"] .ws-group-card::after,
+:root[data-theme="better-christmas"] .ws-card::before,
+:root[data-theme="better-christmas"] .ws-card::after {
+    border-radius: 1rem;
 }
 
 /* Fullscreen results are position:fixed at inset 0, with overflow:hidden and no
