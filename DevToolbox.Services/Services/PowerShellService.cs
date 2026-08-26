@@ -74,18 +74,143 @@ public class PowerShellService
     /// The parameters a script insists on being given. Exposed so the editor can say which values a
     /// script needs before you press Run, rather than only afterwards.
     /// </summary>
-    public static IReadOnlyList<string> RequiredParameters(string? scriptText)
+    public static IReadOnlyList<string> RequiredParameters(string? scriptText) =>
+        DeclaredParameters(scriptText)
+            .Where(p => p.IsMandatory)
+            .Select(p => p.Name)
+            .ToList();
+
+    /// <summary>
+    /// Every parameter a script declares, in declaration order, described well enough to build a
+    /// form from. Empty for a script with no <c>param()</c> block and for one that does not parse.
+    /// <para>
+    /// This is what replaced the single "path to run against" box. That box could only ever pass
+    /// <c>ProjectPath</c>, so a script wanting an output file or a mode had nowhere to be given one
+    /// and could not be run from this tab at all.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<ScriptParameter> DeclaredParameters(string? scriptText)
     {
-        if (string.IsNullOrWhiteSpace(scriptText)) return Array.Empty<string>();
+        if (string.IsNullOrWhiteSpace(scriptText)) return Array.Empty<ScriptParameter>();
 
         var ast = Parser.ParseInput(scriptText, out _, out var errors);
-        if (errors.Length > 0 || ast.ParamBlock is null) return Array.Empty<string>();
 
-        return ast.ParamBlock.Parameters
-            .Where(IsMandatory)
-            .Select(p => p.Name.VariablePath.UserPath)
-            .ToList();
+        // A half-typed script parses badly and would otherwise produce a form that flickers between
+        // wrong shapes on every keystroke. The AST's own param block is also the only one that
+        // matters: a param() inside a function belongs to that function, and ParamBlock is the
+        // script's, so nested ones are skipped for free.
+        if (errors.Length > 0 || ast.ParamBlock is null) return Array.Empty<ScriptParameter>();
+
+        return ast.ParamBlock.Parameters.Select(Describe).ToList();
     }
+
+    private static ScriptParameter Describe(ParameterAst parameter)
+    {
+        var name = parameter.Name.VariablePath.UserPath;
+        var typeName = TypeNameOf(parameter);
+        var allowed = AllowedValues(parameter);
+
+        return new ScriptParameter(
+            Name: name,
+            Kind: KindOf(name, typeName, allowed),
+            TypeName: typeName,
+            IsMandatory: IsMandatory(parameter),
+            DefaultValue: LiteralDefault(parameter),
+            AllowedValues: allowed,
+            HelpMessage: HelpMessageOf(parameter));
+    }
+
+    /// <summary>
+    /// The declared type, lower-cased and without its namespace: <c>string</c>, <c>switch</c>,
+    /// <c>int</c>. Empty when the parameter was declared bare, which PowerShell treats as object.
+    /// </summary>
+    private static string TypeNameOf(ParameterAst parameter)
+    {
+        // A type constraint is an attribute in the AST, sitting alongside [Parameter] and the
+        // validators rather than in a field of its own.
+        var constraint = parameter.Attributes.OfType<TypeConstraintAst>().FirstOrDefault();
+        if (constraint is null) return string.Empty;
+
+        var name = constraint.TypeName.Name;
+        var lastDot = name.LastIndexOf('.');
+        if (lastDot >= 0 && lastDot < name.Length - 1) name = name[(lastDot + 1)..];
+
+        return name.ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// The control to draw. Type first, because it is what the script actually enforces; then the
+    /// name, which is the only clue a plain <c>[string]</c> gives about whether it wants a path.
+    /// </summary>
+    private static ScriptParameterKind KindOf(string name, string typeName, IReadOnlyList<string> allowed)
+    {
+        if (allowed.Count > 0) return ScriptParameterKind.Choice;
+
+        switch (typeName)
+        {
+            case "switch":
+            case "bool":
+            case "boolean":
+                return ScriptParameterKind.Switch;
+            case "int":
+            case "int32":
+            case "int64":
+            case "long":
+            case "double":
+            case "decimal":
+            case "single":
+            case "float":
+                return ScriptParameterKind.Number;
+        }
+
+        // Naming, by convention rather than by rule: every script in the library takes its target as
+        // ProjectPath, LocationPath, RootDirectory or FilePath. Guessing wrong costs a Browse button
+        // that opens on the wrong kind of thing, which is why the file forms are checked first — a
+        // name holding both words ("OutputFilePath") is a file, not the folder it sits in.
+        if (Mentions(name, "file")) return ScriptParameterKind.File;
+        if (Mentions(name, "path") || Mentions(name, "dir") || Mentions(name, "directory") || Mentions(name, "folder") || Mentions(name, "root"))
+        {
+            return ScriptParameterKind.Folder;
+        }
+
+        return ScriptParameterKind.Text;
+    }
+
+    private static bool Mentions(string name, string word) =>
+        name.Contains(word, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The values of a <c>[ValidateSet(...)]</c>, or empty.</summary>
+    private static IReadOnlyList<string> AllowedValues(ParameterAst parameter) =>
+        parameter.Attributes
+            .OfType<AttributeAst>()
+            .Where(a => a.TypeName.GetReflectionAttributeType() == typeof(ValidateSetAttribute))
+            .SelectMany(a => a.PositionalArguments)
+            .OfType<StringConstantExpressionAst>()
+            .Select(s => s.Value)
+            .ToList();
+
+    /// <summary>
+    /// The default value when it is a literal — a string or a number — and empty when it is anything
+    /// else. An expression default belongs to the script: prefilling a box with the text of
+    /// <c>(Get-Date)</c> would send that string through as the value.
+    /// </summary>
+    private static string LiteralDefault(ParameterAst parameter) => parameter.DefaultValue switch
+    {
+        StringConstantExpressionAst s => s.Value,
+        ConstantExpressionAst c => c.Value?.ToString() ?? string.Empty,
+        _ => string.Empty
+    };
+
+    /// <summary>The <c>HelpMessage</c> on the <c>[Parameter]</c> attribute, or empty.</summary>
+    private static string HelpMessageOf(ParameterAst parameter) =>
+        parameter.Attributes
+            .OfType<AttributeAst>()
+            .Where(a => a.TypeName.GetReflectionAttributeType() == typeof(ParameterAttribute))
+            .SelectMany(a => a.NamedArguments)
+            .Where(argument => argument.ArgumentName.Equals("HelpMessage", StringComparison.OrdinalIgnoreCase))
+            .Select(argument => argument.Argument is StringConstantExpressionAst s ? s.Value : string.Empty)
+            .FirstOrDefault(value => !string.IsNullOrEmpty(value))
+        ?? string.Empty;
 
     /// <summary>
     /// Executes a PowerShell script with parameters and returns the results as a string.

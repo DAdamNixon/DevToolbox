@@ -1,0 +1,172 @@
+@using System.IO
+@using System.Linq
+
+@*
+    Names a script before it exists.
+
+    New Script used to invent "NewScript20260826122108" and save it immediately, which is two
+    problems in one gesture: the library filled up with timestamped files nobody could tell apart,
+    and there was no way to rename one afterwards — the tab can save and delete, so renaming meant
+    deleting and pasting. Asking first costs one keystroke and a Return.
+
+    The file name is the script name, so this is also the only place that gets to refuse one: the
+    save would otherwise fail on a character Windows will not accept, reported as "Failed to create
+    script" with the reason left in an exception message nobody sees.
+*@
+
+<Modal Title="New script" IsVisible="IsVisible" IsVisibleChanged="OnVisibleChanged">
+    <div class="space-y-4">
+        <div>
+            <label for="new-script-name" class="block text-sm font-medium text-dark-text mb-2">Script name</label>
+            <input id="new-script-name" class="input-modern w-full" placeholder="Clean-Artifacts"
+                   value="@_name" @oninput="OnNameInput" @onkeydown="OnKeyDown" @ref="_nameBox" />
+            <p class="text-xs text-dark-text-muted mt-1">
+                Saved as <span class="font-mono">@FileNamePreview</span> in your scripts folder.
+            </p>
+        </div>
+
+        @if (_problem is not null)
+        {
+            <div class="ws-notice">
+                <i class="bi bi-exclamation-triangle"></i>
+                <span>@_problem</span>
+            </div>
+        }
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-dark-border">
+            <button type="button" class="btn-ghost" @onclick="Cancel">Cancel</button>
+            <button type="button" class="btn-primary flex items-center space-x-2" @onclick="Create" disabled="@(!CanCreate)">
+                <i class="bi bi-plus-circle"></i>
+                <span>Create</span>
+            </button>
+        </div>
+    </div>
+</Modal>
+
+@code {
+    [Parameter] public bool IsVisible { get; set; }
+    [Parameter] public EventCallback<bool> IsVisibleChanged { get; set; }
+
+    /// <summary>The names already taken, so a clash is caught here rather than by overwriting a file.</summary>
+    [Parameter] public IReadOnlyCollection<string> ExistingNames { get; set; } = Array.Empty<string>();
+
+    /// <summary>Raised with the accepted name. The caller owns what a new script starts out as.</summary>
+    [Parameter] public EventCallback<string> OnCreate { get; set; }
+
+    private string _name = string.Empty;
+    private string? _problem;
+    private ElementReference _nameBox;
+    private bool _wasVisible;
+
+    private string FileNamePreview => (_name.Trim().Length == 0 ? "name" : _name.Trim()) + ".ps1";
+
+    private bool CanCreate => _name.Trim().Length > 0 && _problem is null;
+
+    protected override void OnParametersSet()
+    {
+        // Opening is the only moment worth resetting on: closing it leaves the box as it was, which
+        // is what you want when the dialog was dismissed by a stray click on the backdrop.
+        if (IsVisible && !_wasVisible)
+        {
+            _name = string.Empty;
+            _problem = null;
+        }
+
+        _wasVisible = IsVisible;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!IsVisible || _name.Length > 0) return;
+
+        // A dialog whose only field is a name should not need a click to start typing in.
+        try
+        {
+            await _nameBox.FocusAsync();
+        }
+        catch (InvalidOperationException)
+        {
+            // The element has already gone; the dialog was closed mid-render.
+        }
+    }
+
+    private void OnNameInput(ChangeEventArgs e)
+    {
+        _name = e.Value?.ToString() ?? string.Empty;
+        _problem = Validate(_name);
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && CanCreate) await Create();
+    }
+
+    /// <summary>
+    /// Why this name cannot be used, or null. Deliberately not a silent correction: quietly turning
+    /// "Clean/Artifacts" into "Clean_Artifacts" leaves you looking for a script you did not name.
+    /// </summary>
+    private string? Validate(string candidate)
+    {
+        var name = candidate.Trim();
+        if (name.Length == 0) return null; // Nothing typed yet is not yet a problem.
+
+        var invalid = Path.GetInvalidFileNameChars();
+        if (name.IndexOfAny(invalid) >= 0)
+        {
+            var used = name.Where(c => invalid.Contains(c)).Distinct().ToArray();
+            return $"A file name cannot contain {string.Join(' ', used)}";
+        }
+
+        // "." and ".." are legal file-name characters in the wrong arrangement.
+        if (name.All(c => c == '.')) return "That is not a name.";
+
+        // A trailing dot or space is accepted by the API and then dropped by the filesystem, so the
+        // file that appears is not the one that was asked for.
+        if (name.EndsWith('.') || name.EndsWith(' ')) return "A name cannot end with a dot or a space.";
+
+        if (IsReservedDeviceName(name)) return $"{name} is a reserved Windows device name.";
+
+        if (ExistingNames.Any(existing => existing.Equals(name, StringComparison.OrdinalIgnoreCase)))
+        {
+            return $"There is already a script called {name}.";
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// CON, PRN, LPT1 and friends. Windows refuses these whatever the extension, and the failure
+    /// comes back as an unhelpful IO error.
+    /// </summary>
+    private static bool IsReservedDeviceName(string name)
+    {
+        var stem = Path.GetFileNameWithoutExtension(name);
+
+        if (stem.Equals("CON", StringComparison.OrdinalIgnoreCase)
+            || stem.Equals("PRN", StringComparison.OrdinalIgnoreCase)
+            || stem.Equals("AUX", StringComparison.OrdinalIgnoreCase)
+            || stem.Equals("NUL", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return (stem.StartsWith("COM", StringComparison.OrdinalIgnoreCase)
+                || stem.StartsWith("LPT", StringComparison.OrdinalIgnoreCase))
+               && stem.Length == 4
+               && char.IsAsciiDigit(stem[3]);
+    }
+
+    private async Task Create()
+    {
+        var name = _name.Trim();
+        _problem = Validate(name);
+        if (_problem is not null || name.Length == 0) return;
+
+        await OnCreate.InvokeAsync(name);
+        await IsVisibleChanged.InvokeAsync(false);
+    }
+
+    private Task Cancel() => IsVisibleChanged.InvokeAsync(false);
+
+    private Task OnVisibleChanged(bool visible) => IsVisibleChanged.InvokeAsync(visible);
+}
