@@ -13,28 +13,100 @@
 @inject ViewModelFactory ViewModelFactory
 @inject ModalStateService ModalStateService
 @inject IIconService IconService
+@inject IDashboardLayoutService Layout
 @inject ISystemService SystemService
 @implements IDisposable
 
+@* One definition of the location menu, rendered from two places below: the ⋮ on an expanded
+   location row, and a right-click on a collapsed card's quick-open chip.
+
+   A templated delegate rather than a child component because the menu needs five of this
+   component's callbacks, IsReadOnly, the script list and the open-with options — plumbing all of
+   that through parameters would be more code than the menu itself, and two copies of the markup
+   would be worse than either. Declared up here because Razor emits the body top to bottom, so a
+   local declared below its first use does not compile. *@
+@{
+    RenderFragment<WorkspaceLocation> LocationMenu = location =>
+    @<div class="ws-menu">
+        <button class="dropdown-item" @onclick="() => OnOpenInExplorer.InvokeAsync(location)">
+            <i class="bi bi-folder2-open"></i>
+            <span>Open in Explorer</span>
+        </button>
+        <button class="dropdown-item" @onclick="() => OnOpenInTerminal.InvokeAsync(location)">
+            <i class="bi bi-terminal"></i>
+            <span>Open in Terminal</span>
+        </button>
+        <button class="dropdown-item" @onclick="() => CopyPath(location)">
+            <i class="bi bi-clipboard"></i>
+            <span>Copy Path</span>
+        </button>
+
+        @if (GlobalOptions.Options.Any())
+        {
+            <div class="ws-menu-sep"></div>
+            <div class="ws-menu-heading">Open With</div>
+            @foreach (var option in GlobalOptions.Options)
+            {
+                <button class="dropdown-item" @onclick="() => OnOpenWithCustomApp.InvokeAsync((WorkspaceViewModel.Workspace, location, option.Value))">
+                    <i class="bi bi-box-arrow-up-right"></i>
+                    <span>@option.Key</span>
+                </button>
+            }
+        }
+
+        @if (AvailableScripts.Any())
+        {
+            <div class="ws-menu-sep"></div>
+            <div class="ws-menu-heading">Run Script</div>
+            @foreach (var script in AvailableScripts)
+            {
+                <button class="dropdown-item" @onclick="() => OnRunScriptOnLocation.InvokeAsync((script, WorkspaceViewModel.Workspace, location))">
+                    <i class="bi bi-play-circle"></i>
+                    <span>@script.Name</span>
+                </button>
+            }
+        }
+
+        @if (!IsReadOnly)
+        {
+            <div class="ws-menu-sep"></div>
+            <button class="dropdown-item danger" @onclick="() => DeleteLocation(location)">
+                <i class="bi bi-trash"></i>
+                <span>Delete Location</span>
+            </button>
+        }
+    </div>;
+}
+
 @* The whole card expands it, not just the name. The handler was on .ws-card-title, which wraps only
    the icon, the name and the count, leaving most of the card dead to the click that is the obvious
-   thing to do to it. The two regions that must not collapse the card stop the click themselves:
-   the actions menu, and the locations list you are expanding the card to use. *@
-<div class="workspace-card cursor-pointer @(WorkspaceViewModel.IsExpanded ? "ring-2 ring-accent-purple/50" : "")"
+   thing to do to it. The regions that must not collapse the card stop the click themselves:
+   the pin, the actions menu, the quick-open row, and the locations list. *@
+<div class="workspace-card ws-card cursor-pointer @(WorkspaceViewModel.IsExpanded ? "is-expanded" : "") @(IsPinned ? "is-pinned" : "")"
      @onclick="ToggleExpand">
     <!-- Workspace Header -->
     <div class="ws-card-header">
         <div class="ws-card-title">
             <i class="bi @icon.Icon ws-icon" style="color: @icon.Color"></i>
-            <h4 class="workspace-card-title ws-card-name" title="@WorkspaceViewModel.Name">@WorkspaceViewModel.Name</h4>
+            <h4 class="ws-card-name" title="@TitleTooltip">@WorkspaceViewModel.Name</h4>
             <span class="ws-group-meta">@WorkspaceViewModel.Locations.Count</span>
         </div>
 
         <!-- Actions Menu -->
         <div class="ws-actions">
+            @* Outside the menu on purpose: pinning is a one-click habit, and burying it two
+               clicks deep would make the feature not worth having. *@
+            <button type="button"
+                class="ws-pin @(IsPinned ? "is-on" : "")"
+                title="@(IsPinned ? "Unpin from the top of this group" : "Pin to the top of this group")"
+                @onclick:stopPropagation="true"
+                @onclick="() => OnTogglePin.InvokeAsync()">
+                <i class="bi @(IsPinned ? "bi-star-fill" : "bi-star")"></i>
+            </button>
+
             <div class="ws-menu-anchor" data-menu-anchor @onclick:stopPropagation="true">
                 <button type="button"
-                    class="btn-ghost p-2 rounded-lg"
+                    class="btn-ghost ws-icon-btn"
                     title="Workspace actions"
                     @onclick="() => Menu.Toggle(WorkspaceMenuId)">
                     <i class="bi bi-three-dots-vertical"></i>
@@ -46,6 +118,10 @@
                         <button class="dropdown-item" @onclick="ShowIconModal">
                             <i class="bi bi-palette"></i>
                             <span>Change Icon</span>
+                        </button>
+                        <button class="dropdown-item" @onclick="ShowAliasModal">
+                            <i class="bi bi-tags"></i>
+                            <span>Search Aliases@(aliases.Count > 0 ? $" ({aliases.Count})" : "")</span>
                         </button>
                         @if (!IsReadOnly)
                         {
@@ -73,6 +149,46 @@
             </div>
         </div>
     </div>
+
+    @* Only while collapsed. Expanded, every location already has its own Open button a few
+       pixels lower down, and two rows of the same buttons is worse than either.
+
+       Left-click opens; right-click gets the same menu the expanded row's ⋮ gives, because a chip
+       *is* that row in miniature and there is nowhere else on a collapsed card to put a ⋮ without
+       doubling the width of every chip. *@
+    @if (!WorkspaceViewModel.IsExpanded && QuickLocations.Count > 0)
+    {
+        <div class="ws-quick" @onclick:stopPropagation="true">
+            @foreach (var location in QuickLocations)
+            {
+                @* data-menu-anchor keeps menu.js's document listener off it: without it the
+                   pointerdown that precedes the contextmenu closes the menu the contextmenu is
+                   about to open, and clicking an item would dismiss instead of running it. *@
+                <div class="ws-menu-anchor ws-quick-anchor" data-menu-anchor>
+                    <button type="button" class="ws-quick-btn"
+                            title="Open @location.Path — right-click for more"
+                            @onclick="() => OpenLocation(location)"
+                            @oncontextmenu="() => Menu.Toggle(LocationMenuId(location))"
+                            @oncontextmenu:preventDefault="true">
+                        <i class="bi @LocationIcon(location)" style="color: @LocationColor(location)"></i>
+                        <span>@location.Name</span>
+                    </button>
+
+                    @if (Menu.IsOpen(LocationMenuId(location)))
+                    {
+                        @LocationMenu(location)
+                    }
+                </div>
+            }
+            @if (HiddenLocationCount > 0)
+            {
+                <button type="button" class="ws-quick-more" title="Show all @WorkspaceViewModel.Locations.Count locations"
+                        @onclick="ToggleExpand">
+                    +@HiddenLocationCount
+                </button>
+            }
+        </div>
+    }
 
     <!-- Workspace Locations -->
     @if (WorkspaceViewModel.IsExpanded)
@@ -114,55 +230,7 @@
 
                             @if (Menu.IsOpen(LocationMenuId(location)))
                             {
-                                <div class="ws-menu">
-                                    <button class="dropdown-item" @onclick="() => OnOpenInExplorer.InvokeAsync(location)">
-                                        <i class="bi bi-folder2-open"></i>
-                                        <span>Open in Explorer</span>
-                                    </button>
-                                    <button class="dropdown-item" @onclick="() => OnOpenInTerminal.InvokeAsync(location)">
-                                        <i class="bi bi-terminal"></i>
-                                        <span>Open in Terminal</span>
-                                    </button>
-                                    <button class="dropdown-item" @onclick="() => CopyPath(location)">
-                                        <i class="bi bi-clipboard"></i>
-                                        <span>Copy Path</span>
-                                    </button>
-
-                                    @if (GlobalOptions.Options.Any())
-                                    {
-                                        <div class="ws-menu-sep"></div>
-                                        <div class="ws-menu-heading">Open With</div>
-                                        @foreach (var option in GlobalOptions.Options)
-                                        {
-                                            <button class="dropdown-item" @onclick="() => OnOpenWithCustomApp.InvokeAsync((WorkspaceViewModel.Workspace, location, option.Value))">
-                                                <i class="bi bi-box-arrow-up-right"></i>
-                                                <span>@option.Key</span>
-                                            </button>
-                                        }
-                                    }
-
-                                    @if (AvailableScripts.Any())
-                                    {
-                                        <div class="ws-menu-sep"></div>
-                                        <div class="ws-menu-heading">Run Script</div>
-                                        @foreach (var script in AvailableScripts)
-                                        {
-                                            <button class="dropdown-item" @onclick="() => OnRunScriptOnLocation.InvokeAsync((script, WorkspaceViewModel.Workspace, location))">
-                                                <i class="bi bi-play-circle"></i>
-                                                <span>@script.Name</span>
-                                            </button>
-                                        }
-                                    }
-
-                                    @if (!IsReadOnly)
-                                    {
-                                        <div class="ws-menu-sep"></div>
-                                        <button class="dropdown-item danger" @onclick="() => DeleteLocation(location)">
-                                            <i class="bi bi-trash"></i>
-                                            <span>Delete Location</span>
-                                        </button>
-                                    }
-                                </div>
+                                @LocationMenu(location)
                             }
                         </div>
                     </div>
@@ -211,6 +279,12 @@
         OnSaved="HandleIconSaved" />
 </Modal>
 
+<Modal @bind-IsVisible="IsAliasModalVisible" Title="@AliasModalTitle">
+    <AliasDialog Scope="AliasScope.Workspace"
+        Name="@WorkspaceViewModel.Name"
+        OnSaved="HandleAliasesSaved" />
+</Modal>
+
 @code {
     [Parameter] public WorkspaceViewModel WorkspaceViewModel { get; set; } = null!;
     [Parameter] public GlobalCustomOpenOptions GlobalOptions { get; set; } = null!;
@@ -220,6 +294,14 @@
 
     /// <summary>Set for workspaces produced by a scan: they are rebuilt from disk, so editing them here would be lost.</summary>
     [Parameter] public bool IsReadOnly { get; set; }
+
+    /// <summary>Whether this card is pinned to the front of its group.</summary>
+    [Parameter] public bool IsPinned { get; set; }
+
+    /// <summary>
+    /// How many locations get a one-click Open button while the card is shut. 0 turns the row off.
+    /// </summary>
+    [Parameter] public int QuickOpenCount { get; set; } = 3;
 
     [Parameter] public EventCallback OnDeleteWorkspace { get; set; }
     [Parameter] public EventCallback<(Workspace, WorkspaceLocation)> OnOpenWorkspaceLocation { get; set; }
@@ -231,9 +313,12 @@
     [Parameter] public EventCallback<(Workspace, string)> OnMoveToGroup { get; set; }
     [Parameter] public EventCallback OnRename { get; set; }
     [Parameter] public EventCallback OnIconChanged { get; set; }
+    [Parameter] public EventCallback OnTogglePin { get; set; }
+    [Parameter] public EventCallback OnAliasesChanged { get; set; }
 
     // Component state
     private IconStyle icon = new();
+    private IReadOnlyList<string> aliases = Array.Empty<string>();
 
     /// <summary>The name being typed in the rename dialog, owned here so a re-render cannot revert it.</summary>
     private string renameName = string.Empty;
@@ -252,6 +337,7 @@
     private string MoveGroupModalKey => ModalStateService.GetModalKey("moveGroup", WorkspaceViewModel.StateKey);
     private string RenameModalKey => ModalStateService.GetModalKey("rename", WorkspaceViewModel.StateKey);
     private string IconModalKey => ModalStateService.GetModalKey("icon", WorkspaceViewModel.StateKey);
+    private string AliasModalKey => ModalStateService.GetModalKey("alias", WorkspaceViewModel.StateKey);
 
     // Create a helper method to get/set modal visibility to reduce duplication
     private bool GetModalVisibility(string modalKey) => ModalStateService.IsModalVisible(modalKey);
@@ -286,6 +372,12 @@
         set => SetModalVisibility(IconModalKey, value);
     }
 
+    private bool IsAliasModalVisible
+    {
+        get => GetModalVisibility(AliasModalKey);
+        set => SetModalVisibility(AliasModalKey, value);
+    }
+
     private string? GetModalError(string modalKey) => ModalStateService.GetError(modalKey);
 
     // Menu identity, not menu state: which menu is open is owned by MenuStateService, so that
@@ -298,6 +390,27 @@
     private string AddLocationModalTitle => $"Add Location to {WorkspaceViewModel.Name}";
     private string MoveToGroupModalTitle => $"Move {WorkspaceViewModel.Name} to Group";
     private string IconModalTitle => $"Icon for {WorkspaceViewModel.Name}";
+    private string AliasModalTitle => $"Search aliases for {WorkspaceViewModel.Name}";
+
+    /// <summary>
+    /// The locations that get a one-click Open button. The first few in display order, which for
+    /// a scanned card is alphabetical — <c>demo</c> then <c>dev</c> — and for a hand-made one is
+    /// whatever order they were added in.
+    /// </summary>
+    private List<WorkspaceLocation> QuickLocations =>
+        QuickOpenCount <= 0
+            ? new List<WorkspaceLocation>()
+            : WorkspaceViewModel.Locations.Take(QuickOpenCount).ToList();
+
+    private int HiddenLocationCount => WorkspaceViewModel.Locations.Count - QuickLocations.Count;
+
+    /// <summary>
+    /// The aliases go in the tooltip. They are otherwise invisible, and an alias you have
+    /// forgotten setting is an alias you cannot tell from a bug in the search box.
+    /// </summary>
+    private string TitleTooltip => aliases.Count > 0
+        ? $"{WorkspaceViewModel.Name} — also found as: {string.Join(", ", aliases)}"
+        : WorkspaceViewModel.Name;
 
     protected override void OnInitialized() => Menu.Changed += OnMenuChanged;
 
@@ -313,6 +426,7 @@
         ViewModelFactory.UpdateWorkspaceExpandedState(WorkspaceViewModel);
 
         icon = IconService.Resolve(IconScope.Workspace, WorkspaceViewModel.Name);
+        aliases = Layout.AliasesFor(AliasScope.Workspace, WorkspaceViewModel.Name);
 
         // Only collapsed-to-expanded transitions need a disk check. OnParametersSet runs
         // on every parent re-render — a keystroke in the search box re-renders every card —
@@ -393,11 +507,25 @@
         Menu.Close();
     }
 
+    private void ShowAliasModal()
+    {
+        IsAliasModalVisible = true;
+        Menu.Close();
+    }
+
     private async Task HandleIconSaved()
     {
         IsIconModalVisible = false;
         icon = IconService.Resolve(IconScope.Workspace, WorkspaceViewModel.Name);
         await OnIconChanged.InvokeAsync();
+        StateHasChanged();
+    }
+
+    private async Task HandleAliasesSaved()
+    {
+        IsAliasModalVisible = false;
+        aliases = Layout.AliasesFor(AliasScope.Workspace, WorkspaceViewModel.Name);
+        await OnAliasesChanged.InvokeAsync();
         StateHasChanged();
     }
 

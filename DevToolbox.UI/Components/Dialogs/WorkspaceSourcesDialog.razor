@@ -1,116 +1,268 @@
 @using DevToolbox.Services.Interfaces
 @using DevToolbox.Services.Models
+@using System.IO
 @inject IWorkspaceSourceService SourceService
+@inject IUiSettingsService UiSettings
+@implements IDisposable
 
+@* Was a stack of eight-field cards, one per source, with no way to tell what any of it would
+   produce short of saving and looking at the dashboard. Now: the sources down the left, one
+   editor on the right, and under it a live preview of the exact cards this source would add.
+   The preview is built by the same code that builds the real thing, so getting it right here
+   means it is right. *@
 @if (config is null)
 {
     <div class="ws-empty">Loading sources…</div>
 }
 else
 {
-    @if (config.Sources.Count == 0)
-    {
-        <div class="ws-empty">
-            No scan folders yet. Point one at a directory of project files —
-            <span class="font-mono">*.code-workspace</span>, <span class="font-mono">*.sln</span>,
-            or the repo folders themselves — and they show up as cards.
-        </div>
-    }
-
-    @foreach (var source in config.Sources)
-    {
-        var scan = LastScanFor(source.Name);
-        <div class="modern-card p-4 mb-3">
-            <div class="ws-card-header mb-3">
-                <label class="ws-check">
-                    <input type="checkbox" checked="@source.Enabled"
-                           @onchange="e => source.Enabled = (bool?)e.Value ?? false" />
-                    <span>Enabled</span>
-                </label>
-                <button type="button" class="btn-ghost btn-sm" title="Remove source"
-                        @onclick="() => Remove(source)">
-                    <i class="bi bi-trash"></i>
-                </button>
-            </div>
-
-            @* Paired into two columns: the fields are short, and stacking all
-               eight made one source taller than the screen. Anything with a long
-               value or a long hint spans both. *@
-            <div class="ws-source-grid">
-                <div class="ws-field">
-                    <label class="ws-label">Name</label>
-                    <input type="text" class="ws-input" @bind="source.Name" placeholder="VS Code Workspaces" />
-                </div>
-
-                <div class="ws-field">
-                    <label class="ws-label">Pattern</label>
-                    <input type="text" class="ws-input" @bind="source.Pattern" placeholder="*.code-workspace" />
-                </div>
-
-                <div class="ws-field ws-span">
-                    <label class="ws-label">Folder to scan</label>
-                    <input type="text" class="ws-input" @bind="source.Path" placeholder="C:\path\to\workspaces" />
-                    <span class="ws-hint">Environment variables such as %USERPROFILE% are expanded.</span>
-                </div>
-
-                <div class="ws-field">
-                    <label class="ws-label">Collect</label>
-                    <select class="ws-input" value="@source.Scan" @onchange="e => SetScan(source, e.Value?.ToString())">
-                        <option value="@nameof(ScanKind.Files)">Files matching the pattern</option>
-                        <option value="@nameof(ScanKind.Directories)">Subfolders matching the pattern</option>
-                    </select>
-                </div>
-
-                @* Sits in the second column, aligned with the Collect input beside it
-                   rather than with its label. *@
-                <label class="ws-check ws-check-inline">
-                    <input type="checkbox" checked="@source.Recursive"
-                           @onchange="e => source.Recursive = (bool?)e.Value ?? false" />
-                    <span>Search subfolders too</span>
-                </label>
-
-                <div class="ws-field">
-                    <label class="ws-label">Group name</label>
-                    <input type="text" class="ws-input" @bind="source.Group" placeholder="Leave blank to use the source name" />
-                </div>
-
-                <div class="ws-field">
-                    <label class="ws-label">Group icon</label>
-                    <input type="text" class="ws-input" @bind="source.Icon" placeholder="bi-window-stack" />
-                    <span class="ws-hint">Starting point only — the icon picker on the card overrides it.</span>
-                </div>
-
-                <div class="ws-field ws-span">
-                    <label class="ws-label">Name pattern (optional regex)</label>
-                    <input type="text" class="ws-input" @bind="source.NameRegex"
-                           placeholder="^(?&lt;location&gt;dev|demo)-(?&lt;workspace&gt;.+)$" />
-                    <span class="ws-hint">
-                        Named groups <span class="font-mono">workspace</span> and <span class="font-mono">location</span>
-                        merge related files into one card — <span class="font-mono">dev-checkout</span> and
-                        <span class="font-mono">demo-checkout</span> become one "checkout" with two locations.
-                    </span>
-                </div>
-            </div>
-
-            @if (scan is not null)
+    <div class="ws-sources">
+        <div class="ws-source-list">
+            @foreach (var source in config.Sources)
             {
-                <div class="ws-scan-note @(scan.PathExists && scan.Error is null ? "" : "is-error")">
-                    @if (scan.Error is not null)
+                <button type="button"
+                        class="ws-source-item @(ReferenceEquals(source, selected) ? "is-active" : "") @(source.Enabled ? "" : "is-off")"
+                        @onclick="() => Select(source)">
+                    <span class="ws-source-item-name">@DisplayName(source)</span>
+                    <span class="ws-source-item-meta">@Summary(source)</span>
+                </button>
+            }
+
+            <button type="button" class="ws-source-add" @onclick="Add">
+                <i class="bi bi-plus-circle"></i> Add scan folder
+            </button>
+        </div>
+
+        <div class="ws-source-editor">
+            @if (selected is null)
+            {
+                <div class="ws-empty">
+                    @if (config.Sources.Count == 0)
                     {
-                        <span>Last scan failed: @scan.Error</span>
-                    }
-                    else if (!scan.PathExists)
-                    {
-                        <span>Folder not found: @scan.ResolvedPath</span>
+                        <span>
+                            No scan folders yet. Point one at a directory of project files —
+                            <span class="font-mono">*.code-workspace</span>, <span class="font-mono">*.sln</span>,
+                            or the repo folders themselves — and they show up as cards.
+                        </span>
                     }
                     else
                     {
-                        <span>Last scan: @scan.EntriesFound matched, @scan.WorkspacesProduced card(s).</span>
+                        <span>Pick a scan folder on the left to edit it.</span>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="ws-editor-head">
+                    <label class="ws-check">
+                        <input type="checkbox" checked="@selected.Enabled" @onchange="ToggleEnabled" />
+                        <span>Enabled</span>
+                    </label>
+                    <button type="button" class="btn-ghost btn-sm" title="Remove this scan folder"
+                            @onclick="() => Remove(selected)">
+                        <i class="bi bi-trash"></i> Remove
+                    </button>
+                </div>
+
+                <div class="ws-source-grid">
+                    <div class="ws-field">
+                        <label class="ws-label">Name</label>
+                        <input type="text" class="ws-input" @bind="selected.Name" @bind:event="oninput"
+                               @bind:after="SchedulePreview" placeholder="VS Code Workspaces" />
+                    </div>
+
+                    <div class="ws-field">
+                        <label class="ws-label">Pattern</label>
+                        <input type="text" class="ws-input" @bind="selected.Pattern" @bind:event="oninput"
+                               @bind:after="SchedulePreview" placeholder="*.code-workspace" />
+                    </div>
+
+                    <div class="ws-field ws-span">
+                        <label class="ws-label">Folder to scan</label>
+                        <div class="ws-input-row">
+                            <input type="text" class="ws-input" @bind="selected.Path" @bind:event="oninput"
+                                   @bind:after="SchedulePreview" placeholder="C:\path\to\workspaces" />
+                            <button type="button" class="btn-secondary btn-sm" title="Browse for a folder"
+                                    @onclick="BrowseForFolder">
+                                <i class="bi bi-folder2-open"></i>
+                            </button>
+                        </div>
+                        <span class="ws-hint">Environment variables such as %USERPROFILE% are expanded.</span>
+                    </div>
+
+                    <div class="ws-field">
+                        <label class="ws-label">Collect</label>
+                        <select class="ws-input" value="@selected.Scan" @onchange="SetScan">
+                            <option value="@nameof(ScanKind.Files)">Files matching the pattern</option>
+                            <option value="@nameof(ScanKind.Directories)">Subfolders matching the pattern</option>
+                        </select>
+                    </div>
+
+                    @* Sits in the second column, aligned with the Collect input beside it
+                       rather than with its label. *@
+                    <label class="ws-check ws-check-inline">
+                        <input type="checkbox" checked="@selected.Recursive" @onchange="ToggleRecursive" />
+                        <span>Search subfolders too</span>
+                    </label>
+
+                    <div class="ws-field">
+                        <label class="ws-label">Group name</label>
+                        <input type="text" class="ws-input" @bind="selected.Group" @bind:event="oninput"
+                               @bind:after="SchedulePreview" placeholder="Leave blank to use the source name" />
+                    </div>
+
+                    <div class="ws-field">
+                        <label class="ws-label">Location name when the pattern gives none</label>
+                        <input type="text" class="ws-input" @bind="selected.DefaultLocationName" @bind:event="oninput"
+                               @bind:after="SchedulePreview" placeholder="main" />
+                    </div>
+
+                    <div class="ws-field ws-span">
+                        <label class="ws-label">Name pattern (optional regex)</label>
+                        <input type="text" class="ws-input" @bind="selected.NameRegex" @bind:event="oninput"
+                               @bind:after="SchedulePreview"
+                               placeholder="^(?&lt;location&gt;dev|demo)-(?&lt;workspace&gt;.+)$" />
+                        <span class="ws-hint">
+                            Named groups <span class="font-mono">workspace</span> and <span class="font-mono">location</span>
+                            merge related files into one card — <span class="font-mono">dev-checkout</span> and
+                            <span class="font-mono">demo-checkout</span> become one "checkout" with two locations.
+                        </span>
+                    </div>
+
+                    <div class="ws-field ws-span">
+                        <label class="ws-label">Subtitle from (dotted JSON paths, in order)</label>
+                        <input type="text" class="ws-input" value="@DescriptionFromText" @oninput="SetDescriptionFrom"
+                               placeholder="settings.description, folders" />
+                        <span class="ws-hint">
+                            Read only from JSON/JSONC entries. A path landing on an array shows a count, so
+                            <span class="font-mono">folders</span> renders as "16 folders". Leave blank to skip
+                            reading file contents.
+                        </span>
+                    </div>
+
+                    <div class="ws-field">
+                        <label class="ws-label">Group icon</label>
+                        <input type="text" class="ws-input" @bind="selected.Icon" @bind:event="oninput"
+                               placeholder="bi-window-stack" />
+                        <span class="ws-hint">Starting point only — the icon picker on the card overrides it.</span>
+                    </div>
+
+                    <div class="ws-field">
+                        <label class="ws-label">Group colour</label>
+                        <input type="text" class="ws-input" @bind="selected.Color" @bind:event="oninput"
+                               placeholder="#06b6d4" />
+                    </div>
+                </div>
+
+                @* ---- the preview ---------------------------------------------------------- *@
+                <div class="ws-preview">
+                    <div class="ws-preview-head">
+                        <span class="ws-label">
+                            Preview
+                            @if (previewBusy)
+                            {
+                                <i class="bi bi-hourglass-split"></i>
+                            }
+                        </span>
+                        @if (preview is not null && preview.PathExists && preview.Error is null)
+                        {
+                            <span class="ws-preview-stats">
+                                @preview.EntriesFound matched
+                                <i class="bi bi-arrow-right-short"></i>
+                                @preview.WorkspaceCount card@(preview.WorkspaceCount == 1 ? "" : "s"),
+                                @preview.LocationCount location@(preview.LocationCount == 1 ? "" : "s")
+                                in group <strong>@preview.GroupName</strong>
+                            </span>
+                        }
+                    </div>
+
+                    @if (preview is null)
+                    {
+                        <div class="ws-preview-empty">Working it out…</div>
+                    }
+                    else if (preview.Error is not null)
+                    {
+                        <div class="ws-scan-note is-error">Could not read that folder: @preview.Error</div>
+                    }
+                    else if (!preview.PathExists)
+                    {
+                        <div class="ws-scan-note is-error">
+                            Folder not found:
+                            <span class="font-mono">@(string.IsNullOrEmpty(preview.ResolvedPath) ? selected.Path : preview.ResolvedPath)</span>
+                        </div>
+                    }
+                    else
+                    {
+                        @if (preview.RegexError is not null)
+                        {
+                            @* The scan does not fail on a bad regex, it ignores it — which used to be
+                               indistinguishable from a regex that matched nothing. *@
+                            <div class="ws-scan-note is-error">
+                                Name pattern ignored, it is not a valid regex: @preview.RegexError
+                            </div>
+                        }
+
+                        @if (preview.Truncated)
+                        {
+                            <div class="ws-scan-note">
+                                Showing the first @preview.Workspaces.Sum(w => w.Locations.Count) of
+                                @preview.EntriesFound entries. A real scan takes all of them.
+                            </div>
+                        }
+
+                        @if (preview.Workspaces.Count == 0)
+                        {
+                            <div class="ws-preview-empty">
+                                Nothing in <span class="font-mono">@preview.ResolvedPath</span> matches
+                                <span class="font-mono">@(string.IsNullOrWhiteSpace(selected.Pattern) ? "*" : selected.Pattern)</span>.
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="ws-preview-tree">
+                                @foreach (var workspace in preview.Workspaces)
+                                {
+                                    <div class="ws-preview-ws">
+                                        <div class="ws-preview-ws-head">
+                                            <i class="bi bi-code-square"></i>
+                                            <span class="ws-preview-ws-name">@workspace.Name</span>
+                                            <span class="ws-group-meta">@workspace.Locations.Count</span>
+                                        </div>
+                                        @foreach (var location in workspace.Locations)
+                                        {
+                                            <div class="ws-preview-loc @(location.RegexMatched ? "" : "is-fallback")">
+                                                <span class="ws-chip">@location.Name</span>
+                                                <span class="ws-preview-loc-path" title="@location.Path">@location.Path</span>
+                                                @if (!string.IsNullOrWhiteSpace(location.Description))
+                                                {
+                                                    <span class="ws-preview-loc-desc">@location.Description</span>
+                                                }
+                                                @if (!location.RegexMatched)
+                                                {
+                                                    <span class="ws-chip is-warn" title="The name pattern did not match, so the whole name became the card">
+                                                        no pattern match
+                                                    </span>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+
+                            @if (preview.Unmatched.Count > 0)
+                            {
+                                <div class="ws-scan-note">
+                                    @preview.Unmatched.Count of @preview.Workspaces.Sum(w => w.Locations.Count)
+                                    entries did not match the name pattern and became a card each:
+                                    <span class="font-mono">@string.Join(", ", preview.Unmatched.Take(6))</span>@(preview.Unmatched.Count > 6 ? " …" : "")
+                                </div>
+                            }
+                        }
                     }
                 </div>
             }
         </div>
-    }
+    </div>
 
     @if (!string.IsNullOrEmpty(error))
     {
@@ -121,9 +273,7 @@ else
        last source, so with a few sources configured they sat below the fold — and
        the panel itself could not scroll, which made Save unreachable outright. *@
     <div class="ws-sources-actions">
-        <button type="button" class="btn-secondary" @onclick="Add">
-            <i class="bi bi-plus-circle"></i> Add scan folder
-        </button>
+        <span class="ws-hint">Nothing is written until you save. Closing this discards the edits.</span>
         <button type="button" class="btn-primary" @onclick="Save">
             <i class="bi bi-check-lg"></i> Save and rescan
         </button>
@@ -134,10 +284,27 @@ else
     [Parameter] public EventCallback OnSaved { get; set; }
 
     private WorkspaceSourceConfig? config;
+    private WorkspaceSource? selected;
     private string? error;
+
+    private SourcePreview? preview;
+    private bool previewBusy;
+
+    /// <summary>Cancels the in-flight preview when another edit lands on top of it.</summary>
+    private CancellationTokenSource? previewCts;
+
+    /// <summary>
+    /// How long an edit has to settle before the folder is read. Long enough that typing a path
+    /// does not scan every prefix of it, short enough to feel like it is keeping up.
+    /// </summary>
+    private const int PreviewDebounceMs = 250;
+
+    /// <summary>The "Default Workspace Location" from Settings, used as the path a new row starts on.</summary>
+    private string defaultLocation = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
+        defaultLocation = (await UiSettings.GetAsync()).DefaultWorkspaceLocation;
         await LoadAsync();
     }
 
@@ -153,29 +320,232 @@ else
             Sources = stored.Sources.Select(Clone).ToList()
         };
 
+        selected = config.Sources.FirstOrDefault();
+        SchedulePreview();
         StateHasChanged();
     }
 
-    private SourceScanResult? LastScanFor(string name) =>
-        SourceService.LastScan.FirstOrDefault(r => r.SourceName == name);
+    public void Dispose()
+    {
+        previewCts?.Cancel();
+        previewCts?.Dispose();
+    }
+
+    private void Select(WorkspaceSource source)
+    {
+        selected = source;
+        preview = null;
+        SchedulePreview();
+    }
+
+    /// <summary>What the list shows for a source, including one that has not been named yet.</summary>
+    private static string DisplayName(WorkspaceSource source) =>
+        string.IsNullOrWhiteSpace(source.Name) ? "(unnamed)" : source.Name;
+
+    /// <summary>
+    /// One line under each name in the list. The selected source reports from the live preview;
+    /// the others from the last real scan, which is the most recent thing known about them.
+    /// </summary>
+    private string Summary(WorkspaceSource source)
+    {
+        if (!source.Enabled)
+        {
+            return "disabled";
+        }
+
+        if (ReferenceEquals(source, selected) && preview is not null)
+        {
+            if (preview.Error is not null) return "failed";
+            if (!preview.PathExists) return "folder not found";
+            return $"{preview.WorkspaceCount} card{(preview.WorkspaceCount == 1 ? "" : "s")}";
+        }
+
+        var scan = SourceService.LastScan.FirstOrDefault(r => r.SourceName == source.Name);
+        if (scan is null)
+        {
+            return string.IsNullOrWhiteSpace(source.Pattern) ? "*" : source.Pattern;
+        }
+
+        if (scan.Error is not null) return "failed";
+        if (!scan.PathExists) return "folder not found";
+        return $"{scan.WorkspacesProduced} card{(scan.WorkspacesProduced == 1 ? "" : "s")}";
+    }
+
+    // ---- preview ---------------------------------------------------------------------------
+
+    /// <summary>
+    /// Debounced. Every keystroke cancels the previous attempt, so a path typed one character at
+    /// a time results in one scan rather than one per character — and the token also stops a slow
+    /// scan of an abandoned path from overwriting the results of the current one.
+    /// </summary>
+    private void SchedulePreview()
+    {
+        previewCts?.Cancel();
+        previewCts?.Dispose();
+        previewCts = null;
+
+        if (selected is null)
+        {
+            preview = null;
+            previewBusy = false;
+            return;
+        }
+
+        var cts = new CancellationTokenSource();
+        previewCts = cts;
+
+        previewBusy = true;
+        _ = RunPreviewAsync(Clone(selected), cts.Token);
+    }
+
+    /// <summary>
+    /// Runs against a copy of the source. The scan happens on a thread pool thread while the UI
+    /// thread is still taking keystrokes, and reading half-typed fields out from under it is a
+    /// race with no upside.
+    /// </summary>
+    private async Task RunPreviewAsync(WorkspaceSource snapshot, CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(PreviewDebounceMs, token);
+
+            var result = await SourceService.PreviewAsync(snapshot, token);
+
+            token.ThrowIfCancellationRequested();
+
+            preview = result;
+            previewBusy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a later edit. The one that superseded it owns the busy flag now.
+        }
+        catch (Exception ex)
+        {
+            preview = new SourcePreview { Error = ex.Message, GroupName = snapshot.GroupName };
+            previewBusy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    // ---- editing ---------------------------------------------------------------------------
 
     private void Add()
     {
-        config?.Sources.Add(new WorkspaceSource
+        if (config is null)
+        {
+            return;
+        }
+
+        var source = new WorkspaceSource
         {
             Name = "New source",
             Pattern = "*.code-workspace",
+
+            // A new row starts at the default workspace location, which is nearly always the
+            // parent of whatever is about to be scanned. Empty when no default is set, and the
+            // placeholder says what belongs there.
+            Path = defaultLocation,
             DefaultLocationName = "workspace"
-        });
+        };
+
+        config.Sources.Add(source);
+        Select(source);
     }
 
-    private void Remove(WorkspaceSource source) => config?.Sources.Remove(source);
-
-    private static void SetScan(WorkspaceSource source, string? value)
+    private void Remove(WorkspaceSource source)
     {
-        if (Enum.TryParse<ScanKind>(value, ignoreCase: true, out var kind))
+        config?.Sources.Remove(source);
+
+        if (ReferenceEquals(source, selected))
         {
-            source.Scan = kind;
+            selected = config?.Sources.FirstOrDefault();
+            preview = null;
+            SchedulePreview();
+        }
+    }
+
+    private void ToggleEnabled(ChangeEventArgs e)
+    {
+        if (selected is not null)
+        {
+            selected.Enabled = (bool?)e.Value ?? false;
+        }
+    }
+
+    private void ToggleRecursive(ChangeEventArgs e)
+    {
+        if (selected is null)
+        {
+            return;
+        }
+
+        selected.Recursive = (bool?)e.Value ?? false;
+        SchedulePreview();
+    }
+
+    private void SetScan(ChangeEventArgs e)
+    {
+        if (selected is not null && Enum.TryParse<ScanKind>(e.Value?.ToString(), ignoreCase: true, out var kind))
+        {
+            selected.Scan = kind;
+            SchedulePreview();
+        }
+    }
+
+    private string DescriptionFromText =>
+        selected is null ? string.Empty : string.Join(", ", selected.DescriptionFrom);
+
+    private void SetDescriptionFrom(ChangeEventArgs e)
+    {
+        if (selected is null)
+        {
+            return;
+        }
+
+        selected.DescriptionFrom = (e.Value?.ToString() ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+
+        SchedulePreview();
+    }
+
+    private void BrowseForFolder()
+    {
+        if (selected is null)
+        {
+            return;
+        }
+
+        try
+        {
+            using var dialog = new System.Windows.Forms.FolderBrowserDialog
+            {
+                Description = "Folder to scan for projects",
+                UseDescriptionForTitle = true,
+                ShowNewFolderButton = false,
+                RootFolder = Environment.SpecialFolder.MyComputer
+            };
+
+            var current = Environment.ExpandEnvironmentVariables(selected.Path?.Trim() ?? string.Empty);
+            if (current.Length > 0 && Directory.Exists(current))
+            {
+                dialog.SelectedPath = current;
+            }
+
+            if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+            {
+                return;
+            }
+
+            selected.Path = dialog.SelectedPath;
+            SchedulePreview();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException)
+        {
+            // No native window to parent to — the browser-hosted view. The field is still typeable.
+            error = $"Could not open the folder picker: {ex.Message}";
         }
     }
 

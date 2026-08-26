@@ -1,0 +1,124 @@
+@using DevToolbox.Services.Interfaces
+@using DevToolbox.Services.Models
+@using DevToolbox.Services.Services
+@inject IDashboardLayoutService Layout
+
+@* Aliases exist for the names the search box cannot guess. Abbreviation matching already
+   covers the ones it can — "persman" finds PersonnelManagement with nothing configured — so
+   what is left is genuinely arbitrary: the internal codename, the old name, the typo you
+   always make. Hence a free-text list rather than anything cleverer. *@
+<div class="ws-field">
+    <label class="ws-label">Extra search terms for @Name</label>
+    <input type="text" class="ws-input" placeholder="persman, pm, personnel"
+           value="@text" @oninput="OnInput" @onkeydown="OnKeyDown" />
+    <span class="ws-hint">
+        Comma-separated. Any of these finds this @ScopeNoun, on top of its own name.
+    </span>
+</div>
+
+@if (parsed.Count > 0)
+{
+    <div class="ws-alias-chips">
+        @foreach (var alias in parsed)
+        {
+            <span class="ws-chip">@alias</span>
+        }
+    </div>
+}
+
+<div class="ws-hint mt-3">
+    <i class="bi bi-lightbulb"></i>
+    Abbreviations already work without an alias — <span class="font-mono">@Example</span>
+    finds <span class="font-mono">@Name</span> as long as the letters are in order and each run
+    starts a word.
+</div>
+
+<div class="ws-dialog-actions">
+    @if (stored.Count > 0)
+    {
+        <button type="button" class="btn-ghost" @onclick="Clear">Remove all</button>
+    }
+    <button type="button" class="btn-primary" @onclick="Save">
+        <i class="bi bi-check-lg"></i> Save
+    </button>
+</div>
+
+@code {
+    [Parameter] public AliasScope Scope { get; set; } = AliasScope.Workspace;
+    [Parameter] public string Name { get; set; } = string.Empty;
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    private string text = string.Empty;
+    private List<string> parsed = new();
+    private IReadOnlyList<string> stored = Array.Empty<string>();
+
+    /// <summary>The name this dialog was last seeded for, so a reopen on another card re-seeds.</summary>
+    private string? seededFor;
+
+    private string ScopeNoun => Scope == AliasScope.Group ? "group" : "workspace";
+
+    /// <summary>
+    /// An abbreviation of the actual name, built from its first letters, so the hint below is
+    /// about this card rather than about PersonnelManagement.
+    /// </summary>
+    private string Example
+    {
+        get
+        {
+            var initials = Name
+                .Where((c, i) => char.IsLetterOrDigit(c) && (i == 0 || !char.IsLetterOrDigit(Name[i - 1]) || char.IsUpper(c)))
+                .Take(4)
+                .ToArray();
+
+            return initials.Length >= 2
+                ? new string(initials).ToLowerInvariant()
+                : Name.Length > 4 ? Name[..4].ToLowerInvariant() : Name.ToLowerInvariant();
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (seededFor == Name)
+        {
+            return;
+        }
+
+        seededFor = Name;
+        stored = Layout.AliasesFor(Scope, Name);
+        text = string.Join(", ", stored);
+        parsed = Split(text);
+    }
+
+    private void OnInput(ChangeEventArgs e)
+    {
+        text = e.Value?.ToString() ?? string.Empty;
+        parsed = Split(text);
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await Save();
+        }
+    }
+
+    private async Task Save()
+    {
+        await Layout.SetAliasesAsync(Scope, Name, parsed);
+        stored = Layout.AliasesFor(Scope, Name);
+        await OnSaved.InvokeAsync();
+    }
+
+    private async Task Clear()
+    {
+        text = string.Empty;
+        parsed = new List<string>();
+        await Save();
+    }
+
+    private static List<string> Split(string value) => value
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToList();
+}

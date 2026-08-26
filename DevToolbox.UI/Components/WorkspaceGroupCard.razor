@@ -12,19 +12,49 @@
 @inject ViewModelFactory ViewModelFactory
 @inject ModalStateService ModalStateService
 @inject IIconService IconService
+@inject IDashboardLayoutService Layout
 @inject ISystemService SystemService
 @implements IDisposable
 
-@* Same as WorkspaceCard: the whole card is the target, and the two regions that must not collapse it
-   — the actions menu and the workspace grid — stop the click themselves. *@
-<div class="glow-card cursor-pointer @(GroupViewModel.IsExpanded ? "ring-2 ring-accent-blue/50" : "")"
-     @onclick="ToggleExpand">
+@* Same as WorkspaceCard: the whole card is the target, and the regions that must not collapse it
+   — the grip, the actions menu and the workspace grid — stop the click themselves.
+
+   The drop handlers sit on the card rather than on a thin strip between cards. A gap you have to
+   hit is a gap you miss, and "drop onto the card that should end up below you" is a rule that
+   needs no target at all. dragover has to preventDefault or the browser refuses the drop. *@
+<div class="glow-card ws-group-card cursor-pointer @GroupStateClass"
+     data-drag-card
+     @onclick="ToggleExpand"
+     @ondragover:preventDefault="true"
+     @ondragenter:preventDefault="true"
+     @ondragover="() => OnDragEntered.InvokeAsync(GroupViewModel.Name)"
+     @ondrop:preventDefault="true"
+     @ondrop="() => OnDropped.InvokeAsync(GroupViewModel.Name)">
     <!-- Card Header -->
     <div class="ws-group-header">
         <div class="ws-group-title">
-            <i class="bi @icon.Icon ws-icon text-xl" style="color: @icon.Color"></i>
-            <h3 class="workspace-card-title ws-group-name" title="@GroupViewModel.Name">@GroupViewModel.Name</h3>
-            <span class="ws-group-meta">(@GroupViewModel.Workspaces.Count workspaces)</span>
+            @* draggable lives on the grip, not the card: the card is a click target for expanding,
+               and a draggable card turns every one of those clicks into a half-started drag. *@
+            <span class="ws-grip"
+                  draggable="true"
+                  data-drag-handle="@GroupViewModel.Name"
+                  title="Drag to reorder"
+                  @onclick:stopPropagation="true"
+                  @ondragstart="() => OnDragStarted.InvokeAsync(GroupViewModel.Name)"
+                  @ondragend="() => OnDragEnded.InvokeAsync()">
+                <i class="bi bi-grip-vertical"></i>
+            </span>
+
+            <i class="bi @(GroupViewModel.IsExpanded ? "bi-chevron-down" : "bi-chevron-right") ws-chev"></i>
+            <i class="bi @icon.Icon ws-icon" style="color: @icon.Color"></i>
+            <h3 class="ws-group-name" title="@TitleTooltip">@GroupViewModel.Name</h3>
+            <span class="ws-group-meta">@GroupViewModel.Workspaces.Count</span>
+            @if (PinnedCount > 0)
+            {
+                <span class="ws-group-meta" title="@PinnedCount pinned">
+                    <i class="bi bi-star-fill"></i> @PinnedCount
+                </span>
+            }
             @if (IsFromSource)
             {
                 <span class="ws-badge" title="Scanned from @(GroupViewModel.Group.SourcePath ?? "a workspace source")">
@@ -37,7 +67,7 @@
         <div class="ws-actions">
             <div class="ws-menu-anchor" data-menu-anchor @onclick:stopPropagation="true">
                 <button type="button"
-                    class="btn-ghost p-2 rounded-lg"
+                    class="btn-ghost ws-icon-btn"
                     title="Group actions"
                     @onclick="() => Menu.Toggle(GroupMenuId)">
                     <i class="bi bi-three-dots-vertical"></i>
@@ -49,6 +79,10 @@
                         <button class="dropdown-item" @onclick="ShowIconModal">
                             <i class="bi bi-palette"></i>
                             <span>Change Icon</span>
+                        </button>
+                        <button class="dropdown-item" @onclick="ShowAliasModal">
+                            <i class="bi bi-tags"></i>
+                            <span>Search Aliases@(aliases.Count > 0 ? $" ({aliases.Count})" : "")</span>
                         </button>
 
                         @if (IsFromSource)
@@ -100,6 +134,8 @@
                     AvailableGroups="AllGroups.Where(g => g.Name != GroupViewModel.Name).ToList()"
                     AllGroups="AllGroups"
                     IsReadOnly="IsFromSource"
+                    IsPinned="Layout.IsPinned(GroupViewModel.Name, workspaceViewModel.Name)"
+                    QuickOpenCount="QuickOpenCount"
                     OnDeleteWorkspace="() => DeleteWorkspace(workspaceViewModel.Workspace)"
                     OnOpenWorkspaceLocation="OnOpenWorkspaceLocation"
                     OnOpenInExplorer="OnOpenInExplorer"
@@ -109,7 +145,9 @@
                     OnAddLocation="SaveWorkspaces"
                     OnMoveToGroup="HandleMoveToGroup"
                     OnRename="OnAddWorkspace"
-                    OnIconChanged="OnIconChanged" />
+                    OnIconChanged="OnIconChanged"
+                    OnTogglePin="() => OnTogglePin.InvokeAsync((GroupViewModel.Name, workspaceViewModel.Name))"
+                    OnAliasesChanged="OnAliasesChanged" />
             }
 
             @if (IsFromSource)
@@ -124,14 +162,12 @@
             }
             else
             {
-                <!-- Add Workspace Card -->
-                <div class="modern-card border-2 border-dashed border-dark-border hover:border-accent-blue/50 transition-colors cursor-pointer group"
-                     @onclick="ShowAddWorkspaceModal">
-                    <div class="flex flex-col items-center justify-center py-8 space-y-3">
-                        <i class="bi bi-plus-circle text-2xl text-dark-text-muted group-hover:text-accent-blue transition-colors"></i>
-                        <span class="text-dark-text-muted group-hover:text-accent-blue transition-colors">Add Workspace</span>
-                    </div>
-                </div>
+                @* Was a tile the height of a real card with a 2xl icon centred in it, which made
+                   the last row of every group half empty. It is one row now. *@
+                <button type="button" class="ws-add-tile" @onclick="ShowAddWorkspaceModal">
+                    <i class="bi bi-plus-circle"></i>
+                    <span>Add Workspace</span>
+                </button>
             }
         </div>
     }
@@ -168,12 +204,28 @@
         OnSaved="HandleIconSaved" />
 </Modal>
 
+<Modal @bind-IsVisible="IsAliasModalVisible" Title="@AliasModalTitle">
+    <AliasDialog Scope="AliasScope.Group"
+        Name="@GroupViewModel.Name"
+        OnSaved="HandleAliasesSaved" />
+</Modal>
+
 @code {
     [Parameter] public WorkspaceGroupViewModel GroupViewModel { get; set; } = null!;
     [Parameter] public GlobalCustomOpenOptions GlobalOptions { get; set; } = null!;
     [Parameter] public List<ScriptInfo> AvailableScripts { get; set; } = null!;
     [Parameter] public List<WorkspaceGroup> AllGroups { get; set; } = null!;
     [Parameter] public List<Workspace> AllWorkspaces { get; set; } = new();
+
+    /// <summary>How many one-click Open buttons each collapsed card in this group gets.</summary>
+    [Parameter] public int QuickOpenCount { get; set; } = 3;
+
+    /// <summary>True while this card is the one being dragged.</summary>
+    [Parameter] public bool IsDragging { get; set; }
+
+    /// <summary>True while a drop here would land the dragged card in this card's place.</summary>
+    [Parameter] public bool IsDropTarget { get; set; }
+
     [Parameter] public EventCallback<Workspace> OnDeleteWorkspace { get; set; }
     [Parameter] public EventCallback<WorkspaceGroup> OnDeleteGroup { get; set; }
     [Parameter] public EventCallback<(Workspace, WorkspaceLocation)> OnOpenWorkspaceLocation { get; set; }
@@ -185,19 +237,57 @@
     [Parameter] public EventCallback OnAddWorkspace { get; set; }
     [Parameter] public EventCallback OnIconChanged { get; set; }
 
+    /// <summary>Group name plus workspace name — the pair the pin is stored under.</summary>
+    [Parameter] public EventCallback<(string, string)> OnTogglePin { get; set; }
+
+    /// <summary>Raised after any alias edit, so the search box starts honouring it at once.</summary>
+    [Parameter] public EventCallback OnAliasesChanged { get; set; }
+
+    [Parameter] public EventCallback<string> OnDragStarted { get; set; }
+    [Parameter] public EventCallback<string> OnDragEntered { get; set; }
+    [Parameter] public EventCallback<string> OnDropped { get; set; }
+    [Parameter] public EventCallback OnDragEnded { get; set; }
+
     /// <summary>Rescan request for a group that came from a workspace source.</summary>
     [Parameter] public EventCallback OnRescan { get; set; }
 
     private string NewWorkspaceName = string.Empty;
     private string NewGroupName = string.Empty;
     private IconStyle icon = new();
+    private IReadOnlyList<string> aliases = Array.Empty<string>();
 
     private bool IsFromSource => GroupViewModel.Group.IsFromSource;
+
+    private int PinnedCount =>
+        GroupViewModel.Workspaces.Count(w => Layout.IsPinned(GroupViewModel.Name, w.Name));
+
+    private string GroupStateClass
+    {
+        get
+        {
+            var classes = new List<string>();
+
+            if (GroupViewModel.IsExpanded) classes.Add("is-expanded");
+            if (IsDragging) classes.Add("is-dragging");
+            if (IsDropTarget) classes.Add("is-drop-target");
+
+            return string.Join(' ', classes);
+        }
+    }
+
+    /// <summary>
+    /// The aliases go in the tooltip. They are otherwise invisible, and an alias you have
+    /// forgotten setting is an alias you cannot tell from a bug in the search box.
+    /// </summary>
+    private string TitleTooltip => aliases.Count > 0
+        ? $"{GroupViewModel.Name} — also found as: {string.Join(", ", aliases)}"
+        : GroupViewModel.Name;
 
     // Modal keys for ModalStateService
     private string AddWorkspaceModalKey => ModalStateService.GetModalKey("addWorkspace", GroupViewModel.Group.Name);
     private string RenameModalKey => ModalStateService.GetModalKey("renameGroup", GroupViewModel.Group.Name);
     private string IconModalKey => ModalStateService.GetModalKey("groupIcon", GroupViewModel.Group.Name);
+    private string AliasModalKey => ModalStateService.GetModalKey("groupAlias", GroupViewModel.Group.Name);
 
     // Properties for binding to Modal components
     private bool IsAddWorkspaceModalVisible
@@ -230,9 +320,20 @@
         }
     }
 
+    private bool IsAliasModalVisible
+    {
+        get => ModalStateService.IsModalVisible(AliasModalKey);
+        set
+        {
+            if (value) ModalStateService.ShowModal(AliasModalKey);
+            else ModalStateService.HideModal(AliasModalKey);
+        }
+    }
+
     private string? GetModalError(string modalKey) => ModalStateService.GetError(modalKey);
     private string AddWorkspaceModalTitle => $"Add Workspace to {GroupViewModel.Name}";
     private string IconModalTitle => $"Icon for {GroupViewModel.Name}";
+    private string AliasModalTitle => $"Search aliases for {GroupViewModel.Name}";
 
     // Component references for forms
     private RenameGroupDialog? renameGroupDialog;
@@ -257,6 +358,8 @@
         // A source's own icon acts as the fallback, so a scanned group looks right
         // before anyone opens the picker.
         icon = IconService.Resolve(IconScope.Group, GroupViewModel.Name, GroupViewModel.Group.SourceIcon);
+
+        aliases = Layout.AliasesFor(AliasScope.Group, GroupViewModel.Name);
     }
 
     private void ToggleExpand()
@@ -287,11 +390,25 @@
         Menu.Close();
     }
 
+    private void ShowAliasModal()
+    {
+        IsAliasModalVisible = true;
+        Menu.Close();
+    }
+
     private async Task HandleIconSaved()
     {
         IsIconModalVisible = false;
         icon = IconService.Resolve(IconScope.Group, GroupViewModel.Name, GroupViewModel.Group.SourceIcon);
         await OnIconChanged.InvokeAsync();
+        StateHasChanged();
+    }
+
+    private async Task HandleAliasesSaved()
+    {
+        IsAliasModalVisible = false;
+        aliases = Layout.AliasesFor(AliasScope.Group, GroupViewModel.Name);
+        await OnAliasesChanged.InvokeAsync();
         StateHasChanged();
     }
 

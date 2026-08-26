@@ -40,7 +40,19 @@ namespace DevToolbox.UI.Services
         /// <summary>
         /// Creates a WorkspaceGroupViewModel from a WorkspaceGroup domain model
         /// </summary>
-        public WorkspaceGroupViewModel CreateWorkspaceGroupViewModel(WorkspaceGroup group)
+        public WorkspaceGroupViewModel CreateWorkspaceGroupViewModel(WorkspaceGroup group) =>
+            CreateWorkspaceGroupViewModel(group, group.Workspaces);
+
+        /// <summary>
+        /// The same, with the cards in an order the caller chose — the dashboard passes the
+        /// pinned-first order from <c>IDashboardLayoutService</c>.
+        /// <para>
+        /// A separate sequence rather than a sort applied to <c>group.Workspaces</c>: that list is
+        /// what gets written back to workspaceGroups.yaml, and pinning a card is not a reason to
+        /// rewrite the file.
+        /// </para>
+        /// </summary>
+        public WorkspaceGroupViewModel CreateWorkspaceGroupViewModel(WorkspaceGroup group, IEnumerable<Workspace> workspaces)
         {
             var viewModel = new WorkspaceGroupViewModel
             {
@@ -49,8 +61,7 @@ namespace DevToolbox.UI.Services
                 Workspaces = new List<WorkspaceViewModel>()
             };
 
-            // Convert all workspaces in the group to view models
-            foreach (var workspace in group.Workspaces)
+            foreach (var workspace in workspaces)
             {
                 viewModel.Workspaces.Add(CreateWorkspaceViewModel(workspace, group.Name));
             }
