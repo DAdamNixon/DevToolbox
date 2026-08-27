@@ -323,6 +323,12 @@ else
 @code {
     [Parameter] public EventCallback OnSaved { get; set; }
 
+    /// <summary>
+    /// Source to open on, by name. Set when the dialog is opened from a scanned group's context
+    /// menu; null opens on the first source, which is what the toolbar button wants.
+    /// </summary>
+    [Parameter] public string? InitialSourceName { get; set; }
+
     private WorkspaceSourceConfig? config;
     private WorkspaceSource? selected;
     private string? error;
@@ -360,7 +366,13 @@ else
             Sources = stored.Sources.Select(Clone).ToList()
         };
 
-        selected = config.Sources.FirstOrDefault();
+        // The source the caller asked for, else the first. Falls back rather than showing nothing
+        // when the name no longer matches anything — the group was scanned by a source that has
+        // since been renamed or removed, and an empty editor would look like a bug.
+        selected = config.Sources.FirstOrDefault(
+                       s => s.Name.Equals(InitialSourceName, StringComparison.OrdinalIgnoreCase))
+                   ?? config.Sources.FirstOrDefault();
+
         SchedulePreview();
         StateHasChanged();
     }

@@ -22,9 +22,16 @@
    The drop handlers sit on the card rather than on a thin strip between cards. A gap you have to
    hit is a gap you miss, and "drop onto the card that should end up below you" is a rule that
    needs no target at all. dragover has to preventDefault or the browser refuses the drop. *@
+@* Right-click anywhere on the row opens the same menu the ⋮ does, at the cursor. A group card is
+   the full width of the window, so the ⋮ is a long way from wherever you happen to be pointing —
+   and it is the one target on this screen you have to aim for. data-menu-anchor covers the card so
+   menu.js's document listener leaves the right-click alone; see the chips in WorkspaceCard. *@
 <div class="glow-card ws-group-card cursor-pointer @GroupStateClass"
      data-drag-card
+     data-menu-anchor
      @onclick="ToggleExpand"
+     @oncontextmenu="OpenContextMenu"
+     @oncontextmenu:preventDefault="true"
      @ondragover:preventDefault="true"
      @ondragenter:preventDefault="true"
      @ondragover="() => OnDragEntered.InvokeAsync(GroupViewModel.Name)"
@@ -69,13 +76,17 @@
                 <button type="button"
                     class="btn-ghost ws-icon-btn"
                     title="Group actions"
-                    @onclick="() => Menu.Toggle(GroupMenuId)">
+                    @onclick="ToggleActionsMenu">
                     <i class="bi bi-three-dots-vertical"></i>
                 </button>
 
                 @if (Menu.IsOpen(GroupMenuId))
                 {
-                    <div class="ws-menu">
+                    @* One menu, two positions. Opened from the ⋮ it hangs off this anchor; opened
+                       by right-click it is fixed at the cursor, which for a full-width card is
+                       nowhere near the anchor. js/dashboard.js keeps either one on screen. *@
+                    <div class="ws-menu @(atCursor ? "is-at-cursor" : "")"
+                         style="@(atCursor ? $"left:{cursorX}px;top:{cursorY}px" : null)">
                         <button class="dropdown-item" @onclick="ShowIconModal">
                             <i class="bi bi-palette"></i>
                             <span>Change Icon</span>
@@ -88,6 +99,10 @@
                         @if (IsFromSource)
                         {
                             <div class="ws-menu-sep"></div>
+                            <button class="dropdown-item" @onclick="EditSource">
+                                <i class="bi bi-sliders"></i>
+                                <span>Scan Folder Settings…</span>
+                            </button>
                             <button class="dropdown-item" @onclick="Rescan">
                                 <i class="bi bi-arrow-repeat"></i>
                                 <span>Rescan Source</span>
@@ -123,7 +138,9 @@
     <!-- Card Body - Workspace Grid -->
     @if (GroupViewModel.IsExpanded)
     {
-        <div class="ws-grid" @onclick:stopPropagation="true">
+        @* contextmenu stops here too, or a right-click aimed at a workspace card would open the
+           group's menu — the group card is underneath every one of them. *@
+        <div class="ws-grid" @onclick:stopPropagation="true" @oncontextmenu:stopPropagation="true">
             @foreach (var workspaceViewModel in GroupViewModel.Workspaces)
             {
                 <WorkspaceCard
@@ -251,10 +268,21 @@
     /// <summary>Rescan request for a group that came from a workspace source.</summary>
     [Parameter] public EventCallback OnRescan { get; set; }
 
+    /// <summary>
+    /// Open Scan Folders on this group's source. Carries the source name, so the dialog opens on
+    /// the row the user was looking at rather than on whichever source happens to be first.
+    /// </summary>
+    [Parameter] public EventCallback<string?> OnEditSource { get; set; }
+
     private string NewWorkspaceName = string.Empty;
     private string NewGroupName = string.Empty;
     private IconStyle icon = new();
     private IReadOnlyList<string> aliases = Array.Empty<string>();
+
+    // Where a right-click opened the menu. Reset by the ⋮, which wants the menu on its anchor.
+    private bool atCursor;
+    private double cursorX;
+    private double cursorY;
 
     private bool IsFromSource => GroupViewModel.Group.IsFromSource;
 
@@ -369,6 +397,18 @@
         Menu.Close();
     }
 
+    /// <summary>
+    /// Right-click anywhere on the row. Open rather than Toggle: right-clicking a second place on
+    /// a card whose menu is already up should move the menu there, not dismiss it.
+    /// </summary>
+    private void OpenContextMenu(MouseEventArgs e)
+    {
+        cursorX = e.ClientX;
+        cursorY = e.ClientY;
+        atCursor = true;
+        Menu.Open(GroupMenuId);
+    }
+
     private void ShowAddWorkspaceModal()
     {
         NewWorkspaceName = string.Empty;
@@ -410,6 +450,26 @@
         aliases = Layout.AliasesFor(AliasScope.Group, GroupViewModel.Name);
         await OnAliasesChanged.InvokeAsync();
         StateHasChanged();
+    }
+
+    private void ToggleActionsMenu()
+    {
+        // Back to hanging off the anchor, whatever a previous right-click set.
+        atCursor = false;
+        Menu.Toggle(GroupMenuId);
+    }
+
+    /// <summary>
+    /// Opens Scan Folders on the source this group came from. A group can be fed by more than one
+    /// source — the dev and demo checkouts of one site both carry the same group name — and
+    /// <see cref="WorkspaceGroup.SourceName"/> is whichever got there first. The dialog lists the
+    /// rest down its left side, so landing on one of them is a starting point rather than a guess
+    /// that has to be right.
+    /// </summary>
+    private async Task EditSource()
+    {
+        Menu.Close();
+        await OnEditSource.InvokeAsync(GroupViewModel.Group.SourceName);
     }
 
     private async Task Rescan()

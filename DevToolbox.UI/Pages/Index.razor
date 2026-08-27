@@ -136,6 +136,7 @@
             OnAddWorkspace="SaveWorkspaces"
             OnMoveToGroup="HandleMoveToGroup"
             OnRescan="RescanSources"
+            OnEditSource="ShowSourcesModalFor"
             OnIconChanged="StateHasChanged"
             OnTogglePin="HandleTogglePin"
             OnAliasesChanged="HandleAliasesChanged"
@@ -179,7 +180,7 @@
 </Modal>
 
 <Modal @bind-IsVisible="IsSourcesModalVisible" Title="Scan Folders" SizeClass="is-wide">
-    <WorkspaceSourcesDialog @ref="sourcesDialog" OnSaved="HandleSourcesSaved" />
+    <WorkspaceSourcesDialog @ref="sourcesDialog" InitialSourceName="@sourcesModalFocus" OnSaved="HandleSourcesSaved" />
 </Modal>
 
 @code {
@@ -198,6 +199,9 @@
 
     /// <summary>Set in <see cref="Dispose"/>, so a scan landing afterwards does not touch the renderer.</summary>
     private bool disposed;
+
+    /// <summary>Source the Scan Folders dialog should open on. Null opens on the first one.</summary>
+    private string? sourcesModalFocus;
     private ElementReference searchInput;
     private string searchText = "";
     private string NewGroupName = string.Empty;
@@ -423,6 +427,17 @@
 
     private void ShowSourcesModal()
     {
+        sourcesModalFocus = null;
+        IsSourcesModalVisible = true;
+    }
+
+    /// <summary>
+    /// Scan Folders, opened on one source — from a scanned group's context menu, so the row you
+    /// were looking at is the row you land on.
+    /// </summary>
+    private void ShowSourcesModalFor(string? sourceName)
+    {
+        sourcesModalFocus = sourceName;
         IsSourcesModalVisible = true;
     }
 

@@ -27,6 +27,19 @@ public sealed class MenuStateService
 
     public bool IsOpen(string menuId) => _openMenuId is not null && _openMenuId == menuId;
 
+    /// <summary>
+    /// Opens this menu, closing whatever was open. Unlike <see cref="Toggle"/> it never closes:
+    /// a right-click on a card whose menu is already up should move the menu to the new cursor
+    /// position, not dismiss it.
+    /// </summary>
+    public void Open(string menuId)
+    {
+        if (string.IsNullOrEmpty(menuId) || IsOpen(menuId)) return;
+
+        _openMenuId = menuId;
+        Changed?.Invoke();
+    }
+
     /// <summary>Opens this menu, closing whatever was open; or closes it if it was the open one.</summary>
     public void Toggle(string menuId)
     {

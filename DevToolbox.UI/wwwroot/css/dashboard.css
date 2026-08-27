@@ -657,6 +657,17 @@ select:not([multiple]) {
     left: 0;
 }
 
+/* Right-clicked open, so it belongs at the pointer rather than on an anchor at the far end of a
+   full-width card. left/top come from an inline style; fixed rather than absolute so those are
+   viewport coordinates, which is what a mouse event reports. No ancestor of a card sets a
+   transform — the hover lift was taken off in the dense pass — so nothing captures the fixed
+   positioning on the way up. js/dashboard.js still nudges it inside the window. */
+.ws-menu.is-at-cursor {
+    position: fixed;
+    right: auto;
+    margin: 0;
+}
+
 .ws-menu .dropdown-item {
     width: 100%;
     text-align: left;
