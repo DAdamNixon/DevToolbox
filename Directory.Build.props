@@ -36,8 +36,14 @@
     is what AppVersion.ChannelFrom reads, so the status bar and Settings relabel themselves
     without a copy change anywhere.
   -->
+  <!--
+    0.9.2 / beta.3: the Projects tab's customization layer — smart folder cards that can be
+    renamed, merged, relabelled and hidden, with the edits surviving a rescan; the Smart Folders
+    dialog reorganised into sections with icon and colour pickers; groups hideable and draggable
+    to last.
+  -->
   <PropertyGroup>
-    <VersionPrefix>0.9.1</VersionPrefix>
-    <VersionSuffix>beta.2</VersionSuffix>
+    <VersionPrefix>0.9.2</VersionPrefix>
+    <VersionSuffix>beta.3</VersionSuffix>
   </PropertyGroup>
 </Project>
