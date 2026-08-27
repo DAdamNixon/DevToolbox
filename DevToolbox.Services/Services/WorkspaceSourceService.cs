@@ -12,7 +12,7 @@ namespace DevToolbox.Services.Services;
 /// Studio or any particular directory — the pattern, grouping and open command all come
 /// from config, so the same code covers *.code-workspace, *.sln or bare repo folders.
 /// <para>
-/// The same code also answers <see cref="PreviewAsync"/>, which is what the Scan Folders
+/// The same code also answers <see cref="PreviewAsync"/>, which is what the Smart Folders
 /// dialog renders while you type. Sharing <see cref="Collect"/> and <see cref="BuildGroup"/>
 /// between the two is the point: a preview computed by a parallel implementation would only
 /// be as trustworthy as the last time someone remembered to change both.
@@ -188,7 +188,10 @@ public class WorkspaceSourceService : IWorkspaceSourceService
                         Path = l.Path,
                         Description = l.Description,
                         Entry = subjectByPath.TryGetValue(l.Path, out var subject) ? subject : l.Path,
-                        RegexMatched = !collected.Unmatched.Contains(l.Path)
+                        RegexMatched = !collected.Unmatched.Contains(l.Path),
+                        Segments = BuildSegments(
+                            subjectByPath.TryGetValue(l.Path, out var s) ? s : l.Path,
+                            collected.Regex)
                     })
                     .ToList()
             })
@@ -323,6 +326,13 @@ public class WorkspaceSourceService : IWorkspaceSourceService
         public string? RegexError { get; set; }
 
         /// <summary>
+        /// The compiled name pattern, or null when there is none or it would not compile. Handed
+        /// back so the preview can re-run it per entry to find out where the captures landed,
+        /// without compiling it a second time or guessing at what Collect decided.
+        /// </summary>
+        public Regex? Regex { get; set; }
+
+        /// <summary>
         /// Entries looked at. Equal to <see cref="Entries"/>: when a limit applied the walk stopped
         /// there, so how many more there were was never established — see <see cref="Truncated"/>.
         /// </summary>
@@ -341,6 +351,7 @@ public class WorkspaceSourceService : IWorkspaceSourceService
         var collected = new Collected();
         var regex = BuildRegex(source, out var regexError);
         collected.RegexError = regexError;
+        collected.Regex = regex;
 
         List<string> entries;
         try
@@ -657,6 +668,95 @@ public class WorkspaceSourceService : IWorkspaceSourceService
             workspace.Success && workspace.Value.Length > 0 ? workspace.Value : bare,
             location.Success && location.Value.Length > 0 ? location.Value : fallbackLocation,
             true);
+    }
+
+    /// <summary>
+    /// Cuts <paramref name="subject"/> into the runs the pattern captured, for the preview's
+    /// highlighting. Everything outside a capture comes back roled
+    /// <see cref="CaptureRole.None"/>, so the pieces always reassemble into the original string.
+    /// <para>
+    /// Captures are taken in positional order rather than by name, because .NET allows the same
+    /// group name on both sides of an alternation and either one can be the one that matched.
+    /// Overlapping captures — a <c>workspace</c> nested inside a <c>location</c> — would be
+    /// ambiguous to colour, so a capture starting inside one already taken is skipped.
+    /// </para>
+    /// </summary>
+    private static List<PreviewSegment> BuildSegments(string subject, Regex? regex)
+    {
+        var whole = new List<PreviewSegment>
+        {
+            new() { Text = subject, Role = CaptureRole.None }
+        };
+
+        if (regex is null || string.IsNullOrEmpty(subject))
+        {
+            return whole;
+        }
+
+        var match = regex.Match(subject);
+        if (!match.Success)
+        {
+            return whole;
+        }
+
+        var captures = new List<(int Start, int Length, CaptureRole Role)>();
+
+        foreach (var (name, role) in new[]
+                 {
+                     ("workspace", CaptureRole.Workspace),
+                     ("location", CaptureRole.Location)
+                 })
+        {
+            var group = match.Groups[name];
+            if (group.Success && group.Length > 0)
+            {
+                captures.Add((group.Index, group.Length, role));
+            }
+        }
+
+        if (captures.Count == 0)
+        {
+            return whole;
+        }
+
+        captures.Sort((a, b) => a.Start.CompareTo(b.Start));
+
+        var segments = new List<PreviewSegment>();
+        var at = 0;
+
+        foreach (var capture in captures)
+        {
+            if (capture.Start < at)
+            {
+                // Overlaps one already emitted. Nothing sensible to paint, so it keeps the
+                // colour of whichever capture got there first.
+                continue;
+            }
+
+            if (capture.Start > at)
+            {
+                segments.Add(new PreviewSegment
+                {
+                    Text = subject[at..capture.Start],
+                    Role = CaptureRole.None
+                });
+            }
+
+            segments.Add(new PreviewSegment
+            {
+                Text = subject.Substring(capture.Start, capture.Length),
+                Role = capture.Role
+            });
+
+            at = capture.Start + capture.Length;
+        }
+
+        if (at < subject.Length)
+        {
+            segments.Add(new PreviewSegment { Text = subject[at..], Role = CaptureRole.None });
+        }
+
+        return segments;
     }
 
     /// <summary>

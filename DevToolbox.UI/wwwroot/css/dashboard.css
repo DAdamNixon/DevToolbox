@@ -1367,6 +1367,12 @@ select:not([multiple]) {
     max-width: 56rem;
 }
 
+/* Three columns and a scrolling list of matches. Still bounded by the viewport by the rules
+   above, so on a small window this is simply ignored. */
+.modal-content.is-xwide {
+    max-width: 76rem;
+}
+
 .hosts-add-form {
     display: flex;
     flex-direction: column;
@@ -2188,18 +2194,76 @@ tr.log-row-expanded td {
    dialog's height was the sum of all of them, and there was nothing to compare a
    source against anyway. */
 
+/* Three columns: the list, the editor, the matches. The matches used to sit under the fields,
+   which put the answer to "did that change help?" below the fold of the form you were typing
+   into — the two things being compared could not be on screen at once. */
 .ws-sources {
     display: grid;
-    grid-template-columns: 12rem minmax(0, 1fr);
+    grid-template-columns: 12rem minmax(0, 1fr) minmax(0, 22rem);
     gap: 1rem;
     align-items: start;
     min-width: 0;
 }
 
-@media (max-width: 760px) {
+/* Collapsed, the left column is a rail holding its own toggle. Once you are working on one
+   folder the other eight are width taken off the two columns that matter. */
+.ws-sources.is-list-collapsed {
+    grid-template-columns: 2rem minmax(0, 1fr) minmax(0, 24rem);
+}
+
+/* Two columns, then one. The matches column drops under the editor rather than being squeezed
+   to nothing — at this width there is no side-by-side worth having. */
+@media (max-width: 1100px) {
     .ws-sources {
+        grid-template-columns: 12rem minmax(0, 1fr);
+    }
+
+    .ws-sources.is-list-collapsed {
+        grid-template-columns: 2rem minmax(0, 1fr);
+    }
+
+    .ws-matches {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 760px) {
+    .ws-sources,
+    .ws-sources.is-list-collapsed {
         grid-template-columns: minmax(0, 1fr);
     }
+}
+
+.ws-matches {
+    min-width: 0;
+}
+
+/* The rail's toggle. Full width when the list is open so it reads as its header; a bare chevron
+   when collapsed. */
+.ws-list-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0.375rem;
+    margin-bottom: 0.25rem;
+    border: none;
+    border-radius: 0.375rem;
+    background: transparent;
+    color: rgb(var(--c-text-muted));
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+}
+
+.ws-list-toggle:hover {
+    background-color: rgb(var(--c-surface-hover) / 0.6);
+    color: rgb(var(--c-text));
+}
+
+.is-list-collapsed .ws-list-toggle {
+    justify-content: center;
+    padding: 0.25rem 0;
 }
 
 .ws-source-list {
@@ -2314,11 +2378,90 @@ tr.log-row-expanded td {
    its own scroll: the answer for a real source is a hundred rows, and the fields
    above it have to stay reachable. */
 
+/* Its own column now, so a left border rather than a top one — it is beside the editor, not
+   under it. */
 .ws-preview {
-    margin-top: 0.75rem;
-    padding-top: 0.75rem;
-    border-top: 1px solid rgb(var(--c-border));
+    padding-left: 1rem;
+    border-left: 1px solid rgb(var(--c-border));
     min-width: 0;
+}
+
+@media (max-width: 1100px) {
+    .ws-preview {
+        padding-left: 0;
+        padding-top: 0.75rem;
+        border-left: none;
+        border-top: 1px solid rgb(var(--c-border));
+    }
+}
+
+/* ── the pattern helpers ─────────────────────────────────────────────────────
+   Presets, capture highlighting and an unmatched-only filter. All three exist because the
+   previous way to get a regex right was to change it, read the card names it produced, and
+   infer backwards what it must have grabbed. */
+
+.ws-preset-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.375rem;
+    min-width: 0;
+}
+
+.ws-preset-label {
+    flex: 0 0 auto;
+    margin: 0;
+}
+
+.ws-preset-row > .ws-input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.ws-only-unmatched {
+    margin-bottom: 0.5rem;
+    font-size: 0.75rem;
+}
+
+/* The string the pattern was handed, with the captures coloured where they landed. Monospace
+   because the point is which characters, and it wraps because a relative path is long and
+   truncating the interesting end of it would defeat the whole feature. */
+.ws-capture {
+    min-width: 0;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 0.6875rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    color: rgb(var(--c-text-muted));
+}
+
+.ws-cap.is-workspace,
+.ws-capture-legend .is-workspace {
+    padding: 0.0625rem 0.125rem;
+    border-radius: 0.1875rem;
+    background-color: rgb(var(--c-accent-purple) / 0.22);
+    color: rgb(var(--c-text));
+    font-weight: 600;
+}
+
+.ws-cap.is-location,
+.ws-capture-legend .is-location {
+    padding: 0.0625rem 0.125rem;
+    border-radius: 0.1875rem;
+    background-color: rgb(var(--c-accent-blue) / 0.22);
+    color: rgb(var(--c-text));
+    font-weight: 600;
+}
+
+.ws-capture-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 0.625rem;
+    color: rgb(var(--c-text-muted));
 }
 
 .ws-preview-head {
@@ -2381,10 +2524,14 @@ tr.log-row-expanded td {
 
 /* Indented under its card, so the workspace/location split the regex produced is
    the shape of the list rather than something to be read off it. */
+/* align-items: baseline and wrapping, because the capture string is now the widest thing on the
+   row and in a 22rem column it takes more than one line. Centring a two-line span against a
+   one-line chip puts the chip in the middle of nowhere. */
 .ws-preview-loc {
     display: flex;
-    align-items: center;
-    gap: 0.375rem;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.375rem;
     margin-left: 1.25rem;
     min-width: 0;
     font-size: 0.75rem;

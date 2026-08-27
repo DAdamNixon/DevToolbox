@@ -74,9 +74,9 @@
             <span>Rescan</span>
         </button>
 
-        <button class="ws-tool" title="Folders scanned for projects" @onclick="ShowSourcesModal">
+        <button class="ws-tool" title="Smart folders — the folders scanned for projects" @onclick="ShowSourcesModal">
             <i class="bi bi-folder-symlink"></i>
-            <span>Scan Folders</span>
+            <span>Smart Folders</span>
         </button>
 
         @* Was a full-width call to action at the bottom of the page, below every card. It is
@@ -158,7 +158,7 @@
             }
             else if (string.IsNullOrWhiteSpace(searchText))
             {
-                <span>No groups yet. <strong>New Group</strong> adds one by hand, <strong>Scan Folders</strong> finds them on disk.</span>
+                <span>No groups yet. <strong>New Group</strong> adds one by hand, <strong>Smart Folders</strong> finds them on disk.</span>
             }
             else
             {
@@ -179,7 +179,9 @@
         OnGroupCreated="HandleGroupCreated" />
 </Modal>
 
-<Modal @bind-IsVisible="IsSourcesModalVisible" Title="Scan Folders" SizeClass="is-wide">
+@* is-xwide, not is-wide: three columns and a scrolling match list want the room, and the panel
+   is bounded by the viewport regardless. *@
+<Modal @bind-IsVisible="IsSourcesModalVisible" Title="Smart Folders" SizeClass="is-xwide">
     <WorkspaceSourcesDialog @ref="sourcesDialog" InitialSourceName="@sourcesModalFocus" OnSaved="HandleSourcesSaved" />
 </Modal>
 
@@ -200,7 +202,7 @@
     /// <summary>Set in <see cref="Dispose"/>, so a scan landing afterwards does not touch the renderer.</summary>
     private bool disposed;
 
-    /// <summary>Source the Scan Folders dialog should open on. Null opens on the first one.</summary>
+    /// <summary>Source the Smart Folders dialog should open on. Null opens on the first one.</summary>
     private string? sourcesModalFocus;
     private ElementReference searchInput;
     private string searchText = "";
@@ -432,7 +434,7 @@
     }
 
     /// <summary>
-    /// Scan Folders, opened on one source — from a scanned group's context menu, so the row you
+    /// Smart Folders, opened on one source — from a scanned group's context menu, so the row you
     /// were looking at is the row you land on.
     /// </summary>
     private void ShowSourcesModalFor(string? sourceName)

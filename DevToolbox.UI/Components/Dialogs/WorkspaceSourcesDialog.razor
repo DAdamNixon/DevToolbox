@@ -5,32 +5,48 @@
 @inject IUiSettingsService UiSettings
 @implements IDisposable
 
-@* Was a stack of eight-field cards, one per source, with no way to tell what any of it would
-   produce short of saving and looking at the dashboard. Now: the sources down the left, one
-   editor on the right, and under it a live preview of the exact cards this source would add.
-   The preview is built by the same code that builds the real thing, so getting it right here
-   means it is right. *@
+@* Three columns: the smart folders down the left, the one being edited in the middle, and what
+   it matches on the right. The matches were underneath the fields before, which meant the answer
+   to "did that change help?" was below the fold of a dialog you were typing into — the two things
+   you are comparing could not be on screen together. Now they are side by side and the matches
+   scroll on their own.
+
+   The left column collapses to a rail, because once you are working on one folder the list of the
+   other eight is just width taken off the two columns that matter. *@
 @if (config is null)
 {
-    <div class="ws-empty">Loading sources…</div>
+    <div class="ws-empty">Loading smart folders…</div>
 }
 else
 {
-    <div class="ws-sources">
+    <div class="ws-sources @(listCollapsed ? "is-list-collapsed" : "")">
         <div class="ws-source-list">
-            @foreach (var source in config.Sources)
+            <button type="button" class="ws-list-toggle"
+                    title="@(listCollapsed ? "Show the list of smart folders" : "Collapse the list")"
+                    @onclick="() => listCollapsed = !listCollapsed">
+                <i class="bi @(listCollapsed ? "bi-chevron-double-right" : "bi-chevron-double-left")"></i>
+                @if (!listCollapsed)
+                {
+                    <span>@config.Sources.Count folders</span>
+                }
+            </button>
+
+            @if (!listCollapsed)
             {
-                <button type="button"
-                        class="ws-source-item @(ReferenceEquals(source, selected) ? "is-active" : "") @(source.Enabled ? "" : "is-off")"
-                        @onclick="() => Select(source)">
-                    <span class="ws-source-item-name">@DisplayName(source)</span>
-                    <span class="ws-source-item-meta">@Summary(source)</span>
+                @foreach (var source in config.Sources)
+                {
+                    <button type="button"
+                            class="ws-source-item @(ReferenceEquals(source, selected) ? "is-active" : "") @(source.Enabled ? "" : "is-off")"
+                            @onclick="() => Select(source)">
+                        <span class="ws-source-item-name">@DisplayName(source)</span>
+                        <span class="ws-source-item-meta">@Summary(source)</span>
+                    </button>
+                }
+
+                <button type="button" class="ws-source-add" @onclick="Add">
+                    <i class="bi bi-plus-circle"></i> Add smart folder
                 </button>
             }
-
-            <button type="button" class="ws-source-add" @onclick="Add">
-                <i class="bi bi-plus-circle"></i> Add scan folder
-            </button>
         </div>
 
         <div class="ws-source-editor">
@@ -40,14 +56,14 @@ else
                     @if (config.Sources.Count == 0)
                     {
                         <span>
-                            No scan folders yet. Point one at a directory of project files —
+                            No smart folders yet. Point one at a directory of project files —
                             <span class="font-mono">*.code-workspace</span>, <span class="font-mono">*.sln</span>,
                             or the repo folders themselves — and they show up as cards.
                         </span>
                     }
                     else
                     {
-                        <span>Pick a scan folder on the left to edit it.</span>
+                        <span>Pick a smart folder on the left to edit it.</span>
                     }
                 </div>
             }
@@ -58,7 +74,7 @@ else
                         <input type="checkbox" checked="@selected.Enabled" @onchange="ToggleEnabled" />
                         <span>Enabled</span>
                     </label>
-                    <button type="button" class="btn-ghost btn-sm" title="Remove this scan folder"
+                    <button type="button" class="btn-ghost btn-sm" title="Remove this smart folder"
                             @onclick="() => Remove(selected)">
                         <i class="bi bi-trash"></i> Remove
                     </button>
@@ -134,9 +150,25 @@ else
                        reading them apart is how you end up with a preview full of fallbacks. *@
                     <div class="ws-field ws-span">
                         <label class="ws-label">Name pattern (optional regex)</label>
+
+                        @* Nobody writes one of these from scratch; they start from the one that is
+                           nearly right. Each preset fills the field and the match-against beside it,
+                           and the preview updates as it lands — so picking one is how you find out
+                           what it does, not something to be read first. *@
+                        <div class="ws-preset-row">
+                            <label class="ws-label ws-preset-label">Start from</label>
+                            <select class="ws-input" value="@presetKey" @onchange="ApplyPreset">
+                                <option value="">a pattern…</option>
+                                @foreach (var preset in Presets)
+                                {
+                                    <option value="@preset.Key">@preset.Label</option>
+                                }
+                            </select>
+                        </div>
+
                         <div class="ws-input-row">
                             <input type="text" class="ws-input" @bind="selected.NameRegex" @bind:event="oninput"
-                                   @bind:after="SchedulePreview" placeholder="@RegexPlaceholder" />
+                                   @bind:after="OnRegexTyped" placeholder="@RegexPlaceholder" />
                             <select class="ws-input ws-input-fit" value="@selected.MatchOn" @onchange="SetMatchOn">
                                 <option value="@nameof(NameMatch.Name)">over the name</option>
                                 <option value="@nameof(NameMatch.RelativePath)">over the path</option>
@@ -192,11 +224,17 @@ else
                     </div>
                 </div>
 
-                @* ---- the preview ---------------------------------------------------------- *@
+            }
+        </div>
+
+        @* ---- the matches, their own column ---------------------------------------- *@
+        <div class="ws-matches">
+            @if (selected is not null)
+            {
                 <div class="ws-preview">
                     <div class="ws-preview-head">
                         <span class="ws-label">
-                            Preview
+                            Matches
                             @if (previewBusy)
                             {
                                 <i class="bi bi-hourglass-split"></i>
@@ -205,14 +243,25 @@ else
                         @if (preview is not null && preview.PathExists && preview.Error is null)
                         {
                             <span class="ws-preview-stats">
-                                @preview.EntriesFound@(preview.Truncated ? "+" : "") matched
+                                @preview.EntriesFound@(preview.Truncated ? "+" : "") found
                                 <i class="bi bi-arrow-right-short"></i>
                                 @preview.WorkspaceCount card@(preview.WorkspaceCount == 1 ? "" : "s"),
                                 @preview.LocationCount location@(preview.LocationCount == 1 ? "" : "s")
-                                in group <strong>@preview.GroupName</strong>
+                                in <strong>@preview.GroupName</strong>
                             </span>
                         }
                     </div>
+
+                    @* Iterate to zero. With 40 entries the three that fell through are the only
+                       ones worth looking at, and they are scattered down the list. *@
+                    @if (preview is not null && preview.Unmatched.Count > 0)
+                    {
+                        <label class="ws-check ws-only-unmatched">
+                            <input type="checkbox" checked="@onlyUnmatched"
+                                   @onchange="e => onlyUnmatched = (bool?)e.Value ?? false" />
+                            <span>Only the @preview.Unmatched.Count the pattern missed</span>
+                        </label>
+                    }
 
                     @if (preview is null)
                     {
@@ -260,7 +309,7 @@ else
                         else
                         {
                             <div class="ws-preview-tree">
-                                @foreach (var workspace in preview.Workspaces)
+                                @foreach (var workspace in VisibleWorkspaces)
                                 {
                                     <div class="ws-preview-ws">
                                         <div class="ws-preview-ws-head">
@@ -272,7 +321,18 @@ else
                                         {
                                             <div class="ws-preview-loc @(location.RegexMatched ? "" : "is-fallback")">
                                                 <span class="ws-chip">@location.Name</span>
-                                                <span class="ws-preview-loc-path" title="@location.Path">@location.Path</span>
+
+                                                @* The string the pattern was handed, with the captures
+                                                   coloured where they landed. This is the difference
+                                                   between reading what the pattern did and inferring
+                                                   it backwards from the card names it produced. *@
+                                                <span class="ws-capture" title="@location.Path">
+                                                    @foreach (var segment in location.Segments)
+                                                    {
+                                                        <span class="@CaptureClass(segment.Role)">@segment.Text</span>
+                                                    }
+                                                </span>
+
                                                 @if (!string.IsNullOrWhiteSpace(location.Description))
                                                 {
                                                     <span class="ws-preview-loc-desc">@location.Description</span>
@@ -280,7 +340,7 @@ else
                                                 @if (!location.RegexMatched)
                                                 {
                                                     <span class="ws-chip is-warn" title="The name pattern did not match, so the whole name became the card">
-                                                        no pattern match
+                                                        no match
                                                     </span>
                                                 }
                                             </div>
@@ -289,12 +349,20 @@ else
                                 }
                             </div>
 
-                            @if (preview.Unmatched.Count > 0)
+                            @if (preview.Unmatched.Count > 0 && !onlyUnmatched)
                             {
                                 <div class="ws-scan-note">
-                                    @preview.Unmatched.Count of @preview.Workspaces.Sum(w => w.Locations.Count)
-                                    entries did not match the name pattern and became a card each:
-                                    <span class="font-mono">@string.Join(", ", preview.Unmatched.Take(6))</span>@(preview.Unmatched.Count > 6 ? " …" : "")
+                                    @preview.Unmatched.Count entries did not match the name pattern and
+                                    became a card each.
+                                </div>
+                            }
+
+                            @if (LegendVisible)
+                            {
+                                <div class="ws-capture-legend">
+                                    <span class="is-workspace">workspace</span>
+                                    <span class="is-location">location</span>
+                                    <span>not captured</span>
                                 </div>
                             }
                         }
@@ -328,6 +396,43 @@ else
     /// menu; null opens on the first source, which is what the toolbar button wants.
     /// </summary>
     [Parameter] public string? InitialSourceName { get; set; }
+
+    /// <summary>Left column collapsed to a rail, once you are working on one folder.</summary>
+    private bool listCollapsed;
+
+    /// <summary>Show only the entries the pattern missed, so you can iterate to zero.</summary>
+    private bool onlyUnmatched;
+
+    /// <summary>Which preset the dropdown shows. Cleared as soon as the regex is hand-edited.</summary>
+    private string presetKey = string.Empty;
+
+    /// <summary>
+    /// A starting pattern, and what to run it against. Most people never write one of these from
+    /// scratch — they start from the one that is nearly right and adjust it, which is what these
+    /// are for. Deliberately a short list of shapes that actually occur in this codebase rather
+    /// than a regex tutorial.
+    /// </summary>
+    private sealed record Preset(string Key, string Label, string? Regex, NameMatch MatchOn);
+
+    private static readonly Preset[] Presets =
+    {
+        new("none", "No pattern — one card per file", null, NameMatch.Name),
+
+        new("prefix", "dev-thing, demo-thing → prefix is the location",
+            @"^(?<location>[^-]+)-(?<workspace>.+)$", NameMatch.Name),
+
+        new("suffix", "Thing.dev, Thing.demo → suffix is the location",
+            @"^(?<workspace>.+)\.(?<location>[^.]+)$", NameMatch.Name),
+
+        new("branchfolder", "development\\…\\Thing.sln → the branch folder is the location",
+            @"^(?<location>[^\\]+)\\.*?(?<workspace>[^\\]+)\.[^.\\]+$", NameMatch.RelativePath),
+
+        new("dropsuffix", "Thing.Development.slnf → drop the suffix, keep Thing",
+            @"^(?<workspace>.+)\.[^.]+$", NameMatch.Name),
+
+        new("folder", "…\\Thing\\anything.sln → the parent folder is the card",
+            @"(?<workspace>[^\\]+)\\[^\\]+$", NameMatch.RelativePath),
+    };
 
     private WorkspaceSourceConfig? config;
     private WorkspaceSource? selected;
@@ -387,8 +492,94 @@ else
     {
         selected = source;
         preview = null;
+
+        // Per-source view state. The unmatched filter especially: carrying it to a folder that has
+        // no unmatched entries would show an empty column and no reason why.
+        onlyUnmatched = false;
+        presetKey = string.Empty;
+
         SchedulePreview();
     }
+
+    // ---- the pattern helpers ---------------------------------------------------------------
+
+    /// <summary>
+    /// Fills the pattern from a preset, and the match-against with it — the two are one decision,
+    /// and a pattern written for the name is nonsense against the path.
+    /// </summary>
+    private void ApplyPreset(ChangeEventArgs e)
+    {
+        var key = e.Value?.ToString() ?? string.Empty;
+        presetKey = key;
+
+        if (selected is null || key.Length == 0)
+        {
+            return;
+        }
+
+        var preset = Presets.FirstOrDefault(p => p.Key == key);
+        if (preset is null)
+        {
+            return;
+        }
+
+        selected.NameRegex = preset.Regex;
+        selected.MatchOn = preset.MatchOn;
+        SchedulePreview();
+    }
+
+    /// <summary>
+    /// Typing in the pattern box drops the preset label: what is in the field is no longer the
+    /// preset, and a dropdown still naming it would be lying about the state of the form.
+    /// </summary>
+    private void OnRegexTyped()
+    {
+        presetKey = string.Empty;
+        SchedulePreview();
+    }
+
+    /// <summary>
+    /// The cards shown, filtered to the ones with an entry the pattern missed when that toggle is
+    /// on. Filtered here rather than in the service: it is a way of looking at one preview, not a
+    /// different preview.
+    /// </summary>
+    private List<PreviewWorkspace> VisibleWorkspaces
+    {
+        get
+        {
+            if (preview is null)
+            {
+                return new List<PreviewWorkspace>();
+            }
+
+            if (!onlyUnmatched)
+            {
+                return preview.Workspaces;
+            }
+
+            return preview.Workspaces
+                .Select(w => new PreviewWorkspace
+                {
+                    Name = w.Name,
+                    Locations = w.Locations.Where(l => !l.RegexMatched).ToList()
+                })
+                .Where(w => w.Locations.Count > 0)
+                .ToList();
+        }
+    }
+
+    private static string CaptureClass(CaptureRole role) => role switch
+    {
+        CaptureRole.Workspace => "ws-cap is-workspace",
+        CaptureRole.Location => "ws-cap is-location",
+        _ => "ws-cap"
+    };
+
+    /// <summary>
+    /// The legend is only worth the space once there is something coloured to explain.
+    /// </summary>
+    private bool LegendVisible => !string.IsNullOrWhiteSpace(selected?.NameRegex)
+                                  && preview?.RegexError is null;
 
     /// <summary>What the list shows for a source, including one that has not been named yet.</summary>
     private static string DisplayName(WorkspaceSource source) =>

@@ -101,7 +101,7 @@
                             <div class="ws-menu-sep"></div>
                             <button class="dropdown-item" @onclick="EditSource">
                                 <i class="bi bi-sliders"></i>
-                                <span>Scan Folder Settings…</span>
+                                <span>Smart Folder Settings…</span>
                             </button>
                             <button class="dropdown-item" @onclick="Rescan">
                                 <i class="bi bi-arrow-repeat"></i>
@@ -173,7 +173,7 @@
                 {
                     <div class="ws-empty">
                         Nothing matched this source's pattern.
-                        Check the folder and pattern under <strong>Scan Folders</strong>.
+                        Check the folder and pattern under <strong>Smart Folders</strong>.
                     </div>
                 }
             }
@@ -269,7 +269,7 @@
     [Parameter] public EventCallback OnRescan { get; set; }
 
     /// <summary>
-    /// Open Scan Folders on this group's source. Carries the source name, so the dialog opens on
+    /// Open Smart Folders on this group's source. Carries the source name, so the dialog opens on
     /// the row the user was looking at rather than on whichever source happens to be first.
     /// </summary>
     [Parameter] public EventCallback<string?> OnEditSource { get; set; }
@@ -460,7 +460,7 @@
     }
 
     /// <summary>
-    /// Opens Scan Folders on the source this group came from. A group can be fed by more than one
+    /// Opens Smart Folders on the source this group came from. A group can be fed by more than one
     /// source — the dev and demo checkouts of one site both carry the same group name — and
     /// <see cref="WorkspaceGroup.SourceName"/> is whichever got there first. The dialog lists the
     /// rest down its left side, so landing on one of them is a starting point rather than a guess

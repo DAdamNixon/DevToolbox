@@ -83,4 +83,35 @@ public class PreviewLocation
     /// wrong, and hiding it would make the fallback look like the intended result.
     /// </summary>
     public bool RegexMatched { get; set; } = true;
+
+    /// <summary>
+    /// The string the name pattern was run against, cut into the pieces the pattern captured, so
+    /// the dialog can colour the <c>workspace</c> and <c>location</c> captures where they sit.
+    /// <para>
+    /// This is the difference between a preview that tells you what happened and one that tells
+    /// you why. Before it, getting a regex right meant changing it, reading the resulting card
+    /// names, and inferring backwards what the pattern must have grabbed.
+    /// </para>
+    /// <para>
+    /// One segment covering the whole string, roled <see cref="CaptureRole.None"/>, when there is
+    /// no pattern or the pattern did not match.
+    /// </para>
+    /// </summary>
+    public List<PreviewSegment> Segments { get; set; } = new();
+}
+
+/// <summary>Which named group a run of characters belongs to.</summary>
+public enum CaptureRole
+{
+    None,
+    Workspace,
+    Location
+}
+
+/// <summary>One run of the matched string, and what the pattern made of it.</summary>
+public class PreviewSegment
+{
+    public string Text { get; set; } = string.Empty;
+
+    public CaptureRole Role { get; set; }
 }
