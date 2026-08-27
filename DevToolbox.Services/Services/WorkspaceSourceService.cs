@@ -259,6 +259,10 @@ public class WorkspaceSourceService : IWorkspaceSourceService
                     groups.Add(group);
                 }
 
+                // Recorded on every source that reaches the group, not just the one that created
+                // it, so the card can say how many rules are behind it.
+                group.SourceNames.Add(source.Name);
+
                 Fold(group, source, root, collected.Entries, () => nextWorkspaceId--);
 
                 // Cards this source has rows on — not cards it was the first to create. When two
@@ -482,8 +486,7 @@ public class WorkspaceSourceService : IWorkspaceSourceService
     private static IEnumerable<string> Enumerate(string root, WorkspaceSource source)
     {
         var pattern = NormalizePattern(source.Pattern);
-        var excludes = source.Exclude
-            .Where(e => !string.IsNullOrWhiteSpace(e))
+        var excludes = source.EffectiveExcludes
             .Select(e => NormalizePattern(e))
             .ToArray();
 

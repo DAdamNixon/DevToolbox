@@ -275,6 +275,60 @@ public class DashboardLayoutTests
         Assert.Equal(new[] { "new" }, service.AliasesFor(AliasScope.Workspace, "ACCOUNT"));
     }
 
+    // ---- hidden groups -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task Hiding_a_group_is_remembered_and_reversible()
+    {
+        var (service, _) = await LoadedAsync();
+
+        Assert.True(await service.ToggleHiddenAsync("Old Experiments"));
+        Assert.True(service.IsHidden("Old Experiments"));
+        Assert.Equal(new[] { "Old Experiments" }, service.HiddenGroups);
+
+        Assert.False(await service.ToggleHiddenAsync("Old Experiments"));
+        Assert.False(service.IsHidden("Old Experiments"));
+
+        // Removed, not left behind as an entry that happens to be false. The file only ever holds
+        // groups that are actually hidden, the way the pins do.
+        Assert.Empty(service.HiddenGroups);
+    }
+
+    [Fact]
+    public async Task A_hidden_name_matches_whatever_case_the_file_used()
+    {
+        var (service, _) = await LoadedAsync("hidden: [old experiments]");
+
+        Assert.True(service.IsHidden("Old Experiments"));
+
+        // And unhiding by the cased name finds the lower-case entry rather than adding a second.
+        Assert.False(await service.ToggleHiddenAsync("Old Experiments"));
+        Assert.Empty(service.HiddenGroups);
+    }
+
+    [Fact]
+    public async Task Hiding_says_nothing_about_the_group_order()
+    {
+        // Hiding is not deleting: a hidden group keeps its place, so unhiding it puts it back
+        // where it was rather than at the end of the dashboard.
+        var (service, _) = await LoadedAsync("groupOrder: [A, B, C]");
+
+        await service.ToggleHiddenAsync("B");
+
+        var ordered = service.OrderGroups(new[] { Group("C"), Group("B"), Group("A") });
+        Assert.Equal(new[] { "A", "B", "C" }, ordered.Select(g => g.Name));
+    }
+
+    [Fact]
+    public async Task Nothing_is_hidden_by_default()
+    {
+        var (service, _) = await LoadedAsync();
+
+        Assert.False(service.IsHidden("Anything"));
+        Assert.False(service.IsHidden(null));
+        Assert.Empty(service.HiddenGroups);
+    }
+
     // ---- degrading ---------------------------------------------------------------------------
 
     [Fact]

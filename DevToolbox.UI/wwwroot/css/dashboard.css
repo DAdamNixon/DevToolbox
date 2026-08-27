@@ -1373,6 +1373,78 @@ select:not([multiple]) {
     max-width: 76rem;
 }
 
+/* ── a panel that takes the height it is given ───────────────────────────────
+   The rules above make a panel *at most* as tall as the window; this one makes it that tall
+   outright, and hands the height to the columns inside instead of to a scrollbar on the body.
+   For Smart Folders, whose matches list is the one thing on the screen with an unbounded number
+   of rows: it was an 18rem box with the rest of the dialog's height empty underneath it, because
+   nothing above it had a definite height to give.
+
+   Only above the width where the columns are actually side by side. Stacked, the natural shape is
+   the old one — a panel as tall as its content, scrolling as a whole — and a fixed height with
+   three stacked scrollports in it would be three tiny windows. */
+@media (min-width: 1101px) {
+    .modal-content.is-tall {
+        height: calc(100dvh - 2rem);
+
+        /* Capped, because the fields do not get better at 1400px tall — only emptier. Past this
+           the matches column has ~50 rows visible, which is more than anyone reads at once. */
+        max-height: 60rem;
+    }
+
+    /* The body stops scrolling and becomes the column layout's container. */
+    .modal-content.is-tall > div:last-child {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .modal-content.is-tall .ws-sources {
+        flex: 1 1 auto;
+        min-height: 0;
+
+        /* stretch, not start: the columns have to fill the row for any of them to have a
+           height to scroll within. */
+        align-items: stretch;
+    }
+
+    /* Each column scrolls on its own. Which is the point — the fields and the matches are being
+       compared, so neither one may drag the other off the screen. */
+    .modal-content.is-tall .ws-source-list,
+    .modal-content.is-tall .ws-source-editor {
+        min-height: 0;
+        overflow-y: auto;
+    }
+
+    .modal-content.is-tall .ws-matches {
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    /* Inside the matches column: the heading and the stats stay put, the tree takes what is left.
+       max-height: none removes the 18rem that was the whole complaint. */
+    .modal-content.is-tall .ws-preview {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        min-height: 0;
+    }
+
+    .modal-content.is-tall .ws-preview-tree {
+        flex: 1 1 auto;
+        min-height: 0;
+        max-height: none;
+    }
+
+    /* Nothing scrolls behind the bar any more, so it is simply the last row of the body. The
+       negative bottom margin stays — it is what puts the bar flush against the panel's edge
+       through the body's own padding. */
+    .modal-content.is-tall .ws-sources-actions {
+        position: static;
+        flex: 0 0 auto;
+    }
+}
+
 .hosts-add-form {
     display: flex;
     flex-direction: column;
@@ -2603,12 +2675,147 @@ tr.log-row-expanded td {
     border-top: 1px solid rgb(var(--c-border));
 }
 
-/* A bare checkbox in a grid row of labelled fields would centre against the
-   label; this drops it to sit level with the inputs next to it. */
-.ws-source-grid > .ws-check-inline {
-    align-self: start;
-    margin-top: 1.65rem;
+/* ── the editor's four sections ──────────────────────────────────────────────
+   Eleven fields in a two-column grid, ordered by nothing: name, pattern, path, collect,
+   excludes, group, location name. Reading it top to bottom never finished a thought, because
+   the two fields that decide one thing were never next to each other. Four headed sections,
+   each answering one question. */
+
+.ws-section {
+    margin-bottom: 1.25rem;
+}
+
+.ws-section:last-child {
+    margin-bottom: 0;
+}
+
+/* A rule rather than a heavier weight: the sections are being separated, not ranked, and four
+   bold headings down a narrow column read as four times as much text. */
+.ws-section-title {
+    margin: 0 0 0.625rem;
+    padding-bottom: 0.25rem;
+    border-bottom: 1px solid rgb(var(--c-border));
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: rgb(var(--c-text-muted));
+}
+
+.ws-section-note {
+    margin: -0.25rem 0 0.625rem;
+    font-size: 0.75rem;
+    color: rgb(var(--c-text-muted));
+}
+
+/* Both checkboxes on one row of their own. A bare checkbox sharing a grid row with a labelled
+   field either centres against the label or needs a magic top margin to line up with the input
+   beside it — and there are two of them now, which is one magic margin too many. */
+.ws-check-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.375rem 1.25rem;
     margin-bottom: 0.875rem;
+    min-width: 0;
+}
+
+/* ── the (i) examples ────────────────────────────────────────────────────────
+   A label with its info toggle on the end. The examples used to be permanent paragraphs under
+   every field, which in a column this width is a wall of prose with the two load-bearing lines
+   somewhere in the middle of it. */
+.ws-label-row {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.ws-label-row > .ws-label {
+    min-width: 0;
+}
+
+.ws-info {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 1.125rem;
+    height: 1.125rem;
+    padding: 0;
+    border: none;
+    border-radius: 9999px;
+    background: transparent;
+    color: rgb(var(--c-text-muted));
+    font-size: 0.75rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: color 0.12s ease, background-color 0.12s ease;
+}
+
+.ws-info:hover {
+    color: rgb(var(--c-accent-blue));
+    background-color: rgb(var(--c-surface-hover));
+}
+
+/* Open, it stays lit — the box below it is otherwise the only thing saying which field the
+   example belongs to, and by then it may have scrolled. */
+.ws-info.is-on {
+    color: rgb(var(--c-accent-blue));
+    background-color: rgb(var(--c-accent-blue) / 0.16);
+}
+
+.ws-info-box {
+    padding: 0.5rem 0.625rem;
+    border-left: 2px solid rgb(var(--c-accent-blue) / 0.5);
+    border-radius: 0 0.375rem 0.375rem 0;
+    background-color: rgb(var(--c-bg) / 0.6);
+    font-size: 0.75rem;
+    line-height: 1.5;
+    color: rgb(var(--c-text-muted));
+}
+
+/* The second paragraph of an example: the why, under the what. */
+.ws-info-note {
+    margin-top: 0.375rem;
+    color: rgb(var(--c-text-muted) / 0.85);
+}
+
+/* An example belonging to a checkbox row rather than to a field, so it needs the field's own
+   bottom margin — it has no .ws-field wrapper to get it from. */
+.ws-info-box.ws-span {
+    margin-bottom: 0.875rem;
+}
+
+.ws-info-box .font-mono {
+    color: rgb(var(--c-text));
+}
+
+/* ── hidden groups ───────────────────────────────────────────────────────────
+   A hidden group is not rendered at all until the toolbar's toggle is on, and then it is
+   rendered like this: present, obviously not part of the dashboard proper, and carrying the
+   unhide in its own menu. Dimming rather than a distinct colour, because the state is
+   "not really here" rather than "wrong". */
+.ws-group-card.is-hidden-group {
+    opacity: 0.6;
+    border-style: dashed;
+}
+
+.ws-group-card.is-hidden-group:hover {
+    opacity: 0.85;
+}
+
+.ws-badge.is-hidden-badge {
+    border-color: rgb(var(--c-accent-blue) / 0.4);
+    color: rgb(var(--c-accent-blue));
+}
+
+/* The toolbar's reveal, while it is on. Same treatment as a pressed toggle rather than
+   .is-primary, which is for the one button on the row that does something. */
+.ws-tool.is-on {
+    border-color: rgb(var(--c-accent-blue) / 0.7);
+    background-color: rgb(var(--c-accent-blue) / 0.16);
+    color: rgb(var(--c-accent-blue));
 }
 
 /* ── app shell ───────────────────────────────────────────────────────────────

@@ -27,6 +27,17 @@ namespace DevToolbox.Services.Models
         [JsonIgnore]
         public bool IsFromSource => !string.IsNullOrEmpty(SourceName);
 
+        /// <summary>
+        /// Every smart folder that has rows on this group, in the order they were scanned.
+        /// <see cref="SourceName"/> is only the first of them, and a group fed by four rules —
+        /// a plain pattern and a solution-filter pattern per branch — looked identical on the
+        /// dashboard to one fed by a single rule. The card shows this count so the answer to
+        /// "why is this card shaped like that?" starts with how many rules built it.
+        /// </summary>
+        [YamlIgnore]
+        [JsonIgnore]
+        public List<string> SourceNames { get; set; } = new();
+
         /// <summary>Folder the scan came from, so the UI can offer "open source folder".</summary>
         [YamlIgnore]
         [JsonIgnore]

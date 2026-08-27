@@ -5,6 +5,22 @@
 @inject IUiSettingsService UiSettings
 @implements IDisposable
 
+@* An (i) beside a field label, toggling the example underneath it. Declared here because a Razor
+   templated delegate has to exist above its first use.
+
+   The examples used to be permanent paragraphs under every field — four sentences on excludes, six
+   on the name pattern — which is a wall of prose in a column 22rem wide, and the two lines that
+   were actually load-bearing were somewhere in the middle of it. One short line stays visible per
+   field; the worked example is a click away, for the one field you are currently stuck on. *@
+@{
+    RenderFragment<string> Info = key =>
+    @<button type="button" class="ws-info @(info == key ? "is-on" : "")"
+             title="@(info == key ? "Hide the example" : "Show an example")"
+             @onclick="() => ToggleInfo(key)">
+        <i class="bi bi-info-circle"></i>
+    </button>;
+}
+
 @* Three columns: the smart folders down the left, the one being edited in the middle, and what
    it matches on the right. The matches were underneath the fields before, which meant the answer
    to "did that change help?" was below the fold of a dialog you were typing into — the two things
@@ -80,150 +96,293 @@ else
                     </button>
                 </div>
 
-                <div class="ws-source-grid">
-                    <div class="ws-field">
-                        <label class="ws-label">Name</label>
-                        <input type="text" class="ws-input" @bind="selected.Name" @bind:event="oninput"
-                               @bind:after="SchedulePreview" placeholder="VS Code Workspaces" />
-                    </div>
+                @* Four sections, each answering one question, instead of eleven fields in a
+                   two-column grid ordered by nothing. The old order interleaved them — name,
+                   pattern, path, collect, excludes, group, location name — so reading it top to
+                   bottom never finished a thought. *@
 
-                    <div class="ws-field">
-                        <label class="ws-label">Pattern</label>
-                        <input type="text" class="ws-input" @bind="selected.Pattern" @bind:event="oninput"
-                               @bind:after="SchedulePreview" placeholder="*.code-workspace" />
-                    </div>
-
-                    <div class="ws-field ws-span">
-                        <label class="ws-label">Folder to scan</label>
-                        <div class="ws-input-row">
-                            <input type="text" class="ws-input" @bind="selected.Path" @bind:event="oninput"
-                                   @bind:after="SchedulePreview" placeholder="C:\path\to\workspaces" />
-                            <button type="button" class="btn-secondary btn-sm" title="Browse for a folder"
-                                    @onclick="BrowseForFolder">
-                                <i class="bi bi-folder2-open"></i>
-                            </button>
+                <section class="ws-section">
+                    <h4 class="ws-section-title">Name and target group</h4>
+                    <div class="ws-source-grid">
+                        <div class="ws-field">
+                            <label class="ws-label">Name</label>
+                            <input type="text" class="ws-input" @bind="selected.Name" @bind:event="oninput"
+                                   @bind:after="SchedulePreview" placeholder="VS Code Workspaces" />
+                            <span class="ws-hint">This rule, in the list on the left.</span>
                         </div>
-                        <span class="ws-hint">Environment variables such as %USERPROFILE% are expanded.</span>
-                    </div>
 
-                    <div class="ws-field">
-                        <label class="ws-label">Collect</label>
-                        <select class="ws-input" value="@selected.Scan" @onchange="SetScan">
-                            <option value="@nameof(ScanKind.Files)">Files matching the pattern</option>
-                            <option value="@nameof(ScanKind.Directories)">Subfolders matching the pattern</option>
-                        </select>
+                        <div class="ws-field">
+                            <div class="ws-label-row">
+                                <label class="ws-label">Target group</label>
+                                @Info("group")
+                            </div>
+                            <input type="text" class="ws-input" @bind="selected.Group" @bind:event="oninput"
+                                   @bind:after="SchedulePreview" placeholder="@GroupPlaceholder" />
+                            <span class="ws-hint">The dashboard group these land in.</span>
+                            @if (info == "group")
+                            {
+                                <div class="ws-info-box">
+                                    Rules sharing a target group merge onto one set of cards. That is how a
+                                    project living in two working copies ends up as one card with a
+                                    <span class="font-mono">dev</span> and a <span class="font-mono">demo</span>
+                                    location: one rule per copy, both pointed at the same group.
+                                    @if (SiblingRules.Count > 0)
+                                    {
+                                        <div class="ws-info-note">
+                                            Sharing <strong>@selected.GroupName</strong> with
+                                            @string.Join(", ", SiblingRules).
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
                     </div>
+                </section>
 
-                    @* Sits in the second column, aligned with the Collect input beside it
-                       rather than with its label. *@
-                    <label class="ws-check ws-check-inline">
-                        <input type="checkbox" checked="@selected.Recursive" @onchange="ToggleRecursive" />
-                        <span>Search subfolders too</span>
-                    </label>
+                <section class="ws-section">
+                    <h4 class="ws-section-title">Search path</h4>
+                    <div class="ws-source-grid">
+                        <div class="ws-field ws-span">
+                            <div class="ws-label-row">
+                                <label class="ws-label">Folder to scan</label>
+                                @Info("path")
+                            </div>
+                            <div class="ws-input-row">
+                                <input type="text" class="ws-input" @bind="selected.Path" @bind:event="oninput"
+                                       @bind:after="SchedulePreview" placeholder="C:\path\to\workspaces" />
+                                <button type="button" class="btn-secondary btn-sm" title="Browse for a folder"
+                                        @onclick="BrowseForFolder">
+                                    <i class="bi bi-folder2-open"></i>
+                                </button>
+                            </div>
+                            @if (info == "path")
+                            {
+                                <div class="ws-info-box">
+                                    The top of the search. Environment variables are expanded, so
+                                    <span class="font-mono">%USERPROFILE%\source\repos</span> works and stays
+                                    right on another machine.
+                                </div>
+                            }
+                        </div>
 
-                    <div class="ws-field ws-span">
-                        <label class="ws-label">Skip these folders</label>
-                        <input type="text" class="ws-input" value="@ExcludeText" @oninput="SetExclude"
-                               placeholder="bin, obj, node_modules, .vs, .git, packages" />
-                        <span class="ws-hint">
-                            Same wildcards as the pattern, matched against every folder and file name on the
-                            way down. An excluded folder is never opened, which is what makes
-                            <em>Search subfolders too</em> usable over a whole repository — a website working
-                            copy is 78,000 folders, of which 3,900 are not build output.
-                        </span>
+                        <div class="ws-field">
+                            <div class="ws-label-row">
+                                <label class="ws-label">Pattern</label>
+                                @Info("pattern")
+                            </div>
+                            <input type="text" class="ws-input" @bind="selected.Pattern" @bind:event="oninput"
+                                   @bind:after="SchedulePreview" placeholder="*.code-workspace" />
+                            <span class="ws-hint">Wildcards, not a regex.</span>
+                            @if (info == "pattern")
+                            {
+                                <div class="ws-info-box">
+                                    <span class="font-mono">*.sln</span> every solution ·
+                                    <span class="font-mono">*.code-workspace</span> VS Code workspaces ·
+                                    <span class="font-mono">*.Demo.slnf</span> only the demo solution filters ·
+                                    <span class="font-mono">*</span> everything.
+                                    <div class="ws-info-note">
+                                        Selecting here beats selecting in the name pattern below: a file this
+                                        does not match is never picked up at all, where a name pattern that
+                                        does not match still produces a card under the whole name.
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="ws-field">
+                            <label class="ws-label">Collect</label>
+                            <select class="ws-input" value="@selected.Scan" @onchange="SetScan">
+                                <option value="@nameof(ScanKind.Files)">Files matching the pattern</option>
+                                <option value="@nameof(ScanKind.Directories)">Subfolders matching the pattern</option>
+                            </select>
+                        </div>
+
+                        @* Both checkboxes on their own row. A bare checkbox sharing a grid row with a
+                           labelled field either centres against the label or needs a magic top margin
+                           to line up with the input, and there were two of them to line up. *@
+                        <div class="ws-check-row ws-span">
+                            <label class="ws-check">
+                                <input type="checkbox" checked="@selected.Recursive" @onchange="ToggleRecursive" />
+                                <span>Search subfolders too</span>
+                            </label>
+
+                            @* The nine names every recursive source wants, behind one checkbox. Typed
+                               out, they buried the one exclusion that said something about the source
+                               — a single solution to skip — in a line of boilerplate. *@
+                            <label class="ws-check">
+                                <input type="checkbox" checked="@selected.ExcludeCommon" @onchange="ToggleExcludeCommon" />
+                                <span>Skip build output and VCS folders</span>
+                            </label>
+                            @Info("common")
+                        </div>
+
+                        @if (info == "common")
+                        {
+                            <div class="ws-info-box ws-span">
+                                Adds <span class="font-mono">@string.Join(", ", WorkspaceSource.CommonExcludes)</span>.
+                                <div class="ws-info-note">
+                                    Worth having on for anything recursive: a website working copy is 78,000
+                                    folders, of which 3,900 are not build output — and the preview below
+                                    re-runs on every keystroke.
+                                </div>
+                            </div>
+                        }
+
+                        <div class="ws-field ws-span">
+                            <div class="ws-label-row">
+                                <label class="ws-label">@ExcludeLabel</label>
+                                @Info("exclude")
+                            </div>
+                            <input type="text" class="ws-input" value="@ExcludeText" @oninput="SetExclude"
+                                   placeholder="@ExcludePlaceholder" />
+                            <span class="ws-hint">Whatever this source in particular should skip.</span>
+                            @if (info == "exclude")
+                            {
+                                <div class="ws-info-box">
+                                    Same wildcards as the pattern, checked against every folder and file name on
+                                    the way down — an excluded folder is never opened rather than filtered out
+                                    afterwards.
+                                    <div class="ws-info-note">
+                                        Files count too: <span class="font-mono">Account.sln</span> skips exactly
+                                        that solution, which is how one rule takes the plain solutions and
+                                        another takes the filters beside them.
+                                    </div>
+                                </div>
+                            }
+                        </div>
                     </div>
+                </section>
 
-                    <div class="ws-field">
-                        <label class="ws-label">Group name</label>
-                        <input type="text" class="ws-input" @bind="selected.Group" @bind:event="oninput"
-                               @bind:after="SchedulePreview" placeholder="Leave blank to use the source name" />
-                    </div>
-
-                    <div class="ws-field">
-                        <label class="ws-label">Location name when the pattern gives none</label>
-                        <input type="text" class="ws-input" @bind="selected.DefaultLocationName" @bind:event="oninput"
-                               @bind:after="SchedulePreview" placeholder="main" />
-                    </div>
+                <section class="ws-section">
+                    <h4 class="ws-section-title">Location names</h4>
+                    <p class="ws-section-note">
+                        One card per file, unless a pattern folds several files into one card with a
+                        location each.
+                    </p>
 
                     @* The regex and what it runs against, on one line. They are one decision: a
                        pattern written for the name is nonsense against the path and vice versa, and
                        reading them apart is how you end up with a preview full of fallbacks. *@
-                    <div class="ws-field ws-span">
-                        <label class="ws-label">Name pattern (optional regex)</label>
+                    <div class="ws-source-grid">
+                        <div class="ws-field ws-span">
+                            <div class="ws-label-row">
+                                <label class="ws-label">Name pattern (optional regex)</label>
+                                @Info("regex")
+                            </div>
 
-                        @* Nobody writes one of these from scratch; they start from the one that is
-                           nearly right. Each preset fills the field and the match-against beside it,
-                           and the preview updates as it lands — so picking one is how you find out
-                           what it does, not something to be read first. *@
-                        <div class="ws-preset-row">
-                            <label class="ws-label ws-preset-label">Start from</label>
-                            <select class="ws-input" value="@presetKey" @onchange="ApplyPreset">
-                                <option value="">a pattern…</option>
-                                @foreach (var preset in Presets)
-                                {
-                                    <option value="@preset.Key">@preset.Label</option>
-                                }
-                            </select>
+                            @* Nobody writes one of these from scratch; they start from the one that is
+                               nearly right. Each preset fills the field and the match-against beside it,
+                               and the preview updates as it lands — so picking one is how you find out
+                               what it does, not something to be read first. *@
+                            <div class="ws-preset-row">
+                                <label class="ws-label ws-preset-label">Start from</label>
+                                <select class="ws-input" value="@presetKey" @onchange="ApplyPreset">
+                                    <option value="">a pattern…</option>
+                                    @foreach (var preset in Presets)
+                                    {
+                                        <option value="@preset.Key">@preset.Label</option>
+                                    }
+                                </select>
+                            </div>
+
+                            <div class="ws-input-row">
+                                <input type="text" class="ws-input" @bind="selected.NameRegex" @bind:event="oninput"
+                                       @bind:after="OnRegexTyped" placeholder="@RegexPlaceholder" />
+                                <select class="ws-input ws-input-fit" value="@selected.MatchOn" @onchange="SetMatchOn">
+                                    <option value="@nameof(NameMatch.Name)">over the name</option>
+                                    <option value="@nameof(NameMatch.RelativePath)">over the path</option>
+                                </select>
+                            </div>
+                            <span class="ws-hint">
+                                Capture <span class="font-mono">workspace</span> and
+                                <span class="font-mono">location</span> to merge entries into one card.
+                            </span>
+
+                            @if (info == "regex")
+                            {
+                                <div class="ws-info-box">
+                                    @if (selected.MatchOn == NameMatch.RelativePath)
+                                    {
+                                        <text>
+                                            Run over the path below the folder above, extension kept:
+                                            <span class="font-mono">demo\wwwroot\Checkout.sln</span>.
+                                            <div class="ws-info-note">
+                                                <span class="font-mono">^(?&lt;location&gt;[^\\]+)\\.*?(?&lt;workspace&gt;[^\\]+)\.[^.\\]+$</span>
+                                                turns that into a <strong>Checkout</strong> card with a
+                                                <span class="font-mono">demo</span> location. For trees where every
+                                                leaf has the same name and only the branch folder tells them apart.
+                                            </div>
+                                        </text>
+                                    }
+                                    else
+                                    {
+                                        <text>
+                                            Run over the entry's own name, extension dropped:
+                                            <span class="font-mono">demo-checkout</span>.
+                                            <div class="ws-info-note">
+                                                <span class="font-mono">^(?&lt;location&gt;[^-]+)-(?&lt;workspace&gt;.+)$</span>
+                                                turns <span class="font-mono">dev-checkout</span> and
+                                                <span class="font-mono">demo-checkout</span> into one
+                                                <strong>checkout</strong> card with two locations. Switch to
+                                                <em>over the path</em> when the branch is a parent folder instead.
+                                            </div>
+                                        </text>
+                                    }
+                                    <div class="ws-info-note">
+                                        The captures are coloured in the matches beside this, so you can read what
+                                        the pattern grabbed rather than infer it from the card names.
+                                    </div>
+                                </div>
+                            }
                         </div>
 
-                        <div class="ws-input-row">
-                            <input type="text" class="ws-input" @bind="selected.NameRegex" @bind:event="oninput"
-                                   @bind:after="OnRegexTyped" placeholder="@RegexPlaceholder" />
-                            <select class="ws-input ws-input-fit" value="@selected.MatchOn" @onchange="SetMatchOn">
-                                <option value="@nameof(NameMatch.Name)">over the name</option>
-                                <option value="@nameof(NameMatch.RelativePath)">over the path</option>
-                            </select>
+                        <div class="ws-field">
+                            <label class="ws-label">Location name when there is none</label>
+                            <input type="text" class="ws-input" @bind="selected.DefaultLocationName" @bind:event="oninput"
+                                   @bind:after="SchedulePreview" placeholder="main" />
+                            <span class="ws-hint">The chip on a card the pattern gave no location.</span>
                         </div>
-                        <span class="ws-hint">
-                            Named groups <span class="font-mono">workspace</span> and <span class="font-mono">location</span>
-                            merge related entries into one card.
-                            @if (selected.MatchOn == NameMatch.RelativePath)
+                    </div>
+                </section>
+
+                <section class="ws-section">
+                    <h4 class="ws-section-title">Card appearance</h4>
+                    <div class="ws-source-grid">
+                        <div class="ws-field">
+                            <label class="ws-label">Group icon</label>
+                            <input type="text" class="ws-input" @bind="selected.Icon" @bind:event="oninput"
+                                   placeholder="bi-window-stack" />
+                            <span class="ws-hint">The card's own picker overrides it.</span>
+                        </div>
+
+                        <div class="ws-field">
+                            <label class="ws-label">Group colour</label>
+                            <input type="text" class="ws-input" @bind="selected.Color" @bind:event="oninput"
+                                   placeholder="#06b6d4" />
+                        </div>
+
+                        <div class="ws-field ws-span">
+                            <div class="ws-label-row">
+                                <label class="ws-label">Card subtitle from</label>
+                                @Info("subtitle")
+                            </div>
+                            <input type="text" class="ws-input" value="@DescriptionFromText" @oninput="SetDescriptionFrom"
+                                   placeholder="settings.description, folders" />
+                            <span class="ws-hint">Blank skips reading file contents.</span>
+                            @if (info == "subtitle")
                             {
-                                <text>
-                                    Matched against the path below the folder above, extension kept — for trees that
-                                    put the branch in a folder instead of the name, where every leaf is called
-                                    <span class="font-mono">Checkout.sln</span> and only
-                                    <span class="font-mono">development\</span> vs <span class="font-mono">demo\</span>
-                                    tells them apart.
-                                </text>
+                                <div class="ws-info-box">
+                                    Dotted JSON paths, tried in order, read only from JSON/JSONC entries —
+                                    <span class="font-mono">settings.description, folders</span>.
+                                    <div class="ws-info-note">
+                                        A path landing on an array shows a count, so
+                                        <span class="font-mono">folders</span> renders as "16 folders".
+                                    </div>
+                                </div>
                             }
-                            else
-                            {
-                                <text>
-                                    Matched against the entry's own name, extension dropped —
-                                    <span class="font-mono">dev-checkout</span> and <span class="font-mono">demo-checkout</span>
-                                    become one "checkout" with two locations. Switch to <em>over the path</em> when the
-                                    branch is a parent folder rather than part of the name.
-                                </text>
-                            }
-                        </span>
+                        </div>
                     </div>
-
-                    <div class="ws-field ws-span">
-                        <label class="ws-label">Subtitle from (dotted JSON paths, in order)</label>
-                        <input type="text" class="ws-input" value="@DescriptionFromText" @oninput="SetDescriptionFrom"
-                               placeholder="settings.description, folders" />
-                        <span class="ws-hint">
-                            Read only from JSON/JSONC entries. A path landing on an array shows a count, so
-                            <span class="font-mono">folders</span> renders as "16 folders". Leave blank to skip
-                            reading file contents.
-                        </span>
-                    </div>
-
-                    <div class="ws-field">
-                        <label class="ws-label">Group icon</label>
-                        <input type="text" class="ws-input" @bind="selected.Icon" @bind:event="oninput"
-                               placeholder="bi-window-stack" />
-                        <span class="ws-hint">Starting point only — the icon picker on the card overrides it.</span>
-                    </div>
-
-                    <div class="ws-field">
-                        <label class="ws-label">Group colour</label>
-                        <input type="text" class="ws-input" @bind="selected.Color" @bind:event="oninput"
-                               placeholder="#06b6d4" />
-                    </div>
-                </div>
-
+                </section>
             }
         </div>
 
@@ -407,6 +566,14 @@ else
     private string presetKey = string.Empty;
 
     /// <summary>
+    /// Which field's example is showing, or null. One at a time: they are the length of a
+    /// paragraph, and all of them open at once is the wall of prose these replaced.
+    /// </summary>
+    private string? info;
+
+    private void ToggleInfo(string key) => info = info == key ? null : key;
+
+    /// <summary>
     /// A starting pattern, and what to run it against. Most people never write one of these from
     /// scratch — they start from the one that is nearly right and adjust it, which is what these
     /// are for. Deliberately a short list of shapes that actually occur in this codebase rather
@@ -497,6 +664,7 @@ else
         // no unmatched entries would show an empty column and no reason why.
         onlyUnmatched = false;
         presetKey = string.Empty;
+        info = null;
 
         SchedulePreview();
     }
@@ -695,7 +863,12 @@ else
             // parent of whatever is about to be scanned. Empty when no default is set, and the
             // placeholder says what belongs there.
             Path = defaultLocation,
-            DefaultLocationName = "workspace"
+            DefaultLocationName = "workspace",
+
+            // On by default for anything new. The model defaults it off so a config written
+            // before the flag existed scans exactly what it always scanned, but there is no
+            // version of "a folder I just added" that wants to walk bin and obj.
+            ExcludeCommon = true
         };
 
         config.Sources.Add(source);
@@ -759,6 +932,16 @@ else
     private string ExcludeText =>
         selected is null ? string.Empty : string.Join(", ", selected.Exclude);
 
+    /// <summary>
+    /// "Also skip" once the common ones are on, because the box is then the second half of a
+    /// list rather than the whole of it.
+    /// </summary>
+    private string ExcludeLabel =>
+        selected?.ExcludeCommon == true ? "Also skip these" : "Skip these folders";
+
+    private string ExcludePlaceholder =>
+        selected?.ExcludeCommon == true ? "Account.sln, LegacyTools" : "bin, obj, node_modules, .vs, .git";
+
     private void SetExclude(ChangeEventArgs e)
     {
         if (selected is null)
@@ -771,6 +954,59 @@ else
             .ToList();
 
         SchedulePreview();
+    }
+
+    /// <summary>
+    /// Ticking the box also clears whichever common names were typed into the manual box, so the
+    /// two never say the same thing twice — the point of the checkbox is that the manual box goes
+    /// back to holding only what is particular to this source. Unticking does not put them back:
+    /// the box is not a store, and re-adding nine names nobody asked for would be worse.
+    /// </summary>
+    private void ToggleExcludeCommon(ChangeEventArgs e)
+    {
+        if (selected is null)
+        {
+            return;
+        }
+
+        selected.ExcludeCommon = (bool?)e.Value ?? false;
+
+        if (selected.ExcludeCommon)
+        {
+            selected.Exclude = selected.Exclude
+                .Where(x => !WorkspaceSource.CommonExcludes.Contains(x, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        SchedulePreview();
+    }
+
+    /// <summary>
+    /// What the group field shows when it is blank: the name it would fall back to, rather than a
+    /// sentence explaining that it falls back.
+    /// </summary>
+    private string GroupPlaceholder =>
+        string.IsNullOrWhiteSpace(selected?.Name) ? "Same as the name" : selected!.Name;
+
+    /// <summary>
+    /// The other rules landing on this rule's group. Four rules feeding one card is the intended
+    /// arrangement here, and it was invisible from inside the rule doing it.
+    /// </summary>
+    private List<string> SiblingRules
+    {
+        get
+        {
+            if (config is null || selected is null)
+            {
+                return new List<string>();
+            }
+
+            return config.Sources
+                .Where(s => !ReferenceEquals(s, selected)
+                            && s.GroupName.Equals(selected.GroupName, StringComparison.OrdinalIgnoreCase))
+                .Select(DisplayName)
+                .ToList();
+        }
     }
 
     private string DescriptionFromText =>
@@ -861,6 +1097,7 @@ else
         Pattern = s.Pattern,
         Scan = s.Scan,
         Recursive = s.Recursive,
+        ExcludeCommon = s.ExcludeCommon,
         Exclude = new List<string>(s.Exclude),
         Group = s.Group,
         Icon = s.Icon,

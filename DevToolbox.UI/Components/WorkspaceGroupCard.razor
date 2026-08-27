@@ -62,10 +62,23 @@
                     <i class="bi bi-star-fill"></i> @PinnedCount
                 </span>
             }
+            @* The rule count, because a group fed by four smart folders looked exactly like one fed
+               by a single folder — and four is the shape you end up with deliberately, once a
+               project lives in two working copies with a solution filter in each. *@
             @if (IsFromSource)
             {
-                <span class="ws-badge" title="Scanned from @(GroupViewModel.Group.SourcePath ?? "a workspace source")">
-                    <i class="bi bi-arrow-repeat"></i> scanned
+                <span class="ws-badge" title="@SourceTooltip">
+                    <i class="bi bi-arrow-repeat"></i>
+                    scanned · @RuleCount rule@(RuleCount == 1 ? "" : "s")
+                </span>
+            }
+
+            @* Only ever visible while the toolbar's "hidden" toggle is on, since a hidden card is
+               otherwise not rendered at all. *@
+            @if (IsHidden)
+            {
+                <span class="ws-badge is-hidden-badge" title="Hidden from the dashboard">
+                    <i class="bi bi-eye-slash"></i> hidden
                 </span>
             }
         </div>
@@ -94,6 +107,14 @@
                         <button class="dropdown-item" @onclick="ShowAliasModal">
                             <i class="bi bi-tags"></i>
                             <span>Search Aliases@(aliases.Count > 0 ? $" ({aliases.Count})" : "")</span>
+                        </button>
+
+                        @* Not in the danger block with Delete, and deliberately not next to it: the
+                           whole point of hiding is that it is the reversible thing to reach for
+                           instead. The toolbar keeps a count of what is hidden. *@
+                        <button class="dropdown-item" @onclick="ToggleHidden">
+                            <i class="bi @(IsHidden ? "bi-eye" : "bi-eye-slash")"></i>
+                            <span>@(IsHidden ? "Show on Dashboard" : "Hide Group")</span>
                         </button>
 
                         @if (IsFromSource)
@@ -243,6 +264,15 @@
     /// <summary>True while a drop here would land the dragged card in this card's place.</summary>
     [Parameter] public bool IsDropTarget { get; set; }
 
+    /// <summary>
+    /// Hidden from the dashboard. A hidden card only renders at all while the toolbar's toggle is
+    /// showing them, and then it renders dimmed with an unhide in its menu.
+    /// </summary>
+    [Parameter] public bool IsHidden { get; set; }
+
+    /// <summary>Hide or unhide this group, by name. Persisted in dashboardLayout.yaml.</summary>
+    [Parameter] public EventCallback<string> OnToggleHidden { get; set; }
+
     [Parameter] public EventCallback<Workspace> OnDeleteWorkspace { get; set; }
     [Parameter] public EventCallback<WorkspaceGroup> OnDeleteGroup { get; set; }
     [Parameter] public EventCallback<(Workspace, WorkspaceLocation)> OnOpenWorkspaceLocation { get; set; }
@@ -289,6 +319,27 @@
     private int PinnedCount =>
         GroupViewModel.Workspaces.Count(w => Layout.IsPinned(GroupViewModel.Name, w.Name));
 
+    /// <summary>
+    /// Smart folders with rows on this group. Falls back to 1 rather than 0 for a scanned group
+    /// that arrived without the list — the group exists, so something scanned it.
+    /// </summary>
+    private int RuleCount => Math.Max(GroupViewModel.Group.SourceNames.Count, 1);
+
+    private string SourceTooltip
+    {
+        get
+        {
+            var names = GroupViewModel.Group.SourceNames;
+            var by = names.Count > 0
+                ? $"Scanned by {string.Join(", ", names)}"
+                : "Scanned from a smart folder";
+
+            return string.IsNullOrWhiteSpace(GroupViewModel.Group.SourcePath)
+                ? by
+                : $"{by} — {GroupViewModel.Group.SourcePath}";
+        }
+    }
+
     private string GroupStateClass
     {
         get
@@ -298,6 +349,7 @@
             if (GroupViewModel.IsExpanded) classes.Add("is-expanded");
             if (IsDragging) classes.Add("is-dragging");
             if (IsDropTarget) classes.Add("is-drop-target");
+            if (IsHidden) classes.Add("is-hidden-group");
 
             return string.Join(' ', classes);
         }
@@ -470,6 +522,12 @@
     {
         Menu.Close();
         await OnEditSource.InvokeAsync(GroupViewModel.Group.SourceName);
+    }
+
+    private async Task ToggleHidden()
+    {
+        Menu.Close();
+        await OnToggleHidden.InvokeAsync(GroupViewModel.Name);
     }
 
     private async Task Rescan()

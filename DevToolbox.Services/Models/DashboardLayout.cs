@@ -26,6 +26,14 @@ public class DashboardLayout
     /// </summary>
     public Dictionary<string, List<string>> Pinned { get; set; } = new();
 
+    /// <summary>
+    /// Group names kept off the dashboard. Hiding is not deleting: the group and everything in
+    /// it stays in workspaceGroups.yaml, and the toolbar says how many are hidden so a group put
+    /// away is never a group lost. Keyed by name like the rest of this file, so it works on a
+    /// scanned group too.
+    /// </summary>
+    public List<string> Hidden { get; set; } = new();
+
     /// <summary>Extra names a card answers to in the search box.</summary>
     public AliasBook Aliases { get; set; } = new();
 }

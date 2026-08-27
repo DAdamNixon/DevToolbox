@@ -62,8 +62,46 @@ public class WorkspaceSource
     /// excluded directory is never descended into rather than filtered out afterwards. On a
     /// website working copy that is the difference between walking 3,900 directories and 78,000,
     /// which is what makes <see cref="Recursive"/> usable over a whole repository.
+    /// <para>
+    /// This list is for the exclusions particular to a source. The boilerplate that every
+    /// recursive source wants lives behind <see cref="ExcludeCommon"/>.
+    /// </para>
     /// </summary>
     public List<string> Exclude { get; set; } = new();
+
+    /// <summary>
+    /// Adds <see cref="CommonExcludes"/> to <see cref="Exclude"/> for this source. Every
+    /// recursive source wants all of them and none of them says anything about the source, so
+    /// typing them out left the one exclusion that mattered — a single solution file to skip —
+    /// buried in eight words of boilerplate.
+    /// <para>
+    /// Defaults to false so a config written before this existed scans exactly what it always
+    /// scanned; new sources are created with it on.
+    /// </para>
+    /// </summary>
+    public bool ExcludeCommon { get; set; }
+
+    /// <summary>
+    /// Build output, package caches and version-control metadata: the folders that hold no
+    /// project anyone opens and most of the directories on disk. Deliberately a short list of
+    /// names rather than an attempt at every ecosystem — anything else belongs in a source's
+    /// own <see cref="Exclude"/>, where the config says so out loud.
+    /// </summary>
+    public static readonly string[] CommonExcludes =
+    {
+        "bin", "obj", "Debug", "Release", ".vs", ".git", ".svn", "node_modules", "packages", "TestResults"
+    };
+
+    /// <summary>
+    /// Everything this source skips: its own exclusions plus the common ones when it asked for
+    /// them. Case-insensitively deduplicated, so a config that lists <c>bin</c> by hand and also
+    /// turns the checkbox on does not pay for it twice.
+    /// </summary>
+    [YamlIgnore]
+    public IEnumerable<string> EffectiveExcludes =>
+        (ExcludeCommon ? Exclude.Concat(CommonExcludes) : Exclude)
+        .Where(e => !string.IsNullOrWhiteSpace(e))
+        .Distinct(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Dashboard group the results land in. Falls back to <see cref="Name"/>.</summary>
     public string Group { get; set; } = string.Empty;

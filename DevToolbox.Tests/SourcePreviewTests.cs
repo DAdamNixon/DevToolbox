@@ -526,6 +526,143 @@ public class SourcePreviewTests : IDisposable
         Assert.Equal(preview.WorkspaceCount, demoResult.WorkspacesProduced);
     }
 
+    [Fact]
+    public async Task A_group_records_every_source_that_fed_it()
+    {
+        FileAt(@"development\Checkout\Checkout.sln");
+        FileAt(@"demo\Checkout\Checkout.sln");
+
+        WorkspaceSource Branch(string folder, string label) => new()
+        {
+            Name = $"Website ({label})",
+            Path = Path.Combine(_root, folder),
+            Pattern = "*.sln",
+            Scan = ScanKind.Files,
+            Recursive = true,
+            Group = "Website",
+            DefaultLocationName = label
+        };
+
+        var scanning = new WorkspaceSourceService(new SeededStorage(new WorkspaceSourceConfig
+        {
+            Sources = new List<WorkspaceSource> { Branch("development", "dev"), Branch("demo", "demo") }
+        }));
+
+        var group = (await scanning.GetGroupsAsync()).Single();
+
+        // Both, not just the one that got there first. SourceName is whichever created the group,
+        // and a card built by four rules looked identical to one built by a single rule — which
+        // is exactly the question a group of merged branch checkouts raises.
+        Assert.Equal(new[] { "Website (dev)", "Website (demo)" }, group.SourceNames);
+        Assert.Equal("Website (dev)", group.SourceName);
+    }
+
+    // ---- the common excludes ----------------------------------------------------------------
+
+    /// <summary>
+    /// A tree with a solution in the source and a copy of it under build output, which is the
+    /// shape every one of these working copies has: <c>bin\Debug</c> holds a whole second set of
+    /// everything, and the scan walked all of it.
+    /// </summary>
+    private void TreeWithBuildOutput()
+    {
+        FileAt(@"src\Checkout\Checkout.sln");
+        FileAt(@"src\Checkout\bin\Debug\Checkout.sln");
+        FileAt(@"src\Checkout\obj\Checkout.sln");
+        FileAt(@"packages\Something\Something.sln");
+        FileAt(@".git\modules\Ghost.sln");
+    }
+
+    private WorkspaceSource RecursiveSolutions() => new()
+    {
+        Name = "Website",
+        Path = _root,
+        Pattern = "*.sln",
+        Scan = ScanKind.Files,
+        Recursive = true,
+        Group = "Website",
+        DefaultLocationName = "main"
+    };
+
+    [Fact]
+    public async Task Without_the_common_excludes_the_walk_picks_up_build_output()
+    {
+        TreeWithBuildOutput();
+
+        var preview = await NewService().PreviewAsync(RecursiveSolutions());
+
+        // The reason the checkbox exists. Four of these five are noise, and three of them are the
+        // same solution over again — which on the dashboard is one card with four locations.
+        Assert.Equal(5, preview.EntriesFound);
+    }
+
+    [Fact]
+    public async Task The_common_excludes_prune_build_output_and_vcs_folders()
+    {
+        TreeWithBuildOutput();
+
+        var source = RecursiveSolutions();
+        source.ExcludeCommon = true;
+
+        var preview = await NewService().PreviewAsync(source);
+
+        Assert.Equal(1, preview.EntriesFound);
+        Assert.Equal(new[] { "Checkout" }, preview.Workspaces.Select(w => w.Name));
+
+        // And the real scan agrees with the preview, which is the only reason the preview is
+        // worth having.
+        var scanning = new WorkspaceSourceService(new SeededStorage(new WorkspaceSourceConfig
+        {
+            Sources = new List<WorkspaceSource> { source }
+        }));
+
+        var groups = await scanning.GetGroupsAsync();
+        Assert.Equal(new[] { "Checkout" }, groups.Single().Workspaces.Select(w => w.Name));
+    }
+
+    [Fact]
+    public async Task A_source_keeps_its_own_excludes_alongside_the_common_ones()
+    {
+        TreeWithBuildOutput();
+        FileAt(@"src\Legacy\Legacy.sln");
+
+        var source = RecursiveSolutions();
+        source.ExcludeCommon = true;
+
+        // The point of the checkbox: this list is now only what says something about this source.
+        source.Exclude = new List<string> { "Legacy.sln" };
+
+        var preview = await NewService().PreviewAsync(source);
+
+        Assert.Equal(new[] { "Checkout" }, preview.Workspaces.Select(w => w.Name));
+    }
+
+    [Fact]
+    public void Naming_a_common_exclude_by_hand_as_well_does_not_double_it_up()
+    {
+        var source = RecursiveSolutions();
+        source.ExcludeCommon = true;
+        source.Exclude = new List<string> { "BIN", "Account.sln", "  " };
+
+        var effective = source.EffectiveExcludes.ToList();
+
+        // Case-insensitively deduplicated, and the blank is dropped — a config edited by hand
+        // ends up with both spellings sooner or later, and every extra glob is checked against
+        // every path segment on the way down.
+        Assert.Equal(WorkspaceSource.CommonExcludes.Length + 1, effective.Count);
+        Assert.Single(effective, e => e.Equals("bin", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("Account.sln", effective);
+    }
+
+    [Fact]
+    public void The_flag_is_off_by_default_so_an_older_config_scans_what_it_always_scanned()
+    {
+        var source = new WorkspaceSource();
+
+        Assert.False(source.ExcludeCommon);
+        Assert.Empty(source.EffectiveExcludes);
+    }
+
     /// <summary>Hands back one config and refuses to be written to.</summary>
     private sealed class SeededStorage : IYamlStorageService
     {

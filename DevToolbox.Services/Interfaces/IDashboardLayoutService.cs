@@ -48,6 +48,21 @@ public interface IDashboardLayoutService
     /// </summary>
     IReadOnlyList<Workspace> OrderWorkspaces(string groupName, IEnumerable<Workspace> workspaces);
 
+    /// <summary>Whether a group is kept off the dashboard.</summary>
+    bool IsHidden(string? groupName);
+
+    /// <summary>
+    /// Hides a shown group, or shows a hidden one. Returns the new state. Nothing is deleted —
+    /// see <see cref="DashboardLayout.Hidden"/>.
+    /// </summary>
+    Task<bool> ToggleHiddenAsync(string groupName);
+
+    /// <summary>
+    /// The hidden group names, so the toolbar can say how many there are. A hidden group with no
+    /// affordance to bring it back is a deleted group with extra steps.
+    /// </summary>
+    IReadOnlyList<string> HiddenGroups { get; }
+
     /// <summary>Extra names this card answers to in the search box. Empty when it has none.</summary>
     IReadOnlyList<string> AliasesFor(AliasScope scope, string name);
 

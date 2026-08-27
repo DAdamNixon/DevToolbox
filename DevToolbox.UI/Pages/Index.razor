@@ -60,6 +60,19 @@
             }
         </div>
 
+        @* Absent, not disabled, when nothing is hidden — unlike Collapse All beside it. A disabled
+           "0 hidden" is a permanent reminder of a feature you are not using, and there is nothing
+           this button could do in that state anyway. *@
+        @if (HiddenCount > 0)
+        {
+            <button class="ws-tool @(showHidden ? "is-on" : "")"
+                    title="@(showHidden ? "Hide them again" : $"Show the {HiddenCount} hidden group{(HiddenCount == 1 ? "" : "s")}")"
+                    @onclick="ToggleShowHidden">
+                <i class="bi @(showHidden ? "bi-eye" : "bi-eye-slash")"></i>
+                <span>@HiddenCount hidden</span>
+            </button>
+        }
+
         @* Disabled rather than absent when there is nothing to collapse: a button that comes
            and goes moves the three next to it, and this one sits where the pointer already is. *@
         <button class="ws-tool" title="Collapse every group and card"
@@ -125,6 +138,7 @@
             AllWorkspaces="AllWorkspaces"
             AllGroups="WorkspaceService.WorkspaceGroups"
             QuickOpenCount="quickOpenCount"
+            IsHidden="@Layout.IsHidden(groupViewModel.Group.Name)"
             IsDragging="@(dragGroup == groupViewModel.Group.Name)"
             IsDropTarget="@(dragGroup is not null && dragOverGroup == groupViewModel.Group.Name && dragGroup != groupViewModel.Group.Name)"
             OnDeleteGroup="DeleteGroup"
@@ -138,6 +152,7 @@
             OnRescan="RescanSources"
             OnEditSource="ShowSourcesModalFor"
             OnIconChanged="StateHasChanged"
+            OnToggleHidden="HandleToggleHidden"
             OnTogglePin="HandleTogglePin"
             OnAliasesChanged="HandleAliasesChanged"
             OnDragStarted="HandleGroupDragStart"
@@ -155,6 +170,15 @@
                    machine with eight sources — an empty dashboard, telling you to go and make
                    one, while the groups were on their way. *@
                 <span><i class="bi bi-arrow-repeat ws-spin"></i> Scanning folders for projects…</span>
+            }
+            else if (HiddenCount > 0 && !showHidden && GroupViewModels.Count == 0)
+            {
+                @* Every group hidden. "No groups yet" would be a straight lie, and the way back
+                   is the button that is already in the toolbar. *@
+                <span>
+                    Everything is hidden. <strong>@HiddenCount hidden</strong> in the toolbar brings
+                    them back.
+                </span>
             }
             else if (string.IsNullOrWhiteSpace(searchText))
             {
@@ -180,8 +204,13 @@
 </Modal>
 
 @* is-xwide, not is-wide: three columns and a scrolling match list want the room, and the panel
-   is bounded by the viewport regardless. *@
-<Modal @bind-IsVisible="IsSourcesModalVisible" Title="Smart Folders" SizeClass="is-xwide">
+   is bounded by the viewport regardless.
+
+   is-tall as well, which takes the full window height and hands each of the three columns its own
+   scroll. Without it the panel is as tall as its content, so the matches list — the one thing here
+   with an unbounded number of rows — was a 18rem box with the rest of the dialog's height empty
+   underneath it. *@
+<Modal @bind-IsVisible="IsSourcesModalVisible" Title="Smart Folders" SizeClass="is-xwide is-tall">
     <WorkspaceSourcesDialog @ref="sourcesDialog" InitialSourceName="@sourcesModalFocus" OnSaved="HandleSourcesSaved" />
 </Modal>
 
@@ -213,6 +242,12 @@
 
     /// <summary>How many one-click Open buttons a collapsed card gets. From ui_settings.yaml.</summary>
     private int quickOpenCount = 3;
+
+    /// <summary>
+    /// Whether hidden groups are being shown. A view state, not a setting: it is how you get at a
+    /// hidden group to unhide it, and it resets when the tab is reopened.
+    /// </summary>
+    private bool showHidden;
 
     // Drag state for reordering groups. Held here rather than in the cards because a drag is a
     // relationship between two of them and neither one can see the other.
@@ -363,9 +398,49 @@
     /// </summary>
     private void RebuildViewModels()
     {
+        // Hidden groups are dropped here rather than in FilteredGroupViewModels, so everything
+        // downstream — the group count in the header, Collapse All, the search — is about what is
+        // on screen. A hidden group turning up in a search result would be the one place the
+        // dashboard disagreed with itself about whether it exists.
         GroupViewModels = Layout.OrderGroups(savedGroups.Concat(scannedGroups))
+            .Where(g => showHidden || !Layout.IsHidden(g.Name))
             .Select(g => ViewModelFactory.CreateWorkspaceGroupViewModel(g, Layout.OrderWorkspaces(g.Name, g.Workspaces)))
             .ToList();
+    }
+
+    // ---- hiding ----------------------------------------------------------------------------
+
+    /// <summary>
+    /// How many groups are hidden — of the ones that exist. The stored list can name a group that
+    /// has since been deleted or renamed, and a toolbar saying "3 hidden" with two to show is a
+    /// count of stale config rather than of anything the user can act on.
+    /// </summary>
+    private int HiddenCount => savedGroups.Concat(scannedGroups)
+        .Select(g => g.Name)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .Count(Layout.IsHidden);
+
+    private void ToggleShowHidden()
+    {
+        showHidden = !showHidden;
+        RebuildViewModels();
+        StateHasChanged();
+    }
+
+    private async Task HandleToggleHidden(string groupName)
+    {
+        var nowHidden = await Layout.ToggleHiddenAsync(groupName);
+
+        // Unhiding while the reveal is on leaves the card where it is, now undimmed. Hiding the
+        // last hidden group turns the reveal off with it, or the toolbar button would vanish —
+        // it only renders when something is hidden — and leave the mode stuck on.
+        if (!nowHidden && HiddenCount == 0)
+        {
+            showHidden = false;
+        }
+
+        RebuildViewModels();
+        StateHasChanged();
     }
 
     /// <summary>

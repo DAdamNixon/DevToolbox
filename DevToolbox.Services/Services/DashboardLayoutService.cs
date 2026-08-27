@@ -183,6 +183,48 @@ public class DashboardLayoutService : IDashboardLayoutService
             .ToList();
     }
 
+    // ---- hiding ----------------------------------------------------------------------------
+
+    public bool IsHidden(string? groupName)
+    {
+        var layout = _layout;
+        if (layout is null || string.IsNullOrEmpty(groupName))
+        {
+            return false;
+        }
+
+        return IndexOf(layout.Hidden, groupName) >= 0;
+    }
+
+    public IReadOnlyList<string> HiddenGroups => _layout?.Hidden ?? (IReadOnlyList<string>)Array.Empty<string>();
+
+    public async Task<bool> ToggleHiddenAsync(string groupName)
+    {
+        if (string.IsNullOrWhiteSpace(groupName))
+        {
+            return false;
+        }
+
+        var layout = await GetAsync();
+
+        var existing = IndexOf(layout.Hidden, groupName);
+        bool nowHidden;
+
+        if (existing >= 0)
+        {
+            layout.Hidden.RemoveAt(existing);
+            nowHidden = false;
+        }
+        else
+        {
+            layout.Hidden.Add(groupName);
+            nowHidden = true;
+        }
+
+        await SaveAsync(layout);
+        return nowHidden;
+    }
+
     public IReadOnlyList<string> AliasesFor(AliasScope scope, string name)
     {
         var layout = _layout;
