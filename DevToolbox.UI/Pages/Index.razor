@@ -60,6 +60,17 @@
             }
         </div>
 
+        @* Arrange mode. A mode rather than always-on grips, because the gesture it enables —
+           dropping one card onto another to merge them — is destructive-looking enough that it
+           must not be reachable by a stray drag while you are just clicking about. It also
+           reveals the cards that have been hidden, which is how you get one back. *@
+        <button class="ws-tool @(arranging ? "is-on" : "")"
+                title="@(arranging ? "Done arranging" : "Drag scanned cards onto each other to merge them")"
+                @onclick="ToggleArranging">
+            <i class="bi @(arranging ? "bi-check2" : "bi-arrows-move")"></i>
+            <span>@(arranging ? "Done" : "Arrange")</span>
+        </button>
+
         @* Absent, not disabled, when nothing is hidden — unlike Collapse All beside it. A disabled
            "0 hidden" is a permanent reminder of a feature you are not using, and there is nothing
            this button could do in that state anyway. *@
@@ -101,6 +112,24 @@
     </div>
 </div>
 
+@if (arranging)
+{
+    @* Says what the mode does, since the only affordance it adds is a grip that appears on hover
+       of a card you may not have expanded yet. *@
+    <div class="ws-notice is-info mb-3">
+        <i class="bi bi-arrows-move"></i>
+        <span>
+            Arranging. Drag a scanned card by its grip onto another card in the same group to merge
+            them — useful when one project shows up twice because only one branch renames it.
+            Hidden cards are shown, and every card's ⋮ has <strong>Rename / Labels</strong>. Nothing
+            on disk is changed.
+        </span>
+        <button type="button" class="btn-ghost btn-sm" title="Done" @onclick="ToggleArranging">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </div>
+}
+
 @if (scanProblems.Any())
 {
     <div class="ws-scan-note is-error">
@@ -139,6 +168,8 @@
             AllGroups="WorkspaceService.WorkspaceGroups"
             QuickOpenCount="quickOpenCount"
             IsHidden="@Layout.IsHidden(groupViewModel.Group.Name)"
+            IsArranging="arranging"
+            HiddenCardCount="@HiddenCardsIn(groupViewModel.Group)"
             IsDragging="@(dragGroup == groupViewModel.Group.Name)"
             IsDropTarget="@(dragGroup is not null && dragOverGroup == groupViewModel.Group.Name && dragGroup != groupViewModel.Group.Name)"
             OnDeleteGroup="DeleteGroup"
@@ -151,6 +182,9 @@
             OnMoveToGroup="HandleMoveToGroup"
             OnRescan="RescanSources"
             OnEditSource="ShowSourcesModalFor"
+            OnCustomized="HandleCustomized"
+            OnMergeCards="HandleMergeCards"
+            OnRenameSourceGroup="HandleRenameSourceGroup"
             OnIconChanged="StateHasChanged"
             OnToggleHidden="HandleToggleHidden"
             OnTogglePin="HandleTogglePin"
@@ -248,6 +282,12 @@
     /// hidden group to unhide it, and it resets when the tab is reopened.
     /// </summary>
     private bool showHidden;
+
+    /// <summary>
+    /// Arrange mode: scanned cards get a drag grip, hidden ones are revealed. A view state like
+    /// <see cref="showHidden"/> — what it lets you do is persisted, being in it is not.
+    /// </summary>
+    private bool arranging;
 
     // Drag state for reordering groups. Held here rather than in the cards because a drag is a
     // relationship between two of them and neither one can see the other.
@@ -404,8 +444,93 @@
         // dashboard disagreed with itself about whether it exists.
         GroupViewModels = Layout.OrderGroups(savedGroups.Concat(scannedGroups))
             .Where(g => showHidden || !Layout.IsHidden(g.Name))
+
+            // The hand edits go on here, between the scan and the view models: renames, merges,
+            // relabelled locations, hidden cards. Only for scanned groups — a hand-made group's
+            // cards are editable for real, and Customize returns copies, which would send those
+            // edits to an object nothing saves.
+            .Select(g => g.IsFromSource ? Layout.Customize(g, includeHidden: arranging) : g)
             .Select(g => ViewModelFactory.CreateWorkspaceGroupViewModel(g, Layout.OrderWorkspaces(g.Name, g.Workspaces)))
             .ToList();
+    }
+
+    // ---- card customization ----------------------------------------------------------------
+
+    /// <summary>
+    /// How many of a group's cards are hidden. Counted off the group handed in — which for a
+    /// scanned group is the pristine scan, before <see cref="IDashboardLayoutService.Customize"/>
+    /// has dropped anything. Counting the customized list could only ever say zero.
+    /// </summary>
+    private int HiddenCardsIn(WorkspaceGroup group)
+    {
+        if (!group.IsFromSource || !Layout.HasCardOverrides(group.Name))
+        {
+            return 0;
+        }
+
+        var scanned = scannedGroups.FirstOrDefault(g => g.Name.Equals(group.Name, StringComparison.OrdinalIgnoreCase));
+        return scanned?.Workspaces.Count(w => Layout.IsCardHidden(group.Name, w.Name)) ?? 0;
+    }
+
+    private void ToggleArranging()
+    {
+        arranging = !arranging;
+
+        // Hidden cards come and go with the mode, so the view models have to be rebuilt rather
+        // than just re-rendered.
+        RebuildViewModels();
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// A card override changed. Reapplied from memory — no rescan, because nothing on disk moved.
+    /// </summary>
+    private void HandleCustomized()
+    {
+        RebuildViewModels();
+        StateHasChanged();
+    }
+
+    private async Task HandleMergeCards((string groupName, string intoCard, string fromCard) args)
+    {
+        await Layout.MergeCardsAsync(args.groupName, args.intoCard, args.fromCard);
+        HandleCustomized();
+    }
+
+    /// <summary>
+    /// Renames a scanned group by editing the rules that produce it. A scanned group's name is the
+    /// <c>group:</c> field of every smart folder pointed at it, so this is a real rename rather
+    /// than a display override — nothing downstream has to translate between two names.
+    /// </summary>
+    private async Task HandleRenameSourceGroup((string oldName, string newName) args)
+    {
+        var config = await WorkspaceSourceService.GetConfigAsync();
+
+        var feeding = config.Sources
+            .Where(s => s.GroupName.Equals(args.oldName, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (feeding.Count == 0)
+        {
+            openError = $"Nothing to rename: no smart folder targets '{args.oldName}' any more.";
+            StateHasChanged();
+            return;
+        }
+
+        foreach (var source in feeding)
+        {
+            // Set explicitly even where the group was only implied by the rule's name, or the
+            // rename would last until the next time anyone looked at that rule.
+            source.Group = args.newName;
+        }
+
+        // Before the rescan: the arrangement is keyed by group name, and the rescan is what
+        // produces the group under its new name.
+        await Layout.RenameGroupAsync(args.oldName, args.newName);
+        await IconService.RenameOverrideAsync(IconScope.Group, args.oldName, args.newName);
+
+        await WorkspaceSourceService.SaveConfigAsync(config);
+        RescanSources();
     }
 
     // ---- hiding ----------------------------------------------------------------------------

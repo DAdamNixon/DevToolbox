@@ -152,6 +152,33 @@ public class IconService : IIconService
         await SaveConfigAsync(config);
     }
 
+    public async Task RenameOverrideAsync(IconScope scope, string oldName, string newName)
+    {
+        if (string.IsNullOrWhiteSpace(oldName)
+            || string.IsNullOrWhiteSpace(newName)
+            || oldName.Equals(newName, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var config = await GetConfigAsync();
+        var bucket = BucketFor(config, scope);
+
+        var key = bucket.Keys.FirstOrDefault(k => k.Equals(oldName, StringComparison.OrdinalIgnoreCase));
+        if (key is null)
+        {
+            // Nothing was pinned to the old name. Copying the resolved style over instead would
+            // freeze whichever rule currently matches, which is not what the user asked for.
+            return;
+        }
+
+        var style = bucket[key];
+        bucket.Remove(key);
+        bucket[newName] = style;
+
+        await SaveConfigAsync(config);
+    }
+
     private static bool TryGetOverride(IconConfig config, IconScope scope, string name, out IconStyle style)
     {
         var bucket = BucketFor(config, scope);

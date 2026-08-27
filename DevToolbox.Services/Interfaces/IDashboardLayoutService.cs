@@ -71,4 +71,62 @@ public interface IDashboardLayoutService
     /// one, so the file only ever holds aliases that exist.
     /// </summary>
     Task SetAliasesAsync(AliasScope scope, string name, IEnumerable<string> aliases);
+
+    // ---- card overrides ----------------------------------------------------------------------
+    //
+    // The layer that makes a scanned card editable. A scan is rebuilt from disk every time, so
+    // these are stored as patches against the name the scan produced, and reapplied after it.
+
+    /// <summary>
+    /// The scan's group with the hand edits on top: renames, merges, relabelled locations, and the
+    /// hidden cards dropped. Returns the group unchanged when it has no overrides, and otherwise a
+    /// new group of new workspaces — never edits what it is given.
+    /// </summary>
+    WorkspaceGroup Customize(WorkspaceGroup group, bool includeHidden = false);
+
+    /// <summary>What has been changed about one scanned card, or null. Keyed by the scanned name.</summary>
+    CardOverride? CardOverrideFor(string? groupName, string? cardName);
+
+    bool IsCardHidden(string? groupName, string? cardName);
+
+    /// <summary>Whether this group has any hand edits at all, for the "reset" offer.</summary>
+    bool HasCardOverrides(string? groupName);
+
+    /// <summary>
+    /// Renames a scanned card. A blank name, or the scanned name itself, drops the override so the
+    /// card follows the file again. Carries the card's pin and aliases across with it.
+    /// </summary>
+    Task RenameCardAsync(string groupName, string cardName, string? newName);
+
+    /// <summary>Keeps a scanned card off its group, or puts it back. Deletes nothing.</summary>
+    Task SetCardHiddenAsync(string groupName, string cardName, bool hidden);
+
+    /// <summary>
+    /// Replaces the chip labels for one card's locations, keyed by path — the only thing here not
+    /// keyed by name, because two locations on a card can share a name and usually do when this is
+    /// what you reached for. Blank labels are dropped rather than stored.
+    /// </summary>
+    Task SetLocationNamesAsync(string groupName, string cardName, IReadOnlyDictionary<string, string> names);
+
+    /// <summary>
+    /// Folds <paramref name="fromCard"/> into <paramref name="intoCard"/>: its locations move over
+    /// and it stops appearing on its own. Anything it had already absorbed comes along.
+    /// </summary>
+    Task MergeCardsAsync(string groupName, string intoCard, string fromCard);
+
+    /// <summary>
+    /// Undoes a merge. <paramref name="absorbed"/> names one card to release; null releases all of
+    /// them.
+    /// </summary>
+    Task UnmergeCardAsync(string groupName, string cardName, string? absorbed = null);
+
+    /// <summary>Drops every card override in a group — the way back from any arrangement.</summary>
+    Task ResetCardsAsync(string groupName);
+
+    /// <summary>
+    /// Moves everything in this file that is keyed by a group's name onto its new name: the order
+    /// position, the pins, the aliases, the hidden flag and the card overrides. Without it a rename
+    /// silently drops the group's whole arrangement.
+    /// </summary>
+    Task RenameGroupAsync(string oldName, string newName);
 }

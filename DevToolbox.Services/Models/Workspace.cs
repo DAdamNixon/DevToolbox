@@ -29,6 +29,24 @@ public class Workspace
     [YamlIgnore]
     [JsonIgnore]
     public bool IsFromSource => !string.IsNullOrEmpty(SourceName);
+
+    /// <summary>
+    /// The name the scan gave this card, when <see cref="Name"/> has been overridden by hand.
+    /// <para>
+    /// Set on the copies the customization pass produces. It is the key every card override is
+    /// stored under, so the UI needs it to edit the override of a card it is only ever shown the
+    /// renamed version of — otherwise renaming a card once would make it impossible to rename
+    /// again, or to unmerge.
+    /// </para>
+    /// </summary>
+    [YamlIgnore]
+    [JsonIgnore]
+    public string? ScannedName { get; set; }
+
+    /// <summary>The name a card override is keyed by: the scan's, whatever it is being shown as.</summary>
+    [YamlIgnore]
+    [JsonIgnore]
+    public string OverrideKey => string.IsNullOrEmpty(ScannedName) ? Name : ScannedName;
 }
 
 public class WorkspaceLocation
@@ -49,6 +67,23 @@ public class WorkspaceLocation
     [YamlIgnore]
     [JsonIgnore]
     public string? Description { get; set; }
+
+    /// <summary>
+    /// The label the scan gave this location, when <see cref="Name"/> has been relabelled by hand.
+    /// <para>
+    /// Kept for the same reason <see cref="Workspace.ScannedName"/> is: once an override has been
+    /// applied, <see cref="Name"/> is the override, so it cannot also stand in for what clearing the
+    /// override would give you back.
+    /// </para>
+    /// </summary>
+    [YamlIgnore]
+    [JsonIgnore]
+    public string? ScannedName { get; set; }
+
+    /// <summary>What this location is called when nothing has been set by hand.</summary>
+    [YamlIgnore]
+    [JsonIgnore]
+    public string ScannedLabel => string.IsNullOrEmpty(ScannedName) ? Name : ScannedName;
 }
 
 public enum LocationType

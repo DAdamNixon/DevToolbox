@@ -1,0 +1,309 @@
+@using DevToolbox.Services.Interfaces
+@using DevToolbox.Services.Models
+@inject IDashboardLayoutService Layout
+@inject IIconService IconService
+
+@* Everything that has been changed by hand about one scanned card, in one dialog.
+
+   Four separate menu items — rename, relabel the locations, hide, unmerge — would have been four
+   dialogs for one thought. They are never used apart: you merge two cards and the very next thing
+   you want is to say which location is which, because a merge is precisely what gives a card two
+   locations with the same name. *@
+
+<div class="ws-override">
+    <div class="ws-field">
+        <label class="ws-label">Card name</label>
+        <input type="text" class="ws-input" @bind="name" @bind:event="oninput"
+               placeholder="@Scanned" />
+        <span class="ws-hint">
+            @if (IsRenamed)
+            {
+                <text>
+                    Scanned as <span class="font-mono">@Scanned</span> — clear the box to follow the
+                    file again.
+                </text>
+            }
+            else
+            {
+                <text>Blank follows whatever the scan calls it.</text>
+            }
+        </span>
+    </div>
+
+    <label class="ws-check ws-override-hide">
+        <input type="checkbox" checked="@hidden" @onchange="e => hidden = (bool?)e.Value ?? false" />
+        <span>Hide this card from the group</span>
+    </label>
+    <span class="ws-hint">Nothing on disk is touched. The group header keeps a count.</span>
+
+    @* ---- the locations ------------------------------------------------------------------- *@
+    <div class="ws-override-section">
+        <h4 class="ws-section-title">Location labels</h4>
+
+        @if (rows.Count == 0)
+        {
+            <div class="ws-empty">This card has no locations.</div>
+        }
+        else
+        {
+            @if (Duplicates.Count > 0)
+            {
+                <div class="ws-notice mb-3">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <span>
+                        @string.Join(" and ", Duplicates.Select(d => $"“{d}”")) used more than once.
+                        The differing part of each path is shown below.
+                    </span>
+                </div>
+            }
+
+            <div class="ws-override-rows">
+                @foreach (var row in rows)
+                {
+                    <div class="ws-override-row @(IsDuplicate(row) ? "is-dupe" : "")">
+                        <input type="text" class="ws-input ws-override-label"
+                               value="@row.Label"
+                               @oninput="e => row.Label = e.Value?.ToString() ?? string.Empty"
+                               placeholder="@row.Scanned" />
+                        <span class="ws-override-path" title="@row.Path">@row.Distinguishing</span>
+                    </div>
+                }
+            </div>
+            <span class="ws-hint">
+                Blank uses the scanned label. Labels follow the path, so they survive a rescan and a
+                merge.
+            </span>
+        }
+    </div>
+
+    @* ---- what has been folded in --------------------------------------------------------- *@
+    @if (Absorbed.Count > 0)
+    {
+        <div class="ws-override-section">
+            <h4 class="ws-section-title">Merged into this card</h4>
+            <div class="ws-override-rows">
+                @foreach (var absorbed in Absorbed)
+                {
+                    <div class="ws-override-row">
+                        <span class="ws-override-absorbed">
+                            <i class="bi bi-arrow-return-right"></i>
+                            <span class="font-mono">@absorbed</span>
+                        </span>
+                        <button type="button" class="btn-ghost btn-sm" title="Give it its own card back"
+                                @onclick="() => Release(absorbed)">
+                            <i class="bi bi-arrows-expand"></i> Release
+                        </button>
+                    </div>
+                }
+            </div>
+            <span class="ws-hint">
+                Released at once, without waiting for Save — a merge is the one thing here you cannot
+                see the result of until it is undone.
+            </span>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="ws-error mt-3">@error</div>
+    }
+
+    <div class="ws-dialog-actions ws-override-actions">
+        @if (HasOverride)
+        {
+            <button type="button" class="btn-ghost btn-sm" title="Drop every hand edit on this card"
+                    @onclick="Reset">
+                <i class="bi bi-arrow-counterclockwise"></i> Reset card
+            </button>
+        }
+        <button type="button" class="btn-primary" @onclick="Save">
+            <i class="bi bi-check-lg"></i> Save
+        </button>
+    </div>
+</div>
+
+@code {
+    /// <summary>The group the card is in — the first half of the key its override is stored under.</summary>
+    [Parameter] public string GroupName { get; set; } = string.Empty;
+
+    /// <summary>The card as the dashboard is showing it, renames already applied.</summary>
+    [Parameter] public Workspace Card { get; set; } = null!;
+
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    /// <summary>One editable location label, and enough of its path to tell it from its twin.</summary>
+    private sealed class Row
+    {
+        public string Path { get; init; } = string.Empty;
+        public string Scanned { get; init; } = string.Empty;
+        public string Distinguishing { get; init; } = string.Empty;
+        public string Label { get; set; } = string.Empty;
+    }
+
+    private List<Row> rows = new();
+    private string name = string.Empty;
+    private bool hidden;
+    private string? error;
+
+    /// <summary>The name the scan gave this card: what the override is keyed by.</summary>
+    private string Scanned => Card.OverrideKey;
+
+    private CardOverride? Patch => Layout.CardOverrideFor(GroupName, Scanned);
+
+    private bool HasOverride => Patch is not null;
+
+    private bool IsRenamed => !string.IsNullOrWhiteSpace(Patch?.Name);
+
+    private List<string> Absorbed => Patch?.Absorb ?? new List<string>();
+
+    protected override void OnParametersSet() => Load();
+
+    private void Load()
+    {
+        var patch = Patch;
+
+        // The scanned name is the placeholder, not the value: a box pre-filled with the current
+        // name cannot express "go back to following the file", and that is the way out of a rename
+        // that turned out to be wrong.
+        name = patch?.Name ?? string.Empty;
+        hidden = patch?.Hidden ?? false;
+
+        var labels = patch?.Locations ?? new Dictionary<string, string>();
+        var paths = Card.Locations.Select(l => l.Path).ToList();
+        var tails = DistinguishingTails(paths);
+
+        rows = Card.Locations
+            .Select((location, index) => new Row
+            {
+                Path = location.Path,
+
+                // Not location.Name: by the time the card is rendered that is already the
+                // override, so using it would show the override back as if it were the original —
+                // and the placeholder's job is to say what clearing the box gives you.
+                Scanned = location.ScannedLabel,
+                Distinguishing = tails[index],
+                Label = LabelFor(location.Path, labels)
+            })
+            .ToList();
+    }
+
+    private static string LabelFor(string path, Dictionary<string, string> labels)
+    {
+        var key = labels.Keys.FirstOrDefault(k => k.Equals(path, StringComparison.OrdinalIgnoreCase));
+        return key is null ? string.Empty : labels[key];
+    }
+
+    /// <summary>
+    /// Each path with the part every location shares removed, so what is left is the bit that
+    /// distinguishes them. Two copies of <c>Products.sln</c> under one branch differ by one folder
+    /// somewhere in the middle of two very long and otherwise identical paths, and that folder is
+    /// the whole answer to "which of these am I labelling?".
+    /// </summary>
+    private static List<string> DistinguishingTails(List<string> paths)
+    {
+        if (paths.Count <= 1)
+        {
+            return paths.Select(p => p.Length == 0 ? string.Empty : System.IO.Path.GetFileName(p)).ToList();
+        }
+
+        var split = paths.Select(p => p.Split('\\')).ToList();
+        var common = 0;
+
+        while (true)
+        {
+            // Never eat the last segment: a row labelled with the empty string tells you nothing,
+            // and two paths differing only by folder still have a file name worth showing.
+            if (split.Any(s => common >= s.Length - 1))
+            {
+                break;
+            }
+
+            var segment = split[0][common];
+            if (!split.All(s => s[common].Equals(segment, StringComparison.OrdinalIgnoreCase)))
+            {
+                break;
+            }
+
+            common++;
+        }
+
+        return split.Select(s => string.Join('\\', s.Skip(common))).ToList();
+    }
+
+    /// <summary>
+    /// Labels used by more than one location, which is the situation this dialog mostly exists to
+    /// fix. Computed off what is in the boxes, so the warning clears as you type.
+    /// </summary>
+    private List<string> Duplicates => rows
+        .Select(EffectiveLabel)
+        .Where(l => l.Length > 0)
+        .GroupBy(l => l, StringComparer.OrdinalIgnoreCase)
+        .Where(g => g.Count() > 1)
+        .Select(g => g.Key)
+        .ToList();
+
+    private static string EffectiveLabel(Row row) =>
+        string.IsNullOrWhiteSpace(row.Label) ? row.Scanned : row.Label.Trim();
+
+    private bool IsDuplicate(Row row) =>
+        Duplicates.Contains(EffectiveLabel(row), StringComparer.OrdinalIgnoreCase);
+
+    private async Task Release(string absorbed)
+    {
+        await Layout.UnmergeCardAsync(GroupName, Scanned, absorbed);
+        await OnSaved.InvokeAsync();
+    }
+
+    private async Task Reset()
+    {
+        await Layout.RenameCardAsync(GroupName, Scanned, null);
+        await Layout.SetCardHiddenAsync(GroupName, Scanned, false);
+        await Layout.UnmergeCardAsync(GroupName, Scanned);
+        await Layout.SetLocationNamesAsync(GroupName, Scanned, new Dictionary<string, string>());
+        await OnSaved.InvokeAsync();
+    }
+
+    private async Task Save()
+    {
+        var trimmed = name.Trim();
+
+        // A card renamed onto another card's name is two cards with one name in one group, which
+        // breaks the render key and the state key both — and reads as the merge the user probably
+        // wanted, without doing it.
+        if (trimmed.Length > 0
+            && !trimmed.Equals(Card.Name, StringComparison.OrdinalIgnoreCase)
+            && SiblingNames.Contains(trimmed, StringComparer.OrdinalIgnoreCase))
+        {
+            error = $"“{trimmed}” is already another card in this group. Merge them instead of naming both the same.";
+            return;
+        }
+
+        error = null;
+
+        var before = Card.Name;
+
+        await Layout.RenameCardAsync(GroupName, Scanned, trimmed);
+        await Layout.SetCardHiddenAsync(GroupName, Scanned, hidden);
+        await Layout.SetLocationNamesAsync(
+            GroupName,
+            Scanned,
+            rows.Where(r => !string.IsNullOrWhiteSpace(r.Label))
+                .ToDictionary(r => r.Path, r => r.Label.Trim()));
+
+        // The icon picker keys on the displayed name too, so an icon chosen for this card follows
+        // the rename rather than being left behind on a name nothing is called any more.
+        var after = trimmed.Length == 0 ? Scanned : trimmed;
+        if (!after.Equals(before, StringComparison.Ordinal))
+        {
+            await IconService.RenameOverrideAsync(IconScope.Workspace, before, after);
+        }
+
+        await OnSaved.InvokeAsync();
+    }
+
+    /// <summary>
+    /// The other cards in this group, for the duplicate-name check. Supplied by the caller because
+    /// this dialog is handed one card and has no other way to see its siblings.
+    /// </summary>
+    [Parameter] public IReadOnlyList<string> SiblingNames { get; set; } = Array.Empty<string>();
+}

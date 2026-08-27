@@ -42,6 +42,9 @@ public class DashboardLayoutTests
 
         public void Seed(string fileName, string yaml) => _files[fileName] = yaml;
 
+        /// <summary>The YAML as written, for asserting on what does and does not reach the file.</summary>
+        public string Read(string fileName) => _files.TryGetValue(fileName, out var yaml) ? yaml : string.Empty;
+
         public Task SaveAsync<T>(string fileName, T data)
         {
             Writes++;
@@ -327,6 +330,372 @@ public class DashboardLayoutTests
         Assert.False(service.IsHidden("Anything"));
         Assert.False(service.IsHidden(null));
         Assert.Empty(service.HiddenGroups);
+    }
+
+    // ---- card overrides ----------------------------------------------------------------------
+    //
+    // The layer that makes a scanned card editable. Everything below is about the same property:
+    // the override is a patch keyed by the name the *scan* produced, so a rescan still picks up new
+    // projects and the edits reapply on top of them.
+
+    /// <summary>A scanned group, the kind the overrides apply to.</summary>
+    private static WorkspaceGroup Scanned(string name, params string[] cards) => new()
+    {
+        Id = -1,
+        Name = name,
+        SourceName = "Some smart folder",
+        Workspaces = cards.Select(c => new Workspace
+        {
+            Id = -1,
+            Name = c,
+            GroupName = name,
+            SourceName = "Some smart folder",
+            Locations = new List<WorkspaceLocation>
+            {
+                new() { Name = "dev", Path = $@"C:\repo\development\{c}\{c}.sln" }
+            }
+        }).ToList()
+    };
+
+    [Fact]
+    public async Task A_renamed_card_shows_the_new_name_and_remembers_the_old_one()
+    {
+        var (service, _) = await LoadedAsync();
+
+        await service.RenameCardAsync("eesnet.com", "PM.UI", "Personnel Manager");
+
+        var group = service.Customize(Scanned("eesnet.com", "PM.UI", "Checkout"));
+        var card = group.Workspaces.Single(w => w.Name == "Personnel Manager");
+
+        // The scanned name has to survive on the card, or renaming it once would make it impossible
+        // to rename again — the override is keyed by what the scan called it.
+        Assert.Equal("PM.UI", card.ScannedName);
+        Assert.Equal("PM.UI", card.OverrideKey);
+        Assert.Equal("Checkout", group.Workspaces.Single(w => w.Name == "Checkout").OverrideKey);
+    }
+
+    [Fact]
+    public async Task Customize_never_edits_the_group_it_is_given()
+    {
+        // The scanned groups are held by WorkspaceSourceService and handed to every caller, and
+        // this runs on every rebuild of the view models. Renaming in place would apply once and
+        // then find nothing to rename on the second pass, because the key had already gone.
+        var (service, _) = await LoadedAsync();
+        await service.RenameCardAsync("eesnet.com", "PM.UI", "Personnel Manager");
+
+        var scanned = Scanned("eesnet.com", "PM.UI");
+
+        var first = service.Customize(scanned);
+        var second = service.Customize(scanned);
+
+        Assert.Equal("PM.UI", scanned.Workspaces[0].Name);
+        Assert.Equal("Personnel Manager", first.Workspaces[0].Name);
+        Assert.Equal("Personnel Manager", second.Workspaces[0].Name);
+    }
+
+    [Fact]
+    public async Task Renaming_a_card_back_to_its_scanned_name_drops_the_override()
+    {
+        var (service, _) = await LoadedAsync();
+
+        await service.RenameCardAsync("eesnet.com", "PM.UI", "Personnel Manager");
+        await service.RenameCardAsync("eesnet.com", "PM.UI", "PM.UI");
+
+        // Not stored as "renamed to the same thing": the card should follow the file again, so a
+        // rescan that renames the file is followed rather than overridden.
+        Assert.Null(service.CardOverrideFor("eesnet.com", "PM.UI"));
+        Assert.False(service.HasCardOverrides("eesnet.com"));
+    }
+
+    [Fact]
+    public async Task Renaming_a_card_carries_its_pin_across()
+    {
+        var (service, _) = await LoadedAsync();
+
+        await service.TogglePinAsync("eesnet.com", "PM.UI");
+        await service.RenameCardAsync("eesnet.com", "PM.UI", "Personnel Manager");
+
+        // The pin is keyed by what is on the card, so without this a rename silently unpins it.
+        Assert.True(service.IsPinned("eesnet.com", "Personnel Manager"));
+        Assert.False(service.IsPinned("eesnet.com", "PM.UI"));
+    }
+
+    [Fact]
+    public async Task Merging_one_card_into_another_moves_its_locations_over()
+    {
+        var (service, _) = await LoadedAsync();
+
+        await service.MergeCardsAsync("eesnet.com", "PM.UI", "PM.UI.Development");
+
+        var group = service.Customize(Scanned("eesnet.com", "PM.UI", "PM.UI.Development", "Checkout"));
+
+        Assert.Equal(new[] { "Checkout", "PM.UI" }, group.Workspaces.Select(w => w.Name));
+
+        var merged = group.Workspaces.Single(w => w.Name == "PM.UI");
+        Assert.Equal(2, merged.Locations.Count);
+        Assert.Contains(merged.Locations, l => l.Path.Contains("PM.UI.Development"));
+    }
+
+    [Fact]
+    public async Task A_merge_whose_target_is_no_longer_scanned_gives_the_cards_back()
+    {
+        var (service, _) = await LoadedAsync();
+
+        await service.MergeCardsAsync("eesnet.com", "PM.UI", "PM.UI.Development");
+
+        // The absorber's file was renamed, moved or deleted since. The card it was holding must
+        // come back as itself: a stale merge that can eat a project is worse than no merge.
+        var group = service.Customize(Scanned("eesnet.com", "PM.UI.Development", "Checkout"));
+
+        Assert.Equal(new[] { "Checkout", "PM.UI.Development" }, group.Workspaces.Select(w => w.Name));
+    }
+
+    [Fact]
+    public async Task Merging_a_card_that_had_absorbed_others_brings_the_whole_set()
+    {
+        var (service, _) = await LoadedAsync();
+
+        await service.MergeCardsAsync("eesnet.com", "B", "C");
+        await service.MergeCardsAsync("eesnet.com", "A", "B");
+
+        var group = service.Customize(Scanned("eesnet.com", "A", "B", "C"));
+
+        Assert.Equal(new[] { "A" }, group.Workspaces.Select(w => w.Name));
+        Assert.Equal(3, group.Workspaces[0].Locations.Count);
+
+        // And B stops claiming to absorb anything, or the file would describe a card that no
+        // longer appears as the owner of C.
+        Assert.Null(service.CardOverrideFor("eesnet.com", "B"));
+    }
+
+    [Fact]
+    public async Task Unmerging_releases_one_card_and_leaves_the_rest()
+    {
+        var (service, _) = await LoadedAsync();
+
+        await service.MergeCardsAsync("eesnet.com", "A", "B");
+        await service.MergeCardsAsync("eesnet.com", "A", "C");
+        await service.UnmergeCardAsync("eesnet.com", "A", "B");
+
+        var group = service.Customize(Scanned("eesnet.com", "A", "B", "C"));
+
+        Assert.Equal(new[] { "A", "B" }, group.Workspaces.Select(w => w.Name));
+        Assert.Equal(2, group.Workspaces.Single(w => w.Name == "A").Locations.Count);
+    }
+
+    [Fact]
+    public async Task A_cycle_of_merges_leaves_every_card_alone_instead_of_looping()
+    {
+        // A hand-edited file describing something impossible: each card absorbing the other. Both
+        // appear as themselves — terminating and lossless, so the mistake is visible on the
+        // dashboard and nothing has been swallowed by it.
+        var (service, _) = await LoadedAsync(
+            "cards:\n  eesnet.com:\n    A:\n      absorb: [A, B]\n    B:\n      absorb: [A]");
+
+        var group = service.Customize(Scanned("eesnet.com", "A", "B"));
+
+        Assert.Equal(new[] { "A", "B" }, group.Workspaces.Select(w => w.Name));
+        Assert.Equal(1, group.Workspaces[0].Locations.Count);
+    }
+
+    [Fact]
+    public async Task A_hand_written_chain_of_merges_lands_everything_on_the_end_of_it()
+    {
+        // A absorbs B, B absorbs C. Only a hand-edited file gets here — MergeCardsAsync flattens
+        // chains as it writes them — but stopping at B would look for a card that does not appear
+        // and strand C on a card of its own.
+        var (service, _) = await LoadedAsync(
+            "cards:\n  eesnet.com:\n    A:\n      absorb: [B]\n    B:\n      absorb: [C]");
+
+        var group = service.Customize(Scanned("eesnet.com", "A", "B", "C"));
+
+        Assert.Equal(new[] { "A" }, group.Workspaces.Select(w => w.Name));
+        Assert.Equal(3, group.Workspaces[0].Locations.Count);
+    }
+
+    [Fact]
+    public async Task A_hidden_card_is_dropped_unless_it_is_asked_for()
+    {
+        var (service, _) = await LoadedAsync();
+
+        await service.SetCardHiddenAsync("elliottelectric.com", "Account.UI", true);
+
+        var scanned = Scanned("elliottelectric.com", "Account", "Account.UI");
+
+        Assert.Equal(new[] { "Account" }, service.Customize(scanned).Workspaces.Select(w => w.Name));
+
+        // includeHidden is what arrange mode passes, so a card you hid and forgot can be got back.
+        Assert.Equal(
+            new[] { "Account", "Account.UI" },
+            service.Customize(scanned, includeHidden: true).Workspaces.Select(w => w.Name));
+
+        Assert.True(service.IsCardHidden("elliottelectric.com", "Account.UI"));
+    }
+
+    [Fact]
+    public async Task Location_labels_are_keyed_by_path_so_two_locations_sharing_a_name_can_differ()
+    {
+        var (service, _) = await LoadedAsync();
+
+        // The situation the whole feature exists for: one branch holding two copies of the same
+        // solution, so the card has two locations both called "dev" and nothing but the path to
+        // tell the renamer which one it means.
+        var group = new WorkspaceGroup
+        {
+            Id = -1,
+            Name = "elliottelectric.com",
+            SourceName = "s",
+            Workspaces = new List<Workspace>
+            {
+                new()
+                {
+                    Id = -1, Name = "Products", SourceName = "s",
+                    Locations = new List<WorkspaceLocation>
+                    {
+                        new() { Name = "dev", Path = @"C:\repo\dev\wwwroot\P\Products.sln" },
+                        new() { Name = "dev", Path = @"C:\repo\dev\wwwroot\Products\Products.sln" }
+                    }
+                }
+            }
+        };
+
+        await service.SetLocationNamesAsync("elliottelectric.com", "Products", new Dictionary<string, string>
+        {
+            [@"C:\repo\dev\wwwroot\P\Products.sln"] = "dev (P)"
+        });
+
+        var card = service.Customize(group).Workspaces.Single();
+
+        Assert.Equal(new[] { "dev", "dev (P)" }, card.Locations.Select(l => l.Name));
+
+        // And the scan's own object is untouched, or the label would stick until the next rescan
+        // even after the override was dropped.
+        Assert.Equal(new[] { "dev", "dev" }, group.Workspaces[0].Locations.Select(l => l.Name));
+    }
+
+    [Fact]
+    public async Task A_label_on_a_path_that_moved_cards_still_applies()
+    {
+        var (service, _) = await LoadedAsync();
+
+        await service.SetLocationNamesAsync("eesnet.com", "PM.UI.Development", new Dictionary<string, string>
+        {
+            [@"C:\repo\development\PM.UI.Development\PM.UI.Development.sln"] = "dev filter"
+        });
+
+        await service.MergeCardsAsync("eesnet.com", "PM.UI", "PM.UI.Development");
+
+        var card = service.Customize(Scanned("eesnet.com", "PM.UI", "PM.UI.Development")).Workspaces.Single();
+
+        // Keyed by path, so the label means the same thing on the card those paths just moved to.
+        Assert.Contains("dev filter", card.Locations.Select(l => l.Name));
+    }
+
+    [Fact]
+    public async Task Resetting_a_group_drops_every_card_edit_in_it()
+    {
+        var (service, _) = await LoadedAsync();
+
+        await service.RenameCardAsync("eesnet.com", "PM.UI", "Personnel Manager");
+        await service.MergeCardsAsync("eesnet.com", "PM.UI", "PM.UI.Development");
+        await service.SetCardHiddenAsync("eesnet.com", "Checkout", true);
+
+        Assert.True(service.HasCardOverrides("eesnet.com"));
+
+        await service.ResetCardsAsync("eesnet.com");
+
+        Assert.False(service.HasCardOverrides("eesnet.com"));
+
+        // Back to the scan exactly as it arrived, in the order it arrived — with no overrides left,
+        // Customize hands the group straight back rather than re-sorting it.
+        var scanned = Scanned("eesnet.com", "PM.UI", "PM.UI.Development", "Checkout");
+        var group = service.Customize(scanned);
+
+        Assert.Same(scanned, group);
+        Assert.Equal(new[] { "PM.UI", "PM.UI.Development", "Checkout" }, group.Workspaces.Select(w => w.Name));
+    }
+
+    [Fact]
+    public async Task A_group_with_no_overrides_is_handed_straight_back()
+    {
+        var (service, _) = await LoadedAsync();
+
+        var scanned = Scanned("eesnet.com", "A", "B");
+
+        // The overwhelmingly common case, and the one that runs on every render: no copying, and —
+        // for a saved group — the Workspaces list stays the one the dashboard writes back to disk.
+        Assert.Same(scanned, service.Customize(scanned));
+    }
+
+    [Fact]
+    public async Task An_override_that_says_nothing_is_removed_from_the_file()
+    {
+        var (service, storage) = await LoadedAsync();
+
+        await service.SetCardHiddenAsync("eesnet.com", "Checkout", true);
+        await service.SetCardHiddenAsync("eesnet.com", "Checkout", false);
+
+        // The file should read as the list of things that have been changed, not as a graveyard of
+        // cards that were once touched.
+        Assert.False(service.HasCardOverrides("eesnet.com"));
+        Assert.DoesNotContain("Checkout", storage.Read("dashboardLayout"));
+    }
+
+    [Fact]
+    public async Task An_override_only_writes_the_fields_that_say_something()
+    {
+        var (service, storage) = await LoadedAsync();
+
+        await service.MergeCardsAsync("eesnet.com", "PM.UI", "PM.UI.Development");
+
+        var yaml = storage.Read("dashboardLayout");
+
+        // A merged card used to write `name:`, `hidden: false` and `locations: {}` alongside its
+        // absorb list — three lines of noise per card, in a file whose whole point is being read
+        // and hand-edited.
+        Assert.Contains("absorb:", yaml);
+        Assert.DoesNotContain("hidden: false", yaml);
+        Assert.DoesNotContain("locations: {}", yaml);
+        Assert.DoesNotContain("name: \n", yaml.Replace("\r", string.Empty));
+
+        // And it still round-trips: the omitted keys load back as the same defaults.
+        var reloaded = new DashboardLayoutService(storage);
+        await reloaded.GetAsync();
+
+        var patch = reloaded.CardOverrideFor("eesnet.com", "PM.UI");
+        Assert.NotNull(patch);
+        Assert.Null(patch!.Name);
+        Assert.False(patch.Hidden);
+        Assert.Empty(patch.Locations);
+        Assert.Equal(new[] { "PM.UI.Development" }, patch.Absorb);
+    }
+
+    // ---- renaming a group --------------------------------------------------------------------
+
+    [Fact]
+    public async Task Renaming_a_group_carries_its_whole_arrangement_across()
+    {
+        var (service, _) = await LoadedAsync("groupOrder: [Alpha, Beta, Gamma]");
+
+        await service.TogglePinAsync("Beta", "Checkout");
+        await service.ToggleHiddenAsync("Beta");
+        await service.SetAliasesAsync(AliasScope.Group, "Beta", new[] { "bee" });
+        await service.RenameCardAsync("Beta", "PM.UI", "Personnel Manager");
+
+        await service.RenameGroupAsync("Beta", "Delta");
+
+        // Every one of these is keyed by group name. Before this existed, renaming a group threw
+        // the lot away and nothing said so.
+        var layout = await service.GetAsync();
+        Assert.Equal(new[] { "Alpha", "Delta", "Gamma" }, layout.GroupOrder);
+        Assert.True(service.IsPinned("Delta", "Checkout"));
+        Assert.True(service.IsHidden("Delta"));
+        Assert.Equal(new[] { "bee" }, service.AliasesFor(AliasScope.Group, "Delta"));
+        Assert.Equal("Personnel Manager", service.CardOverrideFor("Delta", "PM.UI")?.Name);
+
+        Assert.False(service.IsPinned("Beta", "Checkout"));
+        Assert.False(service.IsHidden("Beta"));
+        Assert.Null(service.CardOverrideFor("Beta", "PM.UI"));
     }
 
     // ---- degrading ---------------------------------------------------------------------------

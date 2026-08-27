@@ -26,34 +26,35 @@
     [Parameter] public EventCallback<string?> ErrorMessageChanged { get; set; }
     [Parameter] public WorkspaceGroup Group { get; set; } = null!;
     [Parameter] public List<WorkspaceGroup> AllGroups { get; set; } = new();
-    [Parameter] public EventCallback OnRenameCompleted { get; set; }
+
+    /// <summary>
+    /// The validated new name. This dialog no longer applies the rename itself: a hand-made group
+    /// is renamed by editing the group and its workspaces, and a scanned group by editing the
+    /// <c>group:</c> field of every smart folder feeding it — and either way the arrangement stored
+    /// against the old name has to be carried across, which is not something a text box should be
+    /// deciding.
+    /// </summary>
+    [Parameter] public EventCallback<string> OnRenameCompleted { get; set; }
 
     private async Task HandleRename()
     {
-        if (string.IsNullOrWhiteSpace(GroupName))
+        var trimmed = GroupName?.Trim() ?? string.Empty;
+
+        if (trimmed.Length == 0)
         {
             await ErrorMessageChanged.InvokeAsync("Please enter a name.");
             return;
         }
 
-        if (AllGroups.Any(g => g.Name.Equals(GroupName, StringComparison.OrdinalIgnoreCase) && g.Name != Group.Name))
+        if (AllGroups.Any(g => g.Name.Equals(trimmed, StringComparison.OrdinalIgnoreCase)
+                               && !g.Name.Equals(Group.Name, StringComparison.OrdinalIgnoreCase)))
         {
             await ErrorMessageChanged.InvokeAsync("A group with this name already exists.");
             return;
         }
 
-        // Update all workspaces in this group to use the new group name
-        foreach (var workspace in Group.Workspaces)
-        {
-            workspace.GroupName = GroupName;
-        }
-
-        // Update the domain model
-        Group.Name = GroupName;
-        
-        // Clear error and notify
         await ErrorMessageChanged.InvokeAsync(null);
-        await OnRenameCompleted.InvokeAsync();
+        await OnRenameCompleted.InvokeAsync(trimmed);
     }
     
     public void ResetForm()

@@ -21,6 +21,13 @@ public interface IIconService : ICachedConfig
     /// <summary>Pins an icon to one card name. Pass null to drop the override.</summary>
     Task SetOverrideAsync(IconScope scope, string name, IconStyle? style);
 
+    /// <summary>
+    /// Moves an explicit override onto a new name, for when a card is renamed. Does nothing when
+    /// the old name has no override, so a card showing a rule-derived icon keeps deriving it rather
+    /// than having that icon frozen in place by the rename.
+    /// </summary>
+    Task RenameOverrideAsync(IconScope scope, string oldName, string newName);
+
     /// <summary>Icons offered by the picker.</summary>
     IReadOnlyList<string> Catalog { get; }
 

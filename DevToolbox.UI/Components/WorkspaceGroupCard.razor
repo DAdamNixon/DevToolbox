@@ -73,6 +73,17 @@
                 </span>
             }
 
+            @* Cards put away inside this group. Said on the header rather than only in the file,
+               because a card you hid and forgot is otherwise a card the scan appears to have
+               stopped finding. *@
+            @if (HiddenCardCount > 0)
+            {
+                <span class="ws-badge is-hidden-badge"
+                      title="@HiddenCardCount card(s) hidden — Arrange shows them">
+                    <i class="bi bi-eye-slash"></i> @HiddenCardCount
+                </span>
+            }
+
             @* Only ever visible while the toolbar's "hidden" toggle is on, since a hidden card is
                otherwise not rendered at all. *@
             @if (IsHidden)
@@ -120,6 +131,23 @@
                         @if (IsFromSource)
                         {
                             <div class="ws-menu-sep"></div>
+
+                            @* A scanned group's name comes from the `group:` field of every rule
+                               feeding it, so renaming one is an edit to the rules — not an
+                               override. Which means it is a real rename: nothing has to be
+                               translated afterwards, and the name in config matches the screen. *@
+                            <button class="dropdown-item" @onclick="ShowRenameModal">
+                                <i class="bi bi-pencil"></i>
+                                <span>Rename Group…</span>
+                            </button>
+                            @if (HasCardOverrides)
+                            {
+                                <button class="dropdown-item" @onclick="ResetCards">
+                                    <i class="bi bi-arrow-counterclockwise"></i>
+                                    <span>Reset Card Edits</span>
+                                </button>
+                            }
+                            <div class="ws-menu-sep"></div>
                             <button class="dropdown-item" @onclick="EditSource">
                                 <i class="bi bi-sliders"></i>
                                 <span>Smart Folder Settings…</span>
@@ -160,8 +188,16 @@
     @if (GroupViewModel.IsExpanded)
     {
         @* contextmenu stops here too, or a right-click aimed at a workspace card would open the
-           group's menu — the group card is underneath every one of them. *@
-        <div class="ws-grid" @onclick:stopPropagation="true" @oncontextmenu:stopPropagation="true">
+           group's menu — the group card is underneath every one of them.
+
+           In arrange mode the drag events stop here as well, or a card dropped onto another card
+           would bubble up and be read as a group reorder — this whole grid sits inside a group
+           card that is itself a drop target. *@
+        <div class="ws-grid"
+             @onclick:stopPropagation="true"
+             @oncontextmenu:stopPropagation="true"
+             @ondragover:stopPropagation="IsArranging"
+             @ondrop:stopPropagation="IsArranging">
             @foreach (var workspaceViewModel in GroupViewModel.Workspaces)
             {
                 <WorkspaceCard
@@ -174,6 +210,17 @@
                     IsReadOnly="IsFromSource"
                     IsPinned="Layout.IsPinned(GroupViewModel.Name, workspaceViewModel.Name)"
                     QuickOpenCount="QuickOpenCount"
+                    GroupName="@GroupViewModel.Name"
+                    IsArranging="@(IsArranging && IsFromSource)"
+                    IsHiddenCard="@Layout.IsCardHidden(GroupViewModel.Name, workspaceViewModel.Workspace.OverrideKey)"
+                    IsDragging="@(dragCard == workspaceViewModel.Workspace.OverrideKey)"
+                    IsMergeTarget="@IsMergeTargetFor(workspaceViewModel)"
+                    SiblingNames="SiblingNamesFor(workspaceViewModel)"
+                    OnCustomized="OnCustomized"
+                    OnDragStarted="HandleCardDragStart"
+                    OnDragEntered="HandleCardDragOver"
+                    OnDropped="HandleCardDrop"
+                    OnDragEnded="HandleCardDragEnd"
                     OnDeleteWorkspace="() => DeleteWorkspace(workspaceViewModel.Workspace)"
                     OnOpenWorkspaceLocation="OnOpenWorkspaceLocation"
                     OnOpenInExplorer="OnOpenInExplorer"
@@ -298,6 +345,27 @@
     /// <summary>Rescan request for a group that came from a workspace source.</summary>
     [Parameter] public EventCallback OnRescan { get; set; }
 
+    /// <summary>Arrange mode, from the toolbar. Only does anything to a scanned group.</summary>
+    [Parameter] public bool IsArranging { get; set; }
+
+    /// <summary>How many of this group's cards are hidden. Counted off the pristine scan.</summary>
+    [Parameter] public int HiddenCardCount { get; set; }
+
+    /// <summary>Raised after a card override changes, so the dashboard reapplies them.</summary>
+    [Parameter] public EventCallback OnCustomized { get; set; }
+
+    /// <summary>
+    /// Fold one scanned card into another: <c>(group, into, from)</c>. Handled above because it is
+    /// a write to dashboardLayout.yaml followed by a rebuild of every group.
+    /// </summary>
+    [Parameter] public EventCallback<(string, string, string)> OnMergeCards { get; set; }
+
+    /// <summary>
+    /// Rename a scanned group: <c>(oldName, newName)</c>. Rewrites the <c>group:</c> field of every
+    /// smart folder feeding it, which needs the source config — so it happens above.
+    /// </summary>
+    [Parameter] public EventCallback<(string, string)> OnRenameSourceGroup { get; set; }
+
     /// <summary>
     /// Open Smart Folders on this group's source. Carries the source name, so the dialog opens on
     /// the row the user was looking at rather than on whichever source happens to be first.
@@ -313,6 +381,14 @@
     private bool atCursor;
     private double cursorX;
     private double cursorY;
+
+    // Card drag state, held here rather than in the cards: a merge is a relationship between two
+    // of them and neither one can see the other. Both are the scanned name, which is what the
+    // override is keyed by.
+    private string? dragCard;
+    private string? dragOverCard;
+
+    private bool HasCardOverrides => Layout.HasCardOverrides(GroupViewModel.Name);
 
     private bool IsFromSource => GroupViewModel.Group.IsFromSource;
 
@@ -530,6 +606,85 @@
         await OnToggleHidden.InvokeAsync(GroupViewModel.Name);
     }
 
+    private async Task ResetCards()
+    {
+        Menu.Close();
+        await Layout.ResetCardsAsync(GroupViewModel.Name);
+        await OnCustomized.InvokeAsync();
+    }
+
+    // ---- merging cards by dragging one onto another ----------------------------------------
+
+    /// <summary>
+    /// Whether a drop on this card would fold the dragged one into it. Not the dragged card itself,
+    /// and only while something is actually being dragged.
+    /// </summary>
+    private bool IsMergeTargetFor(WorkspaceViewModel workspace)
+    {
+        var key = workspace.Workspace.OverrideKey;
+        return dragCard is not null && dragOverCard == key && dragCard != key;
+    }
+
+    /// <summary>
+    /// The other cards' displayed names, for the rename dialog's clash check. Excludes the card
+    /// doing the asking, or renaming a card to what it is already called would be rejected.
+    /// </summary>
+    private IReadOnlyList<string> SiblingNamesFor(WorkspaceViewModel workspace) =>
+        GroupViewModel.Workspaces
+            .Where(w => !ReferenceEquals(w, workspace))
+            .Select(w => w.Name)
+            .ToList();
+
+    private void HandleCardDragStart(string cardKey)
+    {
+        dragCard = cardKey;
+        dragOverCard = null;
+    }
+
+    private void HandleCardDragOver(string cardKey)
+    {
+        // dragover fires continuously while the pointer is over a card; only a change is worth a
+        // render.
+        if (dragCard is null || dragOverCard == cardKey)
+        {
+            return;
+        }
+
+        dragOverCard = cardKey;
+        StateHasChanged();
+    }
+
+    private async Task HandleCardDrop(string cardKey)
+    {
+        var moved = dragCard;
+        dragCard = null;
+        dragOverCard = null;
+
+        if (moved is null || moved == cardKey)
+        {
+            StateHasChanged();
+            return;
+        }
+
+        // The card dropped on is the one that survives, which is the way round the gesture reads:
+        // you pick up the stray and put it onto the card it belongs to.
+        await OnMergeCards.InvokeAsync((GroupViewModel.Name, cardKey, moved));
+    }
+
+    private void HandleCardDragEnd()
+    {
+        // Fires on a cancelled drag too — Escape, or a drop outside any card — so the highlight
+        // cannot be left behind.
+        if (dragCard is null && dragOverCard is null)
+        {
+            return;
+        }
+
+        dragCard = null;
+        dragOverCard = null;
+        StateHasChanged();
+    }
+
     private async Task Rescan()
     {
         Menu.Close();
@@ -617,11 +772,42 @@
         await OnAddWorkspace.InvokeAsync();
     }
 
-    private async Task HandleRenameCompleted()
+    private async Task HandleRenameCompleted(string newName)
     {
+        var oldName = GroupViewModel.Group.Name;
+
         IsRenameModalVisible = false;
         NewGroupName = string.Empty;
         renameGroupDialog?.ResetForm();
+
+        if (oldName.Equals(newName, StringComparison.Ordinal))
+        {
+            StateHasChanged();
+            return;
+        }
+
+        if (IsFromSource)
+        {
+            // A scanned group's name is the `group:` field of the rules that feed it, so the
+            // rename happens up in the page where the source config lives, and a rescan brings it
+            // back under the new name.
+            await OnRenameSourceGroup.InvokeAsync((oldName, newName));
+            return;
+        }
+
+        // Everything in dashboardLayout.yaml is keyed by group name — the order position, the pins,
+        // the aliases, the hidden flag, the card edits. This used to be missing, so renaming a group
+        // silently threw its whole arrangement away.
+        await Layout.RenameGroupAsync(oldName, newName);
+        await IconService.RenameOverrideAsync(IconScope.Group, oldName, newName);
+
+        foreach (var workspace in GroupViewModel.Group.Workspaces)
+        {
+            workspace.GroupName = newName;
+        }
+
+        GroupViewModel.Group.Name = newName;
+
         await OnAddWorkspace.InvokeAsync();
         StateHasChanged();
     }

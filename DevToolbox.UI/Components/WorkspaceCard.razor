@@ -82,14 +82,63 @@
    the icon, the name and the count, leaving most of the card dead to the click that is the obvious
    thing to do to it. The regions that must not collapse the card stop the click themselves:
    the pin, the actions menu, the quick-open row, and the locations list. *@
-<div class="workspace-card ws-card cursor-pointer @(WorkspaceViewModel.IsExpanded ? "is-expanded" : "") @(IsPinned ? "is-pinned" : "")"
-     @onclick="ToggleExpand">
+@* In arrange mode the card is also a drop target, and the only thing a drop does is merge — so
+   there is no ambiguity to resolve about where in the card you let go. dragover has to
+   preventDefault or the browser refuses the drop outright. *@
+<div class="workspace-card ws-card cursor-pointer @CardStateClass"
+     data-drag-card
+     @onclick="ToggleExpand"
+     @ondragover:preventDefault="IsArranging"
+     @ondragenter:preventDefault="IsArranging"
+     @ondragover="() => OnDragEntered.InvokeAsync(OverrideKey)"
+     @ondrop:preventDefault="IsArranging"
+     @ondrop="() => OnDropped.InvokeAsync(OverrideKey)">
     <!-- Workspace Header -->
     <div class="ws-card-header">
         <div class="ws-card-title">
+            @* draggable on the grip rather than the card, for the same reason the group cards do
+               it: a draggable card turns every click meant to expand it into a half-started drag. *@
+            @if (IsArranging)
+            {
+                <span class="ws-grip is-on"
+                      draggable="true"
+                      data-drag-handle="@OverrideKey"
+                      title="Drag onto another card to merge them"
+                      @onclick:stopPropagation="true"
+                      @ondragstart="() => OnDragStarted.InvokeAsync(OverrideKey)"
+                      @ondragend="() => OnDragEnded.InvokeAsync()">
+                    <i class="bi bi-grip-vertical"></i>
+                </span>
+            }
+
             <i class="bi @icon.Icon ws-icon" style="color: @icon.Color"></i>
             <h4 class="ws-card-name" title="@TitleTooltip">@WorkspaceViewModel.Name</h4>
             <span class="ws-group-meta">@WorkspaceViewModel.Locations.Count</span>
+
+            @* The customization layer, said out loud. A renamed or merged card that looked exactly
+               like a scanned one would be indistinguishable from a scan doing something
+               inexplicable, which is the failure mode of every "it just remembers" feature. *@
+            @if (Override is not null && !IsHiddenCard)
+            {
+                <span class="ws-badge is-custom" title="@OverrideTooltip">
+                    <i class="bi bi-pencil-fill"></i>
+                    @if (Override.Absorb.Count > 0)
+                    {
+                        <text>merged</text>
+                    }
+                    else
+                    {
+                        <text>edited</text>
+                    }
+                </span>
+            }
+
+            @if (IsHiddenCard)
+            {
+                <span class="ws-badge is-hidden-badge" title="Hidden from this group">
+                    <i class="bi bi-eye-slash"></i> hidden
+                </span>
+            }
         </div>
 
         <!-- Actions Menu -->
@@ -123,6 +172,31 @@
                             <i class="bi bi-tags"></i>
                             <span>Search Aliases@(aliases.Count > 0 ? $" ({aliases.Count})" : "")</span>
                         </button>
+
+                        @* A scanned card cannot be edited — it is rebuilt from disk — so these
+                           write a patch that is reapplied after each rescan instead. Same three
+                           verbs the hand-made cards get below, doing the same thing by a different
+                           route. *@
+                        @if (IsReadOnly)
+                        {
+                            <div class="ws-menu-sep"></div>
+                            <button class="dropdown-item" @onclick="ShowOverrideModal">
+                                <i class="bi bi-pencil"></i>
+                                <span>Rename / Labels…</span>
+                            </button>
+                            <button class="dropdown-item" @onclick="ToggleCardHidden">
+                                <i class="bi @(IsHiddenCard ? "bi-eye" : "bi-eye-slash")"></i>
+                                <span>@(IsHiddenCard ? "Show in Group" : "Hide Card")</span>
+                            </button>
+                            @if (Override?.Absorb.Count > 0)
+                            {
+                                <button class="dropdown-item" @onclick="Unmerge">
+                                    <i class="bi bi-arrows-expand"></i>
+                                    <span>Unmerge @Override.Absorb.Count</span>
+                                </button>
+                            }
+                        }
+
                         @if (!IsReadOnly)
                         {
                             <div class="ws-menu-sep"></div>
@@ -271,6 +345,14 @@
         OnRenameCompleted="HandleRenameCompleted" />
 </Modal>
 
+<Modal @bind-IsVisible="IsOverrideModalVisible" Title="@OverrideModalTitle">
+    <CardOverrideDialog
+        GroupName="@GroupName"
+        Card="WorkspaceViewModel.Workspace"
+        SiblingNames="SiblingNames"
+        OnSaved="HandleOverrideSaved" />
+</Modal>
+
 <Modal @bind-IsVisible="IsIconModalVisible" Title="@IconModalTitle">
     <IconPickerDialog @ref="iconPicker"
         Scope="IconScope.Workspace"
@@ -297,6 +379,35 @@
 
     /// <summary>Whether this card is pinned to the front of its group.</summary>
     [Parameter] public bool IsPinned { get; set; }
+
+    /// <summary>
+    /// The group this card is in. Needed because every card override is keyed by group plus card
+    /// name — two groups can hold a <c>Products</c> and they are not the same project.
+    /// </summary>
+    [Parameter] public string GroupName { get; set; } = string.Empty;
+
+    /// <summary>Arrange mode: the card gets a grip and becomes a drop target for a merge.</summary>
+    [Parameter] public bool IsArranging { get; set; }
+
+    /// <summary>Hidden from its group, and only on screen because arrange mode is revealing it.</summary>
+    [Parameter] public bool IsHiddenCard { get; set; }
+
+    /// <summary>True while this card is the one being dragged.</summary>
+    [Parameter] public bool IsDragging { get; set; }
+
+    /// <summary>True while a drop here would fold the dragged card into this one.</summary>
+    [Parameter] public bool IsMergeTarget { get; set; }
+
+    /// <summary>The other card names in this group, for the rename dialog's clash check.</summary>
+    [Parameter] public IReadOnlyList<string> SiblingNames { get; set; } = Array.Empty<string>();
+
+    /// <summary>Raised after any card override changes, so the dashboard reapplies them.</summary>
+    [Parameter] public EventCallback OnCustomized { get; set; }
+
+    [Parameter] public EventCallback<string> OnDragStarted { get; set; }
+    [Parameter] public EventCallback<string> OnDragEntered { get; set; }
+    [Parameter] public EventCallback<string> OnDropped { get; set; }
+    [Parameter] public EventCallback OnDragEnded { get; set; }
 
     /// <summary>
     /// How many locations get a one-click Open button while the card is shut. 0 turns the row off.
@@ -338,6 +449,7 @@
     private string RenameModalKey => ModalStateService.GetModalKey("rename", WorkspaceViewModel.StateKey);
     private string IconModalKey => ModalStateService.GetModalKey("icon", WorkspaceViewModel.StateKey);
     private string AliasModalKey => ModalStateService.GetModalKey("alias", WorkspaceViewModel.StateKey);
+    private string OverrideModalKey => ModalStateService.GetModalKey("cardOverride", WorkspaceViewModel.StateKey);
 
     // Create a helper method to get/set modal visibility to reduce duplication
     private bool GetModalVisibility(string modalKey) => ModalStateService.IsModalVisible(modalKey);
@@ -378,6 +490,14 @@
         set => SetModalVisibility(AliasModalKey, value);
     }
 
+    private bool IsOverrideModalVisible
+    {
+        get => GetModalVisibility(OverrideModalKey);
+        set => SetModalVisibility(OverrideModalKey, value);
+    }
+
+    private string OverrideModalTitle => $"Customize {WorkspaceViewModel.Name}";
+
     private string? GetModalError(string modalKey) => ModalStateService.GetError(modalKey);
 
     // Menu identity, not menu state: which menu is open is owned by MenuStateService, so that
@@ -386,6 +506,51 @@
     private string WorkspaceMenuId => $"workspace:{WorkspaceViewModel.StateKey}";
     private string LocationMenuId(WorkspaceLocation location) =>
         $"location:{WorkspaceViewModel.StateKey}:{location.Path}";
+
+    /// <summary>
+    /// The name this card's override is keyed by: what the scan called it, not what it is being
+    /// shown as. Renaming a card once must not make it impossible to rename again.
+    /// </summary>
+    private string OverrideKey => WorkspaceViewModel.Workspace.OverrideKey;
+
+    private CardOverride? Override => IsReadOnly ? Layout.CardOverrideFor(GroupName, OverrideKey) : null;
+
+    private string OverrideTooltip
+    {
+        get
+        {
+            var patch = Override;
+            if (patch is null)
+            {
+                return WorkspaceViewModel.Name;
+            }
+
+            var parts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(patch.Name)) parts.Add($"renamed from {OverrideKey}");
+            if (patch.Absorb.Count > 0) parts.Add($"merged with {string.Join(", ", patch.Absorb)}");
+            if (patch.Locations.Count > 0) parts.Add($"{patch.Locations.Count} location label(s) set");
+            if (patch.Hidden) parts.Add("hidden");
+
+            return parts.Count == 0 ? WorkspaceViewModel.Name : "Edited by hand: " + string.Join("; ", parts);
+        }
+    }
+
+    private string CardStateClass
+    {
+        get
+        {
+            var classes = new List<string>();
+
+            if (WorkspaceViewModel.IsExpanded) classes.Add("is-expanded");
+            if (IsPinned) classes.Add("is-pinned");
+            if (IsArranging) classes.Add("is-arranging");
+            if (IsDragging) classes.Add("is-dragging");
+            if (IsMergeTarget) classes.Add("is-merge-target");
+            if (IsHiddenCard) classes.Add("is-hidden-card");
+
+            return string.Join(' ', classes);
+        }
+    }
 
     private string AddLocationModalTitle => $"Add Location to {WorkspaceViewModel.Name}";
     private string MoveToGroupModalTitle => $"Move {WorkspaceViewModel.Name} to Group";
@@ -505,6 +670,34 @@
         iconPicker?.ResetForm();
         IsIconModalVisible = true;
         Menu.Close();
+    }
+
+    // ---- the card override -----------------------------------------------------------------
+
+    private void ShowOverrideModal()
+    {
+        IsOverrideModalVisible = true;
+        Menu.Close();
+    }
+
+    private async Task HandleOverrideSaved()
+    {
+        IsOverrideModalVisible = false;
+        await OnCustomized.InvokeAsync();
+    }
+
+    private async Task ToggleCardHidden()
+    {
+        Menu.Close();
+        await Layout.SetCardHiddenAsync(GroupName, OverrideKey, !IsHiddenCard);
+        await OnCustomized.InvokeAsync();
+    }
+
+    private async Task Unmerge()
+    {
+        Menu.Close();
+        await Layout.UnmergeCardAsync(GroupName, OverrideKey);
+        await OnCustomized.InvokeAsync();
     }
 
     private void ShowAliasModal()
