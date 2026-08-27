@@ -142,6 +142,32 @@ select:not([multiple]) {
     flex: 0 0 auto;
 }
 
+/* The scan runs after the saved groups are already on screen, so this is what says the count
+   beside it is still going up. */
+.ws-scanning {
+    margin-left: 0.5rem;
+    color: rgb(var(--c-accent-blue));
+}
+
+.ws-scanning > i,
+.ws-spin {
+    display: inline-block;
+    animation: ws-spin 1.1s linear infinite;
+}
+
+/* Honours the OS setting, the way themeEffects.css does for the seasonal animations: the
+   icon still says "scanning", it just stops turning. */
+@media (prefers-reduced-motion: reduce) {
+    .ws-scanning > i,
+    .ws-spin {
+        animation: none;
+    }
+}
+
+@keyframes ws-spin {
+    to { transform: rotate(360deg); }
+}
+
 /* ── Group card ──────────────────────────────────────────────────────────── */
 
 /* Stacked with a gap rather than space-y-6: 1.5rem between full-width cards is a

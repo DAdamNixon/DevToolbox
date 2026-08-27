@@ -33,7 +33,15 @@
    it is at least a fact about this screen. *@
 <div class="ws-page-head">
     <h1 class="ws-page-title text-gradient">Projects</h1>
-    <span class="ws-page-meta">@GroupViewModels.Count groups · @TotalWorkspaces workspaces</span>
+    <span class="ws-page-meta">
+        @GroupViewModels.Count groups · @TotalWorkspaces workspaces
+        @* Said out loud, because the scanned groups arrive after the saved ones and cards
+           appearing a second later otherwise reads as a glitch rather than as loading. *@
+        @if (isScanning)
+        {
+            <span class="ws-scanning"><i class="bi bi-arrow-repeat"></i> scanning folders…</span>
+        }
+    </span>
 
     <div class="ws-toolbar">
         <div class="ws-search">
@@ -140,7 +148,14 @@
     @if (!FilteredGroupViewModels.Any())
     {
         <div class="ws-empty">
-            @if (string.IsNullOrWhiteSpace(searchText))
+            @if (isScanning)
+            {
+                @* "No groups yet" is what this said for the whole of a 4.5-second scan on a
+                   machine with eight sources — an empty dashboard, telling you to go and make
+                   one, while the groups were on their way. *@
+                <span><i class="bi bi-arrow-repeat ws-spin"></i> Scanning folders for projects…</span>
+            }
+            else if (string.IsNullOrWhiteSpace(searchText))
             {
                 <span>No groups yet. <strong>New Group</strong> adds one by hand, <strong>Scan Folders</strong> finds them on disk.</span>
             }
@@ -173,6 +188,16 @@
     private List<ScriptInfo> AvailableScripts { get; set; } = new();
     private List<Workspace> AllWorkspaces { get; set; } = new();
     private List<WorkspaceGroupViewModel> GroupViewModels { get; set; } = new();
+
+    // The two halves, held separately so either can be refreshed without the other. Saved groups
+    // come from a file and change when the user edits one; scanned groups come from disk and
+    // change only on a rescan — and a rescan is slow enough that it must not be on the path of
+    // anything else.
+    private List<WorkspaceGroup> savedGroups = new();
+    private List<WorkspaceGroup> scannedGroups = new();
+
+    /// <summary>Set in <see cref="Dispose"/>, so a scan landing afterwards does not touch the renderer.</summary>
+    private bool disposed;
     private ElementReference searchInput;
     private string searchText = "";
     private string NewGroupName = string.Empty;
@@ -294,7 +319,13 @@
 
         quickOpenCount = (await UiSettings.GetAsync()).QuickOpenButtonCount;
 
-        await LoadWorkspacesAsync();
+        // The saved groups are one 189 KB YAML file — 64ms — so they are awaited and painted.
+        // The scan is not: it is one directory stat per folder under every source, which over
+        // eight working copies measured 4.5 seconds on this machine. Awaiting it here left the
+        // tab showing its "No groups yet" empty state for the whole of that, which reads as an
+        // empty dashboard rather than a loading one.
+        await LoadSavedGroupsAsync();
+        StartScan();
     }
 
     private void LoadScripts()
@@ -302,24 +333,72 @@
         AvailableScripts = PowerShellService.GetAvailableScripts().ToList();
     }
 
-    private async Task LoadWorkspacesAsync(bool forceRescan = false)
+    /// <summary>
+    /// The hand-managed half, from workspaceGroups.yaml. Fast, and the half that has to be on
+    /// screen before anything else happens.
+    /// </summary>
+    private async Task LoadSavedGroupsAsync()
     {
-        var groups = await WorkspaceService.GetWorkspaceGroupsAsync();
-        AllWorkspaces = groups.SelectMany(g => g.Workspaces).ToList();
+        savedGroups = await WorkspaceService.GetWorkspaceGroupsAsync();
+        AllWorkspaces = savedGroups.SelectMany(g => g.Workspaces).ToList();
+        RebuildViewModels();
+        StateHasChanged();
+    }
 
-        // Scanned groups are virtual: they sit alongside the saved ones on screen but are
-        // never part of what SaveWorkspaces writes back to workspaceGroups.yaml.
-        var scanned = await WorkspaceSourceService.GetGroupsAsync(forceRescan);
-        CollectScanProblems();
-
-        // Both halves go through the same ordering and the same pin lookup, which is the point
-        // of keying dashboardLayout.yaml on names: a scanned group can be dragged above a saved
-        // one, and a scanned card can be pinned, without either being persisted as a workspace.
-        GroupViewModels = Layout.OrderGroups(groups.Concat(scanned))
+    /// <summary>
+    /// Folds the two halves into the view models the cards render.
+    /// <para>
+    /// Both go through the same ordering and the same pin lookup, which is the point of keying
+    /// dashboardLayout.yaml on names: a scanned group can be dragged above a saved one, and a
+    /// scanned card can be pinned, without either being persisted as a workspace. Called again
+    /// when the scan lands, so a group that was dragged or a card that was pinned while the scan
+    /// was still running keeps its place.
+    /// </para>
+    /// </summary>
+    private void RebuildViewModels()
+    {
+        GroupViewModels = Layout.OrderGroups(savedGroups.Concat(scannedGroups))
             .Select(g => ViewModelFactory.CreateWorkspaceGroupViewModel(g, Layout.OrderWorkspaces(g.Name, g.Workspaces)))
             .ToList();
+    }
 
-        StateHasChanged();
+    /// <summary>
+    /// Starts a scan without waiting for it. Deliberately not awaited by the caller — the point
+    /// is that the rest of the tab is usable while it runs — so the task is given somewhere to
+    /// put an exception rather than becoming an unobserved one.
+    /// </summary>
+    private void StartScan(bool forceRescan = false)
+    {
+        isScanning = true;
+        _ = ScanAsync(forceRescan);
+    }
+
+    private async Task ScanAsync(bool forceRescan)
+    {
+        try
+        {
+            // WorkspaceSourceService runs the scan itself on a thread pool thread, and serialises
+            // concurrent callers on its own gate — so a Rescan pressed while this one is still
+            // going queues rather than racing it.
+            scannedGroups = await WorkspaceSourceService.GetGroupsAsync(forceRescan);
+            CollectScanProblems();
+        }
+        catch (Exception ex)
+        {
+            // A scan that throws must not take the saved groups off the screen with it.
+            scanProblems = new List<string> { $"Scan failed: {ex.Message}" };
+        }
+        finally
+        {
+            isScanning = false;
+
+            // Disposed means the user navigated away mid-scan; touching the renderer then throws.
+            if (!disposed)
+            {
+                RebuildViewModels();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
     }
 
     private void CollectScanProblems()
@@ -332,20 +411,14 @@
             .ToList();
     }
 
-    private async Task RescanSources()
+    /// <summary>
+    /// Rescans in the background, the way the first load does. Not awaited: the cards already on
+    /// screen stay usable while it runs, and the button shows its hourglass until it lands.
+    /// </summary>
+    private void RescanSources()
     {
-        isScanning = true;
+        StartScan(forceRescan: true);
         StateHasChanged();
-
-        try
-        {
-            await LoadWorkspacesAsync(forceRescan: true);
-        }
-        finally
-        {
-            isScanning = false;
-            StateHasChanged();
-        }
     }
 
     private void ShowSourcesModal()
@@ -353,10 +426,10 @@
         IsSourcesModalVisible = true;
     }
 
-    private async Task HandleSourcesSaved()
+    private void HandleSourcesSaved()
     {
         IsSourcesModalVisible = false;
-        await RescanSources();
+        RescanSources();
     }
 
     private void ShowAddGroupModal()
@@ -388,7 +461,10 @@
     private async Task SaveWorkspaces()
     {
         await WorkspaceService.SaveWorkspaceGroupsAsync(WorkspaceService.WorkspaceGroups);
-        await LoadWorkspacesAsync();
+
+        // Only the saved half changed. Reloading the scan as well would cost seconds for
+        // something that cannot have altered what is on disk under a source.
+        await LoadSavedGroupsAsync();
         StateHasChanged();
     }
 
@@ -421,8 +497,10 @@
         await Layout.TogglePinAsync(args.groupName, args.workspaceName);
 
         // Rebuilt rather than nudged: the pinned card has to move to the front of its group,
-        // and that order is decided where the view models are made.
-        await LoadWorkspacesAsync();
+        // and that order is decided where the view models are made. Nothing is re-read from
+        // disk — a pin changes the order of what is already in memory and nothing else.
+        RebuildViewModels();
+        StateHasChanged();
     }
 
     private void HandleAliasesChanged() => StateHasChanged();
@@ -463,7 +541,10 @@
         // The order on screen is passed along so a first-ever drag writes a complete list
         // rather than a two-name one that leaves every other group floating at the end.
         await Layout.MoveGroupAsync(moved, groupName, GroupViewModels.Select(g => g.Group.Name));
-        await LoadWorkspacesAsync();
+
+        // Reordering is a re-sort of what is in memory, so no disk read either.
+        RebuildViewModels();
+        StateHasChanged();
     }
 
     private void HandleGroupDragEnd()
@@ -525,7 +606,7 @@
     private async Task HandleMoveToGroup((Workspace workspace, string groupName) args)
     {
         await WorkspaceService.SaveWorkspaceGroupsAsync(WorkspaceService.WorkspaceGroups);
-        await LoadWorkspacesAsync();
+        await LoadSavedGroupsAsync();
         StateHasChanged();
     }
 
@@ -572,6 +653,10 @@
 
     public void Dispose()
     {
+        // Checked by ScanAsync: a scan started here can outlive the page, and the renderer of a
+        // disposed component throws rather than ignoring the call.
+        disposed = true;
+
         CardStateService.OnStateChanged -= OnCardStateChanged;
         objRef?.Dispose();
     }
