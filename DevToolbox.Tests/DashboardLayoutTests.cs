@@ -394,6 +394,44 @@ public class DashboardLayoutTests
     }
 
     [Fact]
+    public async Task A_rescan_does_not_bring_a_renamed_card_back_alongside_its_new_name()
+    {
+        var (service, _) = await LoadedAsync();
+
+        await service.RenameCardAsync("eesnet.com", "PM.UI", "Personnel Manager");
+        await service.MergeCardsAsync("eesnet.com", "PM.UI", "PM.UI.Development");
+
+        // A rescan hands back a brand new group of brand new Workspace objects, still using the
+        // names the scan produces — the file on disk has not changed, so it is still called PM.UI.
+        // The override is keyed by exactly that, so it matches and relabels the one card. Keying it
+        // by the *new* name is what would produce two: nothing would match PM.UI, so it would come
+        // back as itself next to a Personnel Manager that no longer had anything to rename.
+        for (var rescan = 0; rescan < 3; rescan++)
+        {
+            var group = service.Customize(Scanned("eesnet.com", "PM.UI", "PM.UI.Development", "Checkout"));
+
+            Assert.Equal(new[] { "Checkout", "Personnel Manager" }, group.Workspaces.Select(w => w.Name));
+            Assert.Equal(2, group.Workspaces.Single(w => w.Name == "Personnel Manager").Locations.Count);
+        }
+    }
+
+    [Fact]
+    public async Task A_card_renamed_on_disk_appears_under_its_new_scanned_name_and_not_twice()
+    {
+        var (service, _) = await LoadedAsync();
+
+        await service.RenameCardAsync("eesnet.com", "PM.UI", "Personnel Manager");
+
+        // The other direction: the file itself was renamed, so the scan no longer produces PM.UI at
+        // all. The override stops matching and the card shows up as what it now is — once. This is
+        // the honest cost of keying on names, and the failure is "my rename stopped applying"
+        // rather than "there are two of these now".
+        var group = service.Customize(Scanned("eesnet.com", "PersonnelMgmt.UI", "Checkout"));
+
+        Assert.Equal(new[] { "Checkout", "PersonnelMgmt.UI" }, group.Workspaces.Select(w => w.Name));
+    }
+
+    [Fact]
     public async Task Renaming_a_card_back_to_its_scanned_name_drops_the_override()
     {
         var (service, _) = await LoadedAsync();

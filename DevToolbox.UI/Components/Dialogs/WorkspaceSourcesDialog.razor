@@ -3,6 +3,7 @@
 @using System.IO
 @inject IWorkspaceSourceService SourceService
 @inject IUiSettingsService UiSettings
+@inject IIconService IconService
 @implements IDisposable
 
 @* An (i) beside a field label, toggling the example underneath it. Declared here because a Razor
@@ -348,17 +349,67 @@ else
                 <section class="ws-section">
                     <h4 class="ws-section-title">Card appearance</h4>
                     <div class="ws-source-grid">
+                        @* The button on the end of each field is the picker and the preview at the
+                           same time. Typing "bi-window-stack" into a box told you nothing about
+                           what you were going to get until you saved and rescanned — and there are
+                           two thousand Bootstrap icon names to guess between. The text box stays,
+                           because any of those names is valid and only a few dozen are in the
+                           catalogue. *@
                         <div class="ws-field">
                             <label class="ws-label">Group icon</label>
-                            <input type="text" class="ws-input" @bind="selected.Icon" @bind:event="oninput"
-                                   placeholder="bi-window-stack" />
+                            <div class="ws-input-row">
+                                <input type="text" class="ws-input" @bind="selected.Icon" @bind:event="oninput"
+                                       placeholder="bi-window-stack" />
+                                <button type="button" class="ws-swatch @(picker == IconPicker ? "is-on" : "")"
+                                        title="Pick an icon" @onclick="() => TogglePicker(IconPicker)">
+                                    <i class="bi @PreviewIcon" style="color: @PreviewColor"></i>
+                                </button>
+                            </div>
                             <span class="ws-hint">The card's own picker overrides it.</span>
+
+                            @if (picker == IconPicker)
+                            {
+                                <div class="icon-grid">
+                                    @foreach (var icon in IconService.Catalog)
+                                    {
+                                        <button type="button" title="@icon"
+                                                class="icon-choice @(icon == selected.Icon ? "is-selected" : "")"
+                                                @onclick="() => selected.Icon = icon">
+                                            <i class="bi @icon"></i>
+                                        </button>
+                                    }
+                                </div>
+                            }
                         </div>
 
                         <div class="ws-field">
                             <label class="ws-label">Group colour</label>
-                            <input type="text" class="ws-input" @bind="selected.Color" @bind:event="oninput"
-                                   placeholder="#06b6d4" />
+                            <div class="ws-input-row">
+                                <input type="text" class="ws-input" @bind="selected.Color" @bind:event="oninput"
+                                       placeholder="#06b6d4" />
+                                <button type="button" class="ws-swatch is-fill @(picker == ColorPicker ? "is-on" : "")"
+                                        style="background-color: @PreviewColor"
+                                        title="Pick a colour" @onclick="() => TogglePicker(ColorPicker)"></button>
+                            </div>
+
+                            @if (picker == ColorPicker)
+                            {
+                                <div class="color-row">
+                                    @foreach (var color in IconService.Palette)
+                                    {
+                                        <button type="button" title="@color"
+                                                class="color-choice @(string.Equals(color, selected.Color, StringComparison.OrdinalIgnoreCase) ? "is-selected" : "")"
+                                                style="background-color: @color"
+                                                @onclick="() => selected.Color = color"></button>
+                                    }
+
+                                    @* For the one that is not in the palette. Its value has to be a
+                                       six-digit hex or the control silently shows black, so a blank
+                                       or named colour falls back to the palette's first entry. *@
+                                    <input type="color" class="ws-color-native" title="Any colour"
+                                           value="@HexColor" @onchange="SetColorFromWheel" />
+                                </div>
+                            }
                         </div>
 
                         <div class="ws-field ws-span">
@@ -573,6 +624,52 @@ else
 
     private void ToggleInfo(string key) => info = info == key ? null : key;
 
+    /// <summary>Which of the two appearance pickers is open, or null. One at a time.</summary>
+    private string? picker;
+
+    // Named rather than written inline, because Razor cannot parse a double-quoted string literal
+    // inside a double-quoted attribute value: @onclick="() => TogglePicker("icon")" ends the
+    // attribute at the second quote and hands TogglePicker no arguments at all.
+    private const string IconPicker = "icon";
+    private const string ColorPicker = "color";
+
+    private void TogglePicker(string key) => picker = picker == key ? null : key;
+
+    /// <summary>
+    /// What the swatch shows. The group default rather than nothing when the field is blank, since
+    /// blank is not "no icon" — it is "whatever the dashboard would pick".
+    /// </summary>
+    private string PreviewIcon =>
+        string.IsNullOrWhiteSpace(selected?.Icon) ? "bi-folder2" : selected!.Icon!;
+
+    private string PreviewColor =>
+        string.IsNullOrWhiteSpace(selected?.Color) ? "rgb(var(--c-text-muted))" : selected!.Color!;
+
+    /// <summary>
+    /// The colour field as a six-digit hex, which is the only thing <c>input type=color</c>
+    /// accepts — anything else and it silently shows black, which reads as "the colour is black".
+    /// </summary>
+    private string HexColor
+    {
+        get
+        {
+            var value = selected?.Color?.Trim();
+
+            return value is not null
+                   && System.Text.RegularExpressions.Regex.IsMatch(value, "^#[0-9a-fA-F]{6}$")
+                ? value
+                : IconService.Palette.FirstOrDefault() ?? "#3b82f6";
+        }
+    }
+
+    private void SetColorFromWheel(ChangeEventArgs e)
+    {
+        if (selected is not null)
+        {
+            selected.Color = e.Value?.ToString();
+        }
+    }
+
     /// <summary>
     /// A starting pattern, and what to run it against. Most people never write one of these from
     /// scratch — they start from the one that is nearly right and adjust it, which is what these
@@ -665,6 +762,7 @@ else
         onlyUnmatched = false;
         presetKey = string.Empty;
         info = null;
+        picker = null;
 
         SchedulePreview();
     }

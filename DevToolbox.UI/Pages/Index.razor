@@ -195,6 +195,25 @@
             OnDragEnded="HandleGroupDragEnd" />
     }
 
+    @* The one position a drag could not reach. Dropping on a card means "take this card's place",
+       which is the right rule everywhere except the end of the list: the last card's place is
+       second-to-last once you are standing in it. MoveGroupAsync has always appended when it does
+       not recognise the target — there was simply nothing below the last card to drop on.
+
+       Only while a group is in flight, so it costs no space the rest of the time. *@
+    @if (dragGroup is not null)
+    {
+        <div class="ws-drop-end @(dragOverGroup == string.Empty ? "is-over" : "")"
+             @ondragover:preventDefault="true"
+             @ondragenter:preventDefault="true"
+             @ondragover="() => HandleGroupDragOver(string.Empty)"
+             @ondrop:preventDefault="true"
+             @ondrop="() => HandleGroupDrop(string.Empty)">
+            <i class="bi bi-box-arrow-in-down"></i>
+            <span>Drop here to make <strong>@dragGroup</strong> last</span>
+        </div>
+    }
+
     @if (!FilteredGroupViewModels.Any())
     {
         <div class="ws-empty">
