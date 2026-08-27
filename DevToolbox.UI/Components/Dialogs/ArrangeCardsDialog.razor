@@ -1,0 +1,395 @@
+@using DevToolbox.Services.Interfaces
+@using DevToolbox.Services.Models
+@using DevToolbox.UI.Services
+@inject IDashboardLayoutService Layout
+@inject IIconService IconService
+
+@* Arranging one group, with room to do it in.
+
+   This replaced a mode: a toolbar toggle that put a grip on all 591 cards at once and left you to
+   work out what the mode was for. A mode with no object is a mode nobody can read. Here the object
+   is one group, named in the title, and the two things you can do to it are the two gestures the
+   list affords — drag a row to move it, drop a row on another row's merge target to fold them
+   together.
+
+   A flat list rather than the dashboard's grid, because both gestures are one-dimensional: "third
+   instead of eighth" and "this one belongs to that one" are both answered by a column. *@
+
+<div class="ws-arrange">
+    <div class="ws-arrange-head">
+        <div class="ws-arrange-sort">
+            <label class="ws-label">Order</label>
+            <select class="ws-input ws-input-fit" value="@sort" @onchange="SetSort">
+                @foreach (var option in SortOptions)
+                {
+                    <option value="@option.Value">@option.Label</option>
+                }
+            </select>
+        </div>
+
+        <span class="ws-hint ws-arrange-hint">
+            @if (sort == CardSort.Custom)
+            {
+                <text>Drag a row by its grip to move it. Dragging always sets this to Custom.</text>
+            }
+            else
+            {
+                <text>
+                    Drag a row to move it — that switches the order to <strong>Custom</strong> and
+                    remembers it.
+                </text>
+            }
+        </span>
+
+        @if (sort != CardSort.Default || Layout.CardOrderFor(GroupName).Count > 0)
+        {
+            <button type="button" class="btn-ghost btn-sm" title="Back to the order the scan gives"
+                    @onclick="ResetOrder">
+                <i class="bi bi-arrow-counterclockwise"></i> Reset order
+            </button>
+        }
+    </div>
+
+    @if (rows.Count == 0)
+    {
+        <div class="ws-empty">This group has no cards.</div>
+    }
+    else
+    {
+        <div class="ws-arrange-list">
+            @foreach (var row in rows)
+            {
+                var key = row.Workspace.OverrideKey;
+                var patch = Layout.CardOverrideFor(GroupName, key);
+                var hidden = patch?.Hidden == true;
+
+                <div class="ws-arrange-row @RowClass(key, hidden)"
+                     data-drag-card
+                     @ondragover:preventDefault="true"
+                     @ondragenter:preventDefault="true"
+                     @ondragover="() => DragOver(key, merge: false)"
+                     @ondrop:preventDefault="true"
+                     @ondrop="() => Drop(key, merge: false)">
+
+                    <span class="ws-grip is-on"
+                          draggable="true"
+                          data-drag-handle="@key"
+                          title="Drag to move"
+                          @ondragstart="() => DragStart(key)"
+                          @ondragend="DragEnd">
+                        <i class="bi bi-grip-vertical"></i>
+                    </span>
+
+                    <i class="bi @IconFor(row.Workspace) ws-icon"></i>
+
+                    <div class="ws-arrange-body">
+                        <span class="ws-arrange-name">@row.Workspace.Name</span>
+                        <span class="ws-arrange-locs">
+                            @foreach (var location in row.Workspace.Locations)
+                            {
+                                <span class="ws-chip">@location.Name</span>
+                            }
+                        </span>
+                    </div>
+
+                    @if (patch is not null)
+                    {
+                        <span class="ws-badge is-custom" title="@Describe(patch, key)">
+                            <i class="bi bi-pencil-fill"></i>
+                            @(patch.Absorb.Count > 0 ? "merged" : "edited")
+                        </span>
+                    }
+
+                    @if (hidden)
+                    {
+                        <span class="ws-badge is-hidden-badge"><i class="bi bi-eye-slash"></i> hidden</span>
+                    }
+
+                    @* The merge target, and only while something is in flight. A row is two drop
+                       zones — move-before on the body, fold-into here — and an unlabelled second
+                       zone that only exists during a drag is worse than no second zone. *@
+                    @if (dragCard is not null && dragCard != key)
+                    {
+                        <span class="ws-arrange-merge @(dragOverCard == key && dragOverMerge ? "is-over" : "")"
+                              @ondragover:preventDefault="true"
+                              @ondragenter:preventDefault="true"
+                              @ondragover:stopPropagation="true"
+                              @ondragover="() => DragOver(key, merge: true)"
+                              @ondrop:preventDefault="true"
+                              @ondrop:stopPropagation="true"
+                              @ondrop="() => Drop(key, merge: true)">
+                            <i class="bi bi-box-arrow-in-down-right"></i> merge into
+                        </span>
+                    }
+
+                    <div class="ws-arrange-actions">
+                        <button type="button" class="btn-ghost btn-sm" title="Rename it, and its locations"
+                                @onclick="() => Customize(row.Workspace)">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button type="button" class="btn-ghost btn-sm"
+                                title="@(hidden ? "Show in the group" : "Hide from the group")"
+                                @onclick="() => ToggleHidden(key, hidden)">
+                            <i class="bi @(hidden ? "bi-eye" : "bi-eye-slash")"></i>
+                        </button>
+                        @if (patch?.Absorb.Count > 0)
+                        {
+                            <button type="button" class="btn-ghost btn-sm"
+                                    title="Give the @patch.Absorb.Count merged card(s) their own back"
+                                    @onclick="() => Unmerge(key)">
+                                <i class="bi bi-arrows-expand"></i>
+                            </button>
+                        }
+                    </div>
+                </div>
+            }
+
+            @* Last is a position a drop-before rule cannot express, so it needs its own target —
+               the same gap the group list had. *@
+            @if (dragCard is not null)
+            {
+                <div class="ws-drop-end @(dragOverCard == string.Empty ? "is-over" : "")"
+                     @ondragover:preventDefault="true"
+                     @ondragenter:preventDefault="true"
+                     @ondragover="() => DragOver(string.Empty, merge: false)"
+                     @ondrop:preventDefault="true"
+                     @ondrop="() => Drop(string.Empty, merge: false)">
+                    <i class="bi bi-box-arrow-in-down"></i>
+                    <span>Drop here to make <strong>@dragCard</strong> last</span>
+                </div>
+            }
+        </div>
+    }
+
+    <div class="ws-arrange-foot">
+        <span class="ws-hint">
+            Every change here is saved as you make it. Nothing on disk is touched — a hidden card is
+            still in its folder, and a rescan still finds new projects.
+        </span>
+        <button type="button" class="btn-primary" @onclick="OnFinished">
+            <i class="bi bi-check-lg"></i> Finish
+        </button>
+    </div>
+</div>
+
+<Modal @bind-IsVisible="isCustomizeVisible" Title="@CustomizeTitle">
+    @if (customizing is not null)
+    {
+        <CardOverrideDialog
+            GroupName="@GroupName"
+            Card="customizing"
+            SiblingNames="SiblingNames"
+            OnSaved="HandleCustomizeSaved" />
+    }
+</Modal>
+
+@code {
+    [Parameter] public string GroupName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The group, hidden cards included. Supplied by the page rather than read here, because the
+    /// dashboard holds the pristine scan and this dialog wants it before the hidden ones are
+    /// dropped — hiding a card and then having no way to reach it is not hiding, it is deleting.
+    /// </summary>
+    [Parameter] public WorkspaceGroup? Group { get; set; }
+
+    /// <summary>Raised after any change, so the dashboard reapplies the arrangement behind this.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    /// <summary>Finish. The dialog saves as it goes, so this only closes it.</summary>
+    [Parameter] public EventCallback OnFinished { get; set; }
+
+    private sealed record Row(Workspace Workspace);
+
+    private List<Row> rows = new();
+    private CardSort sort;
+
+    // Which row is in flight, which row the pointer is over, and whether it is over that row's
+    // merge target rather than its body. Held here because a move and a merge are both
+    // relationships between two rows and neither row can see the other.
+    private string? dragCard;
+    private string? dragOverCard;
+    private bool dragOverMerge;
+
+    private Workspace? customizing;
+    private bool isCustomizeVisible;
+
+    private static readonly (CardSort Value, string Label)[] SortOptions =
+    {
+        (CardSort.Default, "Default"),
+        (CardSort.Name, "Name A–Z"),
+        (CardSort.Locations, "Most locations first"),
+        (CardSort.Custom, "Custom — as arranged")
+    };
+
+    protected override void OnParametersSet() => Reload();
+
+    private void Reload()
+    {
+        sort = Layout.SortFor(GroupName);
+
+        // Through the same ordering the dashboard uses, so the list you drag is the list you get.
+        rows = Group is null
+            ? new List<Row>()
+            : Layout.OrderWorkspaces(GroupName, Group.Workspaces).Select(w => new Row(w)).ToList();
+    }
+
+    private string RowClass(string key, bool hidden)
+    {
+        var classes = new List<string>();
+
+        if (dragCard == key) classes.Add("is-dragging");
+        if (dragOverCard == key && !dragOverMerge && dragCard is not null && dragCard != key) classes.Add("is-move-target");
+        if (hidden) classes.Add("is-hidden-card");
+
+        return string.Join(' ', classes);
+    }
+
+    private string IconFor(Workspace workspace) =>
+        IconService.Resolve(IconScope.Workspace, workspace.Name).Icon!;
+
+    private static string Describe(CardOverride patch, string scanned)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(patch.Name)) parts.Add($"renamed from {scanned}");
+        if (patch.Absorb.Count > 0) parts.Add($"merged with {string.Join(", ", patch.Absorb)}");
+        if (patch.Locations.Count > 0) parts.Add($"{patch.Locations.Count} location label(s) set");
+        if (patch.Hidden) parts.Add("hidden");
+
+        return parts.Count == 0 ? "Edited by hand" : "Edited by hand: " + string.Join("; ", parts);
+    }
+
+    /// <summary>The card names on screen, which is what a move is expressed against.</summary>
+    private List<string> VisibleOrder => rows.Select(r => r.Workspace.OverrideKey).ToList();
+
+    private IReadOnlyList<string> SiblingNames => rows
+        .Where(r => !ReferenceEquals(r.Workspace, customizing))
+        .Select(r => r.Workspace.Name)
+        .ToList();
+
+    private string CustomizeTitle => $"Customize {customizing?.Name}";
+
+    // ---- sorting -----------------------------------------------------------------------------
+
+    private async Task SetSort(ChangeEventArgs e)
+    {
+        if (!Enum.TryParse<CardSort>(e.Value?.ToString(), ignoreCase: true, out var chosen))
+        {
+            return;
+        }
+
+        // The order on screen goes along, so choosing Custom starts from what you are looking at
+        // rather than from whatever the scan happened to hand over.
+        await Layout.SetSortAsync(GroupName, chosen, VisibleOrder);
+        await Changed();
+    }
+
+    private async Task ResetOrder()
+    {
+        await Layout.ResetArrangementAsync(GroupName);
+        await Changed();
+    }
+
+    // ---- dragging ----------------------------------------------------------------------------
+
+    private void DragStart(string key)
+    {
+        dragCard = key;
+        dragOverCard = null;
+        dragOverMerge = false;
+    }
+
+    private void DragOver(string key, bool merge)
+    {
+        // dragover fires continuously; only a change is worth a render.
+        if (dragCard is null || (dragOverCard == key && dragOverMerge == merge))
+        {
+            return;
+        }
+
+        dragOverCard = key;
+        dragOverMerge = merge;
+        StateHasChanged();
+    }
+
+    private async Task Drop(string key, bool merge)
+    {
+        var moved = dragCard;
+        dragCard = null;
+        dragOverCard = null;
+        dragOverMerge = false;
+
+        if (moved is null || moved == key)
+        {
+            StateHasChanged();
+            return;
+        }
+
+        if (merge)
+        {
+            // The row dropped on survives, which is the way the gesture reads: you pick up the
+            // stray and put it onto the card it belongs to.
+            await Layout.MergeCardsAsync(GroupName, key, moved);
+        }
+        else
+        {
+            await Layout.MoveCardAsync(GroupName, moved, key, VisibleOrder);
+        }
+
+        await Changed();
+    }
+
+    private void DragEnd()
+    {
+        // Fires on a cancelled drag too — Escape, or a drop outside any row — so the highlight
+        // cannot be left behind.
+        if (dragCard is null && dragOverCard is null)
+        {
+            return;
+        }
+
+        dragCard = null;
+        dragOverCard = null;
+        dragOverMerge = false;
+        StateHasChanged();
+    }
+
+    // ---- the row actions ---------------------------------------------------------------------
+
+    private void Customize(Workspace workspace)
+    {
+        customizing = workspace;
+        isCustomizeVisible = true;
+    }
+
+    private async Task HandleCustomizeSaved()
+    {
+        isCustomizeVisible = false;
+        customizing = null;
+        await Changed();
+    }
+
+    private async Task ToggleHidden(string key, bool hidden)
+    {
+        await Layout.SetCardHiddenAsync(GroupName, key, !hidden);
+        await Changed();
+    }
+
+    private async Task Unmerge(string key)
+    {
+        await Layout.UnmergeCardAsync(GroupName, key);
+        await Changed();
+    }
+
+    /// <summary>
+    /// Tells the dashboard to rebuild, then re-reads this list from it. Both halves matter: a merge
+    /// removes a row and a move reorders them, and a list that did not follow its own edits would
+    /// be the one place on screen showing the state before the click.
+    /// </summary>
+    private async Task Changed()
+    {
+        await OnChanged.InvokeAsync();
+        Reload();
+        StateHasChanged();
+    }
+}

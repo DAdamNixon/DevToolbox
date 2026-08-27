@@ -123,6 +123,38 @@ public interface IDashboardLayoutService
     /// <summary>Drops every card override in a group — the way back from any arrangement.</summary>
     Task ResetCardsAsync(string groupName);
 
+    // ---- sorting -----------------------------------------------------------------------------
+
+    /// <summary>
+    /// How a group's cards are ordered. <see cref="CardSort.Default"/> when nothing is stored,
+    /// which means "as the group arrived" — so adding this changed no existing dashboard.
+    /// </summary>
+    CardSort SortFor(string? groupName);
+
+    /// <summary>The dragged order behind <see cref="CardSort.Custom"/>, empty when there is none.</summary>
+    IReadOnlyList<string> CardOrderFor(string? groupName);
+
+    /// <summary>
+    /// Sets how a group's cards are ordered. <paramref name="visibleOrder"/> seeds the custom order
+    /// when switching to <see cref="CardSort.Custom"/> for the first time — without it, choosing
+    /// Custom scrambles the group into whatever order the scan happened to hand over, which reads
+    /// as the option being broken.
+    /// </summary>
+    Task SetSortAsync(string groupName, CardSort sort, IEnumerable<string>? visibleOrder = null);
+
+    /// <summary>
+    /// Moves a card to where <paramref name="beforeCardName"/> sits, and switches the group to
+    /// <see cref="CardSort.Custom"/> — dragging a card *is* choosing a custom order. A blank or
+    /// unknown target appends, which is how the end of the list is reachable at all.
+    /// </summary>
+    Task MoveCardAsync(string groupName, string cardName, string beforeCardName, IEnumerable<string> visibleOrder);
+
+    /// <summary>
+    /// Drops a group's sort and custom order, leaving its card overrides alone. "Put the order
+    /// back" and "undo my renames and merges" are different regrets.
+    /// </summary>
+    Task ResetArrangementAsync(string groupName);
+
     /// <summary>
     /// Moves everything in this file that is keyed by a group's name onto its new name: the order
     /// position, the pins, the aliases, the hidden flag and the card overrides. Without it a rename

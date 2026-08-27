@@ -1373,6 +1373,13 @@ select:not([multiple]) {
     max-width: 76rem;
 }
 
+/* The window, less the container's own 1rem inset. For the arrange dialog, which is a list of up
+   to sixty rows that has to be dragged around — the room is the feature, and a reading width would
+   make every row mostly empty and the list mostly off-screen. */
+.modal-content.is-full {
+    max-width: none;
+}
+
 /* ── a panel that takes the height it is given ───────────────────────────────
    The rules above make a panel *at most* as tall as the window; this one makes it that tall
    outright, and hands the height to the columns inside instead of to a scrollbar on the body.
@@ -1397,6 +1404,13 @@ select:not([multiple]) {
         display: flex;
         flex-direction: column;
         overflow: hidden;
+    }
+
+    /* The arrange dialog's whole panel, so its list gets the height and scrolls inside it rather
+       than the body scrolling past the sort control and the Finish button. */
+    .modal-content.is-tall .ws-arrange {
+        flex: 1 1 auto;
+        min-height: 0;
     }
 
     .modal-content.is-tall .ws-sources {
@@ -2910,14 +2924,167 @@ tr.log-row-expanded td {
     color: rgb(var(--c-accent-blue));
 }
 
-/* ── arrange mode ────────────────────────────────────────────────────────────
-   A mode rather than always-on grips on 591 cards, because the gesture it enables — dropping one
-   card onto another to merge them — should not be reachable by a stray drag while you are just
-   clicking about. */
+/* ── the arrange dialog ──────────────────────────────────────────────────────
+   One group, the whole window. This replaced a toolbar toggle that put a grip on all 591 cards at
+   once and left you to work out what the mode was for — a mode with no object is a mode nobody can
+   read.
 
-/* The card grip does not fade in on hover the way the group grip does: in this mode it is the
-   whole point of the mode, and hunting for an invisible handle on the card you want is worse than
-   591 visible ones. */
+   A flat list rather than the dashboard's grid, because both gestures it supports are
+   one-dimensional: "third instead of eighth" and "this one belongs to that one" are both answered
+   by a column. */
+.ws-arrange {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    gap: 0.75rem;
+}
+
+.ws-arrange-head {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    flex: 0 0 auto;
+}
+
+.ws-arrange-sort {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 0 0 auto;
+}
+
+.ws-arrange-sort > .ws-label {
+    margin: 0;
+}
+
+/* Takes the slack so the reset button sits on the right rather than next to the select. */
+.ws-arrange-hint {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.ws-arrange-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0.25rem;
+    border: 1px solid rgb(var(--c-border));
+    border-radius: 0.5rem;
+    background-color: rgb(var(--c-bg) / 0.4);
+}
+
+.ws-arrange-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    padding: 0.375rem 0.5rem;
+    border: 1px solid transparent;
+    border-radius: 0.375rem;
+    background-color: rgb(var(--c-surface));
+}
+
+.ws-arrange-row:hover {
+    border-color: rgb(var(--c-border));
+}
+
+/* Halved rather than hidden: a row that vanishes mid-drag reflows the list under the cursor and
+   takes the drop targets with it. */
+.ws-arrange-row.is-dragging {
+    opacity: 0.45;
+}
+
+/* Where a move would land. A line on the top edge, because the answer to "where exactly" for an
+   insertion is a position, not an area — which is also what distinguishes it at a glance from the
+   merge target, whose answer *is* an area. */
+.ws-arrange-row.is-move-target {
+    box-shadow: inset 0 3px 0 0 rgb(var(--c-accent-blue));
+    border-color: rgb(var(--c-accent-blue) / 0.6);
+}
+
+.ws-arrange-row.is-hidden-card {
+    opacity: 0.55;
+    border-style: dashed;
+    border-color: rgb(var(--c-border));
+}
+
+.ws-arrange-row.is-hidden-card:hover {
+    opacity: 0.85;
+}
+
+.ws-arrange-body {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    flex: 1 1 auto;
+    min-width: 0;
+    flex-wrap: wrap;
+}
+
+.ws-arrange-name {
+    font-size: 0.875rem;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.ws-arrange-locs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+/* The second drop target on a row, and the reason a row can mean two things. Only rendered while
+   something is in flight, and labelled — an unlabelled second zone that appears only during a drag
+   is worse than no second zone at all. */
+.ws-arrange-merge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex: 0 0 auto;
+    padding: 0.1875rem 0.5rem;
+    border: 1px dashed rgb(var(--c-accent-purple) / 0.6);
+    border-radius: 9999px;
+    background-color: rgb(var(--c-accent-purple) / 0.08);
+    color: rgb(var(--c-accent-purple));
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+.ws-arrange-merge.is-over {
+    border-style: solid;
+    background-color: rgb(var(--c-accent-purple) / 0.25);
+    box-shadow: 0 0 0 2px rgb(var(--c-accent-purple) / 0.35);
+}
+
+.ws-arrange-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.125rem;
+    flex: 0 0 auto;
+}
+
+.ws-arrange-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex: 0 0 auto;
+    padding-top: 0.75rem;
+    border-top: 1px solid rgb(var(--c-border));
+}
+
+/* The grip is always visible here, unlike the group cards' fade-in: in this dialog it is the
+   whole point, and hunting for an invisible handle is worse than sixty visible ones. */
 .ws-grip.is-on {
     opacity: 0.75;
 }
@@ -2927,33 +3094,49 @@ tr.log-row-expanded td {
     color: rgb(var(--c-accent-blue));
 }
 
-/* A dashed edge on every arrangeable card: it says "these are the ones this mode is about"
-   without adding a colour, and scanned cards are the only ones that get it. */
-.ws-card.is-arranging {
-    border-style: dashed;
+/* The sort control on a group header. Silent while it is Default — a control on every one of
+   fourteen headers saying "Default" is chrome — and labelled once it is not. */
+.ws-sort {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem 0.375rem;
+    border: 1px solid transparent;
+    border-radius: 0.375rem;
+    background: transparent;
+    color: rgb(var(--c-text-muted));
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 
-/* Halved rather than hidden, for the same reason the group cards are: a card that vanishes
-   mid-drag reflows the grid under the cursor and takes the drop targets with it. */
-.ws-card.is-dragging {
-    opacity: 0.45;
+/* Appears on hover of the group, like the ⋮ beside it — except when a sort is set, where it is
+   permanent because it is then a fact about the group and not a control. */
+.ws-group-card:hover .ws-sort,
+.ws-sort:focus-visible,
+.ws-sort.is-set {
+    opacity: 1;
 }
 
-/* Where a drop would merge. A ring, not a line — unlike a reorder, the answer to "where" is this
-   whole card, because the dragged one is going *into* it rather than next to it. */
-.ws-card.is-merge-target {
-    border-style: solid;
-    border-color: rgb(var(--c-accent-purple));
-    box-shadow: 0 0 0 2px rgb(var(--c-accent-purple) / 0.35);
+.ws-sort:hover {
+    border-color: rgb(var(--c-border));
+    color: rgb(var(--c-text));
 }
 
-.ws-card.is-hidden-card {
-    opacity: 0.55;
-    border-style: dashed;
+.ws-sort.is-set {
+    color: rgb(var(--c-accent-blue));
 }
 
-.ws-card.is-hidden-card:hover {
-    opacity: 0.85;
+/* Wide enough for "Most locations first" without the menu wrapping. */
+.ws-sort-anchor > .ws-menu {
+    min-width: 13rem;
+}
+
+.ws-menu .dropdown-item.is-on {
+    color: rgb(var(--c-accent-blue));
 }
 
 /* The hand-edited marker. Deliberately visible rather than magic: a renamed or merged card that

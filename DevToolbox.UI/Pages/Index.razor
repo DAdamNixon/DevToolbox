@@ -60,17 +60,6 @@
             }
         </div>
 
-        @* Arrange mode. A mode rather than always-on grips, because the gesture it enables —
-           dropping one card onto another to merge them — is destructive-looking enough that it
-           must not be reachable by a stray drag while you are just clicking about. It also
-           reveals the cards that have been hidden, which is how you get one back. *@
-        <button class="ws-tool @(arranging ? "is-on" : "")"
-                title="@(arranging ? "Done arranging" : "Drag scanned cards onto each other to merge them")"
-                @onclick="ToggleArranging">
-            <i class="bi @(arranging ? "bi-check2" : "bi-arrows-move")"></i>
-            <span>@(arranging ? "Done" : "Arrange")</span>
-        </button>
-
         @* Absent, not disabled, when nothing is hidden — unlike Collapse All beside it. A disabled
            "0 hidden" is a permanent reminder of a feature you are not using, and there is nothing
            this button could do in that state anyway. *@
@@ -112,24 +101,6 @@
     </div>
 </div>
 
-@if (arranging)
-{
-    @* Says what the mode does, since the only affordance it adds is a grip that appears on hover
-       of a card you may not have expanded yet. *@
-    <div class="ws-notice is-info mb-3">
-        <i class="bi bi-arrows-move"></i>
-        <span>
-            Arranging. Drag a scanned card by its grip onto another card in the same group to merge
-            them — useful when one project shows up twice because only one branch renames it.
-            Hidden cards are shown, and every card's ⋮ has <strong>Rename / Labels</strong>. Nothing
-            on disk is changed.
-        </span>
-        <button type="button" class="btn-ghost btn-sm" title="Done" @onclick="ToggleArranging">
-            <i class="bi bi-x-lg"></i>
-        </button>
-    </div>
-}
-
 @if (scanProblems.Any())
 {
     <div class="ws-scan-note is-error">
@@ -168,7 +139,6 @@
             AllGroups="WorkspaceService.WorkspaceGroups"
             QuickOpenCount="quickOpenCount"
             IsHidden="@Layout.IsHidden(groupViewModel.Group.Name)"
-            IsArranging="arranging"
             HiddenCardCount="@HiddenCardsIn(groupViewModel.Group)"
             IsDragging="@(dragGroup == groupViewModel.Group.Name)"
             IsDropTarget="@(dragGroup is not null && dragOverGroup == groupViewModel.Group.Name && dragGroup != groupViewModel.Group.Name)"
@@ -183,7 +153,7 @@
             OnRescan="RescanSources"
             OnEditSource="ShowSourcesModalFor"
             OnCustomized="HandleCustomized"
-            OnMergeCards="HandleMergeCards"
+            OnArrangeCards="ShowArrangeModalFor"
             OnRenameSourceGroup="HandleRenameSourceGroup"
             OnIconChanged="StateHasChanged"
             OnToggleHidden="HandleToggleHidden"
@@ -267,6 +237,16 @@
     <WorkspaceSourcesDialog @ref="sourcesDialog" InitialSourceName="@sourcesModalFocus" OnSaved="HandleSourcesSaved" />
 </Modal>
 
+@* One group, the whole window. It is a list of up to sixty rows that has to be dragged around, so
+   the room is the feature — and being about one named group is what the toolbar toggle it replaced
+   could never be. *@
+<Modal @bind-IsVisible="IsArrangeModalVisible" Title="@ArrangeModalTitle" SizeClass="is-full is-tall">
+    <ArrangeCardsDialog
+        GroupName="@(arrangeGroupName ?? string.Empty)"
+        Group="ArrangeGroup"
+        OnChanged="HandleCustomized"
+        OnFinished="CloseArrangeModal" /></Modal>
+
 @code {
     private DotNetObjectReference<Index>? objRef;
     private GlobalCustomOpenOptions GlobalOptions { get; set; } = new();
@@ -302,11 +282,8 @@
     /// </summary>
     private bool showHidden;
 
-    /// <summary>
-    /// Arrange mode: scanned cards get a drag grip, hidden ones are revealed. A view state like
-    /// <see cref="showHidden"/> — what it lets you do is persisted, being in it is not.
-    /// </summary>
-    private bool arranging;
+    /// <summary>Group the arrange dialog is open on, or null. One group at a time, by name.</summary>
+    private string? arrangeGroupName;
 
     // Drag state for reordering groups. Held here rather than in the cards because a drag is a
     // relationship between two of them and neither one can see the other.
@@ -468,7 +445,7 @@
             // relabelled locations, hidden cards. Only for scanned groups — a hand-made group's
             // cards are editable for real, and Customize returns copies, which would send those
             // edits to an object nothing saves.
-            .Select(g => g.IsFromSource ? Layout.Customize(g, includeHidden: arranging) : g)
+            .Select(g => g.IsFromSource ? Layout.Customize(g) : g)
             .Select(g => ViewModelFactory.CreateWorkspaceGroupViewModel(g, Layout.OrderWorkspaces(g.Name, g.Workspaces)))
             .ToList();
     }
@@ -491,18 +468,9 @@
         return scanned?.Workspaces.Count(w => Layout.IsCardHidden(group.Name, w.Name)) ?? 0;
     }
 
-    private void ToggleArranging()
-    {
-        arranging = !arranging;
-
-        // Hidden cards come and go with the mode, so the view models have to be rebuilt rather
-        // than just re-rendered.
-        RebuildViewModels();
-        StateHasChanged();
-    }
-
     /// <summary>
-    /// A card override changed. Reapplied from memory — no rescan, because nothing on disk moved.
+    /// A card override or a sort changed. Reapplied from memory — no rescan, because nothing on
+    /// disk moved.
     /// </summary>
     private void HandleCustomized()
     {
@@ -510,10 +478,62 @@
         StateHasChanged();
     }
 
-    private async Task HandleMergeCards((string groupName, string intoCard, string fromCard) args)
+    // ---- the arrange dialog ------------------------------------------------------------------
+
+    private bool IsArrangeModalVisible
     {
-        await Layout.MergeCardsAsync(args.groupName, args.intoCard, args.fromCard);
-        HandleCustomized();
+        get => arrangeGroupName is not null;
+        set
+        {
+            // The Modal's own close (backdrop, ✕) comes through the setter, so it has to clear the
+            // group as well or the dialog could never be reopened.
+            if (!value) arrangeGroupName = null;
+        }
+    }
+
+    private string ArrangeModalTitle => $"Arrange {arrangeGroupName}";
+
+    /// <summary>
+    /// The group the dialog works on: the scan with the hand edits applied but the hidden cards
+    /// <em>kept</em>. This is the only place they are reachable, and a hidden card you cannot get
+    /// back is a deleted one.
+    /// </summary>
+    private WorkspaceGroup? ArrangeGroup
+    {
+        get
+        {
+            if (arrangeGroupName is null)
+            {
+                return null;
+            }
+
+            var scanned = scannedGroups.FirstOrDefault(
+                g => g.Name.Equals(arrangeGroupName, StringComparison.OrdinalIgnoreCase));
+
+            if (scanned is not null)
+            {
+                return Layout.Customize(scanned, includeHidden: true);
+            }
+
+            // A hand-made group. Nothing to customize, but the order still applies.
+            return savedGroups.FirstOrDefault(
+                g => g.Name.Equals(arrangeGroupName, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    private void ShowArrangeModalFor(string groupName)
+    {
+        arrangeGroupName = groupName;
+        StateHasChanged();
+    }
+
+    private void CloseArrangeModal()
+    {
+        arrangeGroupName = null;
+
+        // The dialog saved as it went, so this is only about what is behind it.
+        RebuildViewModels();
+        StateHasChanged();
     }
 
     /// <summary>

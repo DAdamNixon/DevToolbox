@@ -96,6 +96,46 @@
 
         <!-- Actions Menu -->
         <div class="ws-actions">
+            @* Sorting lives on the header rather than in the menu because it is a property of the
+               group you can see the effect of immediately, and because the current sort has to be
+               readable without opening anything. Silent while it is Default — a control on every
+               one of fourteen headers saying "Default" is chrome — and labelled once it is not. *@
+            @if (GroupViewModel.Workspaces.Count > 1)
+            {
+                <div class="ws-menu-anchor ws-sort-anchor" data-menu-anchor @onclick:stopPropagation="true">
+                    <button type="button"
+                            class="ws-sort @(sort == CardSort.Default ? "" : "is-set")"
+                            title="@SortTooltip"
+                            @onclick="() => Menu.Toggle(SortMenuId)">
+                        <i class="bi @SortIcon"></i>
+                        @if (sort != CardSort.Default)
+                        {
+                            <span>@SortLabel(sort)</span>
+                        }
+                    </button>
+
+                    @if (Menu.IsOpen(SortMenuId))
+                    {
+                        <div class="ws-menu">
+                            <div class="ws-menu-heading">Order cards by</div>
+                            @foreach (var option in SortChoices)
+                            {
+                                <button class="dropdown-item @(sort == option ? "is-on" : "")"
+                                        @onclick="() => ChooseSort(option)">
+                                    <i class="bi @(sort == option ? "bi-check2" : "bi-dash")"></i>
+                                    <span>@SortLabel(option)</span>
+                                </button>
+                            }
+                            <div class="ws-menu-sep"></div>
+                            <button class="dropdown-item" @onclick="Arrange">
+                                <i class="bi bi-arrows-move"></i>
+                                <span>Arrange Cards…</span>
+                            </button>
+                        </div>
+                    }
+                </div>
+            }
+
             <div class="ws-menu-anchor" data-menu-anchor @onclick:stopPropagation="true">
                 <button type="button"
                     class="btn-ghost ws-icon-btn"
@@ -123,6 +163,14 @@
                         @* Not in the danger block with Delete, and deliberately not next to it: the
                            whole point of hiding is that it is the reversible thing to reach for
                            instead. The toolbar keeps a count of what is hidden. *@
+                        @* Was a toolbar toggle that put a grip on all 591 cards at once. A mode with
+                           no object is a mode nobody can read; this one names the group it is about
+                           and opens on it. *@
+                        <button class="dropdown-item" @onclick="Arrange">
+                            <i class="bi bi-arrows-move"></i>
+                            <span>Arrange Cards…</span>
+                        </button>
+
                         <button class="dropdown-item" @onclick="ToggleHidden">
                             <i class="bi @(IsHidden ? "bi-eye" : "bi-eye-slash")"></i>
                             <span>@(IsHidden ? "Show on Dashboard" : "Hide Group")</span>
@@ -188,16 +236,8 @@
     @if (GroupViewModel.IsExpanded)
     {
         @* contextmenu stops here too, or a right-click aimed at a workspace card would open the
-           group's menu — the group card is underneath every one of them.
-
-           In arrange mode the drag events stop here as well, or a card dropped onto another card
-           would bubble up and be read as a group reorder — this whole grid sits inside a group
-           card that is itself a drop target. *@
-        <div class="ws-grid"
-             @onclick:stopPropagation="true"
-             @oncontextmenu:stopPropagation="true"
-             @ondragover:stopPropagation="IsArranging"
-             @ondrop:stopPropagation="IsArranging">
+           group's menu — the group card is underneath every one of them. *@
+        <div class="ws-grid" @onclick:stopPropagation="true" @oncontextmenu:stopPropagation="true">
             @foreach (var workspaceViewModel in GroupViewModel.Workspaces)
             {
                 <WorkspaceCard
@@ -211,16 +251,8 @@
                     IsPinned="Layout.IsPinned(GroupViewModel.Name, workspaceViewModel.Name)"
                     QuickOpenCount="QuickOpenCount"
                     GroupName="@GroupViewModel.Name"
-                    IsArranging="@(IsArranging && IsFromSource)"
-                    IsHiddenCard="@Layout.IsCardHidden(GroupViewModel.Name, workspaceViewModel.Workspace.OverrideKey)"
-                    IsDragging="@(dragCard == workspaceViewModel.Workspace.OverrideKey)"
-                    IsMergeTarget="@IsMergeTargetFor(workspaceViewModel)"
                     SiblingNames="SiblingNamesFor(workspaceViewModel)"
                     OnCustomized="OnCustomized"
-                    OnDragStarted="HandleCardDragStart"
-                    OnDragEntered="HandleCardDragOver"
-                    OnDropped="HandleCardDrop"
-                    OnDragEnded="HandleCardDragEnd"
                     OnDeleteWorkspace="() => DeleteWorkspace(workspaceViewModel.Workspace)"
                     OnOpenWorkspaceLocation="OnOpenWorkspaceLocation"
                     OnOpenInExplorer="OnOpenInExplorer"
@@ -345,20 +377,18 @@
     /// <summary>Rescan request for a group that came from a workspace source.</summary>
     [Parameter] public EventCallback OnRescan { get; set; }
 
-    /// <summary>Arrange mode, from the toolbar. Only does anything to a scanned group.</summary>
-    [Parameter] public bool IsArranging { get; set; }
-
     /// <summary>How many of this group's cards are hidden. Counted off the pristine scan.</summary>
     [Parameter] public int HiddenCardCount { get; set; }
 
-    /// <summary>Raised after a card override changes, so the dashboard reapplies them.</summary>
+    /// <summary>Raised after a card override or the sort changes, so the dashboard reapplies them.</summary>
     [Parameter] public EventCallback OnCustomized { get; set; }
 
     /// <summary>
-    /// Fold one scanned card into another: <c>(group, into, from)</c>. Handled above because it is
-    /// a write to dashboardLayout.yaml followed by a rebuild of every group.
+    /// Open the arrange dialog on this group, by name. Handled by the page, which holds the
+    /// pristine scan — this card only ever sees the group with its hidden cards already dropped,
+    /// and a card you cannot reach to unhide is a card you deleted.
     /// </summary>
-    [Parameter] public EventCallback<(string, string, string)> OnMergeCards { get; set; }
+    [Parameter] public EventCallback<string> OnArrangeCards { get; set; }
 
     /// <summary>
     /// Rename a scanned group: <c>(oldName, newName)</c>. Rewrites the <c>group:</c> field of every
@@ -382,13 +412,37 @@
     private double cursorX;
     private double cursorY;
 
-    // Card drag state, held here rather than in the cards: a merge is a relationship between two
-    // of them and neither one can see the other. Both are the scanned name, which is what the
-    // override is keyed by.
-    private string? dragCard;
-    private string? dragOverCard;
-
     private bool HasCardOverrides => Layout.HasCardOverrides(GroupViewModel.Name);
+
+    /// <summary>How this group's cards are ordered. Read in OnParametersSet, like the icon.</summary>
+    private CardSort sort;
+
+    private static readonly CardSort[] SortChoices =
+    {
+        CardSort.Default, CardSort.Name, CardSort.Locations, CardSort.Custom
+    };
+
+    private string SortMenuId => $"sort:{GroupViewModel.Group.Name}";
+
+    private static string SortLabel(CardSort value) => value switch
+    {
+        CardSort.Name => "Name A–Z",
+        CardSort.Locations => "Most locations",
+        CardSort.Custom => "Custom",
+        _ => "Default"
+    };
+
+    private string SortIcon => sort switch
+    {
+        CardSort.Name => "bi-sort-alpha-down",
+        CardSort.Locations => "bi-sort-numeric-down-alt",
+        CardSort.Custom => "bi-list-ol",
+        _ => "bi-arrow-down-up"
+    };
+
+    private string SortTooltip => sort == CardSort.Default
+        ? "Order cards — currently as scanned"
+        : $"Order cards — currently {SortLabel(sort)}";
 
     private bool IsFromSource => GroupViewModel.Group.IsFromSource;
 
@@ -516,6 +570,7 @@
         icon = IconService.Resolve(IconScope.Group, GroupViewModel.Name, GroupViewModel.Group.SourceIcon);
 
         aliases = Layout.AliasesFor(AliasScope.Group, GroupViewModel.Name);
+        sort = Layout.SortFor(GroupViewModel.Name);
     }
 
     private void ToggleExpand()
@@ -613,17 +668,7 @@
         await OnCustomized.InvokeAsync();
     }
 
-    // ---- merging cards by dragging one onto another ----------------------------------------
-
-    /// <summary>
-    /// Whether a drop on this card would fold the dragged one into it. Not the dragged card itself,
-    /// and only while something is actually being dragged.
-    /// </summary>
-    private bool IsMergeTargetFor(WorkspaceViewModel workspace)
-    {
-        var key = workspace.Workspace.OverrideKey;
-        return dragCard is not null && dragOverCard == key && dragCard != key;
-    }
+    // ---- ordering ---------------------------------------------------------------------------
 
     /// <summary>
     /// The other cards' displayed names, for the rename dialog's clash check. Excludes the card
@@ -635,54 +680,24 @@
             .Select(w => w.Name)
             .ToList();
 
-    private void HandleCardDragStart(string cardKey)
+    private async Task ChooseSort(CardSort chosen)
     {
-        dragCard = cardKey;
-        dragOverCard = null;
+        Menu.Close();
+
+        // The order on screen goes along, so picking Custom starts from what is being looked at.
+        await Layout.SetSortAsync(
+            GroupViewModel.Name,
+            chosen,
+            GroupViewModel.Workspaces.Select(w => w.Workspace.OverrideKey));
+
+        sort = Layout.SortFor(GroupViewModel.Name);
+        await OnCustomized.InvokeAsync();
     }
 
-    private void HandleCardDragOver(string cardKey)
+    private async Task Arrange()
     {
-        // dragover fires continuously while the pointer is over a card; only a change is worth a
-        // render.
-        if (dragCard is null || dragOverCard == cardKey)
-        {
-            return;
-        }
-
-        dragOverCard = cardKey;
-        StateHasChanged();
-    }
-
-    private async Task HandleCardDrop(string cardKey)
-    {
-        var moved = dragCard;
-        dragCard = null;
-        dragOverCard = null;
-
-        if (moved is null || moved == cardKey)
-        {
-            StateHasChanged();
-            return;
-        }
-
-        // The card dropped on is the one that survives, which is the way round the gesture reads:
-        // you pick up the stray and put it onto the card it belongs to.
-        await OnMergeCards.InvokeAsync((GroupViewModel.Name, cardKey, moved));
-    }
-
-    private void HandleCardDragEnd()
-    {
-        // Fires on a cancelled drag too — Escape, or a drop outside any card — so the highlight
-        // cannot be left behind.
-        if (dragCard is null && dragOverCard is null)
-        {
-            return;
-        }
-
-        dragCard = null;
-        dragOverCard = null;
-        StateHasChanged();
+        Menu.Close();
+        await OnArrangeCards.InvokeAsync(GroupViewModel.Name);
     }
 
     private async Task Rescan()

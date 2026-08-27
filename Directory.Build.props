@@ -42,8 +42,13 @@
     dialog reorganised into sections with icon and colour pickers; groups hideable and draggable
     to last.
   -->
+  <!--
+    0.9.3 / beta.4: arranging is a dialog about one named group rather than a toolbar mode, cards
+    can actually be reordered as well as merged, and each group header carries its own sort with a
+    remembered Custom option.
+  -->
   <PropertyGroup>
-    <VersionPrefix>0.9.2</VersionPrefix>
-    <VersionSuffix>beta.3</VersionSuffix>
+    <VersionPrefix>0.9.3</VersionPrefix>
+    <VersionSuffix>beta.4</VersionSuffix>
   </PropertyGroup>
 </Project>

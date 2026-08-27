@@ -170,17 +170,159 @@ public class DashboardLayoutService : IDashboardLayoutService
     {
         var list = workspaces.ToList();
 
+        // The group's chosen sort first, then the pins on top of it. That composition is what makes
+        // a pin read as a promotion out of the order rather than as a different order.
+        list = SortFor(groupName) switch
+        {
+            CardSort.Name => list
+                .OrderBy(w => w.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+
+            CardSort.Locations => list
+                .OrderByDescending(w => w.Locations.Count)
+                .ThenBy(w => w.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+
+            CardSort.Custom => OrderByStored(groupName, list),
+
+            // Default: leave it exactly as it arrived.
+            _ => list
+        };
+
         if (_layout is null || !TryGetBucket(_layout.Pinned, groupName, out var pinned) || pinned.Count == 0)
         {
             return list;
         }
 
-        // Stable again: sorting on a bool moves the pinned cards to the front and leaves
-        // everything else exactly where it was, which is what makes a pin read as a promotion
-        // rather than a reshuffle of the whole group.
+        // Stable: sorting on a bool moves the pinned cards to the front and leaves everything else
+        // in the order the block above put it.
         return list
             .OrderBy(w => pinned.Any(name => name.Equals(w.Name, StringComparison.OrdinalIgnoreCase)) ? 0 : 1)
             .ToList();
+    }
+
+    /// <summary>
+    /// The dragged order, with anything not in it after everything that is. Stable, so cards the
+    /// user has never dragged keep their arrival order among themselves instead of shuffling.
+    /// </summary>
+    private List<Workspace> OrderByStored(string groupName, List<Workspace> list)
+    {
+        if (_layout is null || !TryGetBucket(_layout.CardOrder, groupName, out var order) || order.Count == 0)
+        {
+            return list;
+        }
+
+        return list
+            .OrderBy(w => RankOf(order, w.Name))
+            .ToList();
+    }
+
+    // ---- sorting -----------------------------------------------------------------------------
+
+    public CardSort SortFor(string? groupName)
+    {
+        var layout = _layout;
+        if (layout is null || string.IsNullOrEmpty(groupName))
+        {
+            return CardSort.Default;
+        }
+
+        var key = KeyOf(layout.Sort, groupName);
+        return key is null ? CardSort.Default : layout.Sort[key];
+    }
+
+    public IReadOnlyList<string> CardOrderFor(string? groupName)
+    {
+        var layout = _layout;
+        if (layout is null || string.IsNullOrEmpty(groupName))
+        {
+            return Array.Empty<string>();
+        }
+
+        return TryGetBucket(layout.CardOrder, groupName, out var order)
+            ? order
+            : Array.Empty<string>();
+    }
+
+    public async Task SetSortAsync(string groupName, CardSort sort, IEnumerable<string>? visibleOrder = null)
+    {
+        if (string.IsNullOrWhiteSpace(groupName))
+        {
+            return;
+        }
+
+        var layout = await GetAsync();
+        var key = KeyOf(layout.Sort, groupName) ?? groupName;
+
+        if (sort == CardSort.Default)
+        {
+            // Nothing stored means default, so storing "default" would only be a line in the file
+            // saying nothing.
+            layout.Sort.Remove(key);
+        }
+        else
+        {
+            layout.Sort[key] = sort;
+        }
+
+        // Switching to Custom with no stored order seeds it from what is on screen. Otherwise the
+        // first thing choosing "Custom" does is scramble the group into whatever order the scan
+        // happened to hand over, which reads as the option being broken.
+        if (sort == CardSort.Custom && visibleOrder is not null)
+        {
+            var orderKey = KeyOf(layout.CardOrder, groupName) ?? groupName;
+            if (!layout.CardOrder.TryGetValue(orderKey, out var existing) || existing is null || existing.Count == 0)
+            {
+                layout.CardOrder[orderKey] = Deduplicate(visibleOrder);
+            }
+        }
+
+        await SaveAsync(layout);
+    }
+
+    public async Task MoveCardAsync(string groupName, string cardName, string beforeCardName, IEnumerable<string> visibleOrder)
+    {
+        if (string.IsNullOrWhiteSpace(groupName)
+            || string.IsNullOrWhiteSpace(cardName)
+            || cardName.Equals(beforeCardName, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var layout = await GetAsync();
+
+        // From what is on screen, not from the stored list, for the reason MoveGroupAsync says: the
+        // stored list may be empty or stale, and inserting into it would move the card somewhere
+        // the user cannot see.
+        var order = Deduplicate(visibleOrder);
+
+        var from = IndexOf(order, cardName);
+        if (from < 0)
+        {
+            return;
+        }
+
+        order.RemoveAt(from);
+
+        var to = IndexOf(order, beforeCardName);
+        if (to < 0)
+        {
+            // Dropped past the last card: append. Reachable because the dialog renders a target
+            // below the last row — without one, last is a position a drag cannot express.
+            order.Add(cardName);
+        }
+        else
+        {
+            order.Insert(to, cardName);
+        }
+
+        layout.CardOrder[KeyOf(layout.CardOrder, groupName) ?? groupName] = order;
+
+        // Dragging a card *is* choosing a custom order. Leaving the mode alone would store an
+        // order that nothing reads and appear to do nothing at all.
+        layout.Sort[KeyOf(layout.Sort, groupName) ?? groupName] = CardSort.Custom;
+
+        await SaveAsync(layout);
     }
 
     // ---- hiding ----------------------------------------------------------------------------
@@ -589,6 +731,21 @@ public class DashboardLayoutService : IDashboardLayoutService
         await SaveAsync(layout);
     }
 
+    public async Task ResetArrangementAsync(string groupName)
+    {
+        var layout = await GetAsync();
+
+        // The sort and the order, not the card overrides. "Put the order back" and "undo my renames
+        // and merges" are different regrets, and one button for both would make the safe one scary.
+        var sortKey = KeyOf(layout.Sort, groupName);
+        if (sortKey is not null) layout.Sort.Remove(sortKey);
+
+        var orderKey = KeyOf(layout.CardOrder, groupName);
+        if (orderKey is not null) layout.CardOrder.Remove(orderKey);
+
+        await SaveAsync(layout);
+    }
+
     /// <summary>What a card is currently shown as.</summary>
     private string DisplayNameOf(string groupName, string cardName)
     {
@@ -619,6 +776,18 @@ public class DashboardLayoutService : IDashboardLayoutService
             layout.Aliases.Workspaces.Remove(aliasKey);
             layout.Aliases.Workspaces[to] = aliases;
             changed = true;
+        }
+
+        // The custom order is a list of card names too, so a rename that did not move it would
+        // drop the card to the end of its own group.
+        if (TryGetBucket(layout.CardOrder, groupName, out var order))
+        {
+            var index = IndexOf(order, from);
+            if (index >= 0)
+            {
+                order[index] = to;
+                changed = true;
+            }
         }
 
         if (changed)
@@ -653,6 +822,8 @@ public class DashboardLayoutService : IDashboardLayoutService
         MoveKey(layout.Pinned, oldName, newName);
         MoveKey(layout.Aliases.Groups, oldName, newName);
         MoveKey(layout.Cards, oldName, newName);
+        MoveKey(layout.Sort, oldName, newName);
+        MoveKey(layout.CardOrder, oldName, newName);
 
         var hiddenIndex = IndexOf(layout.Hidden, oldName);
         if (hiddenIndex >= 0)

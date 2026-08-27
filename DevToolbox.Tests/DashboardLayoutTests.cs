@@ -708,6 +708,180 @@ public class DashboardLayoutTests
         Assert.Equal(new[] { "PM.UI.Development" }, patch.Absorb);
     }
 
+    // ---- sorting -----------------------------------------------------------------------------
+
+    /// <summary>Cards with a controllable location count, for the Locations sort.</summary>
+    private static List<Workspace> Cards(params (string Name, int Locations)[] cards) => cards
+        .Select(c => new Workspace
+        {
+            Id = -1,
+            Name = c.Name,
+            Locations = Enumerable.Range(0, c.Locations)
+                .Select(i => new WorkspaceLocation { Name = $"loc{i}", Path = $@"C:\x\{c.Name}\{i}" })
+                .ToList()
+        })
+        .ToList();
+
+    [Fact]
+    public async Task Default_leaves_the_cards_exactly_as_they_arrived()
+    {
+        var (service, _) = await LoadedAsync();
+
+        var cards = Cards(("Zebra", 1), ("Apple", 3), ("Mango", 2));
+
+        // The whole reason Default exists as a value rather than being Name: adding sorting had to
+        // change nobody's dashboard, and a hand-made group is in the order its file lists.
+        Assert.Equal(CardSort.Default, service.SortFor("G"));
+        Assert.Equal(new[] { "Zebra", "Apple", "Mango" }, service.OrderWorkspaces("G", cards).Select(w => w.Name));
+    }
+
+    [Fact]
+    public async Task Name_and_Locations_sort_the_way_they_say()
+    {
+        var (service, _) = await LoadedAsync();
+        var cards = Cards(("Zebra", 1), ("Apple", 3), ("Mango", 2));
+
+        await service.SetSortAsync("G", CardSort.Name);
+        Assert.Equal(new[] { "Apple", "Mango", "Zebra" }, service.OrderWorkspaces("G", cards).Select(w => w.Name));
+
+        await service.SetSortAsync("G", CardSort.Locations);
+        Assert.Equal(new[] { "Apple", "Mango", "Zebra" }, service.OrderWorkspaces("G", cards).Select(w => w.Name));
+
+        // Locations is most-first, so a tie has to fall back to something stable rather than to
+        // whatever order the scan happened to produce.
+        var tied = Cards(("Zebra", 2), ("Apple", 2), ("Solo", 5));
+        Assert.Equal(new[] { "Solo", "Apple", "Zebra" }, service.OrderWorkspaces("G", tied).Select(w => w.Name));
+    }
+
+    [Fact]
+    public async Task Pins_sit_on_top_of_whatever_sort_is_chosen()
+    {
+        var (service, _) = await LoadedAsync();
+        var cards = Cards(("Apple", 3), ("Mango", 2), ("Zebra", 1));
+
+        await service.SetSortAsync("G", CardSort.Name);
+        await service.TogglePinAsync("G", "Zebra");
+
+        // A pin is a promotion out of the order, not a different order — so Zebra leads and the
+        // rest stay alphabetical behind it.
+        Assert.Equal(new[] { "Zebra", "Apple", "Mango" }, service.OrderWorkspaces("G", cards).Select(w => w.Name));
+    }
+
+    [Fact]
+    public async Task Choosing_Custom_starts_from_what_is_on_screen()
+    {
+        var (service, _) = await LoadedAsync();
+        var cards = Cards(("Zebra", 1), ("Apple", 3), ("Mango", 2));
+
+        await service.SetSortAsync("G", CardSort.Custom, new[] { "Zebra", "Apple", "Mango" });
+
+        // Without the seed, the first thing "Custom" does is scramble the group into whatever order
+        // the scan handed over — which reads as the option being broken rather than as an empty
+        // custom order.
+        Assert.Equal(new[] { "Zebra", "Apple", "Mango" }, service.CardOrderFor("G"));
+        Assert.Equal(new[] { "Zebra", "Apple", "Mango" }, service.OrderWorkspaces("G", cards).Select(w => w.Name));
+    }
+
+    [Fact]
+    public async Task Choosing_Custom_again_does_not_overwrite_an_order_already_arranged()
+    {
+        var (service, _) = await LoadedAsync();
+
+        await service.SetSortAsync("G", CardSort.Custom, new[] { "A", "B", "C" });
+        await service.MoveCardAsync("G", "C", "A", new[] { "A", "B", "C" });
+        Assert.Equal(new[] { "C", "A", "B" }, service.CardOrderFor("G"));
+
+        // Switching away and back is a common thing to do while comparing orders, and it must not
+        // throw away the arrangement.
+        await service.SetSortAsync("G", CardSort.Name);
+        await service.SetSortAsync("G", CardSort.Custom, new[] { "A", "B", "C" });
+
+        Assert.Equal(new[] { "C", "A", "B" }, service.CardOrderFor("G"));
+    }
+
+    [Fact]
+    public async Task Dragging_a_card_switches_the_group_to_Custom()
+    {
+        var (service, _) = await LoadedAsync();
+
+        // Dragging a card *is* choosing a custom order. Storing the order without the mode would
+        // write something nothing reads and appear to do nothing at all.
+        await service.MoveCardAsync("G", "C", "A", new[] { "A", "B", "C" });
+
+        Assert.Equal(CardSort.Custom, service.SortFor("G"));
+        Assert.Equal(new[] { "C", "A", "B" }, service.CardOrderFor("G"));
+    }
+
+    [Fact]
+    public async Task A_card_dropped_past_the_last_one_goes_to_the_end()
+    {
+        var (service, _) = await LoadedAsync();
+
+        // Last is the position a drop-before rule cannot express, so the dialog renders a target
+        // below the last row and it arrives here as an unknown target.
+        await service.MoveCardAsync("G", "A", string.Empty, new[] { "A", "B", "C" });
+
+        Assert.Equal(new[] { "B", "C", "A" }, service.CardOrderFor("G"));
+    }
+
+    [Fact]
+    public async Task A_card_that_is_not_in_the_custom_order_sorts_after_the_ones_that_are()
+    {
+        var (service, _) = await LoadedAsync();
+
+        await service.SetSortAsync("G", CardSort.Custom, new[] { "Zebra", "Apple" });
+
+        // A project scanned since the last arranging. It turns up at the end rather than silently
+        // first, and the ones that were arranged keep their order.
+        var cards = Cards(("Apple", 1), ("Newcomer", 1), ("Zebra", 1));
+
+        Assert.Equal(
+            new[] { "Zebra", "Apple", "Newcomer" },
+            service.OrderWorkspaces("G", cards).Select(w => w.Name));
+    }
+
+    [Fact]
+    public async Task Renaming_a_card_carries_its_place_in_the_custom_order()
+    {
+        var (service, _) = await LoadedAsync();
+
+        await service.SetSortAsync("G", CardSort.Custom, new[] { "A", "PM.UI", "C" });
+        await service.RenameCardAsync("G", "PM.UI", "Personnel Manager");
+
+        // The order is a list of card names too, so a rename that did not move it would drop the
+        // card to the end of its own group.
+        Assert.Equal(new[] { "A", "Personnel Manager", "C" }, service.CardOrderFor("G"));
+    }
+
+    [Fact]
+    public async Task Resetting_the_arrangement_leaves_the_card_edits_alone()
+    {
+        var (service, _) = await LoadedAsync();
+
+        await service.RenameCardAsync("G", "PM.UI", "Personnel Manager");
+        await service.MoveCardAsync("G", "C", "A", new[] { "A", "B", "C" });
+
+        await service.ResetArrangementAsync("G");
+
+        // "Put the order back" and "undo my renames and merges" are different regrets. One button
+        // for both would make the safe one scary.
+        Assert.Equal(CardSort.Default, service.SortFor("G"));
+        Assert.Empty(service.CardOrderFor("G"));
+        Assert.Equal("Personnel Manager", service.CardOverrideFor("G", "PM.UI")?.Name);
+    }
+
+    [Fact]
+    public async Task Default_is_not_written_to_the_file()
+    {
+        var (service, storage) = await LoadedAsync();
+
+        await service.SetSortAsync("G", CardSort.Name);
+        await service.SetSortAsync("G", CardSort.Default);
+
+        Assert.DoesNotContain("Default", storage.Read("dashboardLayout"));
+        Assert.Equal(CardSort.Default, service.SortFor("G"));
+    }
+
     // ---- renaming a group --------------------------------------------------------------------
 
     [Fact]
@@ -719,6 +893,7 @@ public class DashboardLayoutTests
         await service.ToggleHiddenAsync("Beta");
         await service.SetAliasesAsync(AliasScope.Group, "Beta", new[] { "bee" });
         await service.RenameCardAsync("Beta", "PM.UI", "Personnel Manager");
+        await service.SetSortAsync("Beta", CardSort.Custom, new[] { "Checkout", "Personnel Manager" });
 
         await service.RenameGroupAsync("Beta", "Delta");
 
@@ -730,10 +905,14 @@ public class DashboardLayoutTests
         Assert.True(service.IsHidden("Delta"));
         Assert.Equal(new[] { "bee" }, service.AliasesFor(AliasScope.Group, "Delta"));
         Assert.Equal("Personnel Manager", service.CardOverrideFor("Delta", "PM.UI")?.Name);
+        Assert.Equal(CardSort.Custom, service.SortFor("Delta"));
+        Assert.Equal(new[] { "Checkout", "Personnel Manager" }, service.CardOrderFor("Delta"));
 
         Assert.False(service.IsPinned("Beta", "Checkout"));
         Assert.False(service.IsHidden("Beta"));
         Assert.Null(service.CardOverrideFor("Beta", "PM.UI"));
+        Assert.Equal(CardSort.Default, service.SortFor("Beta"));
+        Assert.Empty(service.CardOrderFor("Beta"));
     }
 
     // ---- degrading ---------------------------------------------------------------------------

@@ -56,6 +56,42 @@ public class DashboardLayout
     /// </para>
     /// </summary>
     public Dictionary<string, Dictionary<string, CardOverride>> Cards { get; set; } = new();
+
+    /// <summary>
+    /// Group name → how its cards are ordered. Absent means <see cref="CardSort.Default"/>, which
+    /// is the order the group arrived in — alphabetical for a scanned group, because the scan sorts
+    /// its own output, and file order for a hand-made one.
+    /// </summary>
+    public Dictionary<string, CardSort> Sort { get; set; } = new();
+
+    /// <summary>
+    /// Group name → the card names in the order the user dragged them, for
+    /// <see cref="CardSort.Custom"/>. A card missing from the list sorts after every listed one, so
+    /// a newly scanned project turns up at the end rather than silently first.
+    /// </summary>
+    public Dictionary<string, List<string>> CardOrder { get; set; } = new();
+}
+
+/// <summary>How the cards inside one group are ordered.</summary>
+public enum CardSort
+{
+    /// <summary>
+    /// However the group arrived. The scan sorts alphabetically and a hand-made group is in file
+    /// order, so this is not the same rule for both — which is the point: it is "do not reorder",
+    /// and it is the default so that adding this feature changed nobody's dashboard.
+    /// </summary>
+    Default,
+
+    Name,
+
+    /// <summary>
+    /// Most locations first. Which cards have both a dev and a demo — the ones that are really two
+    /// working copies of one project — sorted to the top.
+    /// </summary>
+    Locations,
+
+    /// <summary>The order in <see cref="DashboardLayout.CardOrder"/>, set by dragging.</summary>
+    Custom
 }
 
 /// <summary>
