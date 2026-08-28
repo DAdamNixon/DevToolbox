@@ -24,11 +24,12 @@
    needs no target at all. dragover has to preventDefault or the browser refuses the drop. *@
 @* Right-click anywhere on the row opens the same menu the ⋮ does, at the cursor. A group card is
    the full width of the window, so the ⋮ is a long way from wherever you happen to be pointing —
-   and it is the one target on this screen you have to aim for. data-menu-anchor covers the card so
-   menu.js's document listener leaves the right-click alone; see the chips in WorkspaceCard. *@
+   and it is the one target on this screen you have to aim for. Deliberately not marked
+   data-menu-anchor: that says "clicking here does not dismiss a menu", and a full-width card
+   saying it left almost nowhere to click to get rid of one. menu.js ignores right-button
+   pointerdown instead. *@
 <div class="glow-card ws-group-card cursor-pointer @GroupStateClass"
      data-drag-card
-     data-menu-anchor
      @onclick="ToggleExpand"
      @oncontextmenu="OpenContextMenu"
      @oncontextmenu:preventDefault="true"

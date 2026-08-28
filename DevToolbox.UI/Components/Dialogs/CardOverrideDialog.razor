@@ -5,7 +5,7 @@
 
 @* Everything that has been changed by hand about one scanned card, in one dialog.
 
-   Four separate menu items — rename, relabel the locations, hide, unmerge — would have been four
+   Four separate menu items — rename, relabel the locations, hide, split — would have been four
    dialogs for one thought. They are never used apart: you merge two cards and the very next thing
    you want is to say which location is which, because a merge is precisely what gives a card two
    locations with the same name. *@
@@ -89,16 +89,16 @@
                             <i class="bi bi-arrow-return-right"></i>
                             <span class="font-mono">@absorbed</span>
                         </span>
-                        <button type="button" class="btn-ghost btn-sm" title="Give it its own card back"
-                                @onclick="() => Release(absorbed)">
-                            <i class="bi bi-arrows-expand"></i> Release
+                        <button type="button" class="btn-ghost btn-sm" title="Split it back onto its own card"
+                                @onclick="() => Split(absorbed)">
+                            <i class="bi bi-arrows-expand"></i> Split
                         </button>
                     </div>
                 }
             </div>
             <span class="ws-hint">
-                Released at once, without waiting for Save — a merge is the one thing here you cannot
-                see the result of until it is undone.
+                Splitting happens at once, without waiting for Save — a merge is the one thing here
+                you cannot see the result of until it is undone.
             </span>
         </div>
     }
@@ -248,7 +248,7 @@
     private bool IsDuplicate(Row row) =>
         Duplicates.Contains(EffectiveLabel(row), StringComparer.OrdinalIgnoreCase);
 
-    private async Task Release(string absorbed)
+    private async Task Split(string absorbed)
     {
         await Layout.UnmergeCardAsync(GroupName, Scanned, absorbed);
         await OnSaved.InvokeAsync();

@@ -14,9 +14,17 @@
 // between a hand and an arrow was that boundary being crossed. Worse, while trapped the menu itself
 // was under the backdrop, so clicking an item would have closed the menu instead of running it.
 //
-// Listening on the document has none of that: it does not care what is painted where. Anything inside
-// an element marked data-menu-anchor is a menu or the button that opens it, and is left alone — the
-// button's own toggle handles it. Everything else closes the menu.
+// Listening on the document has none of that: it does not care what is painted where. Three things
+// are left alone — a right-click, a click inside an open menu, and a click on the control that opens
+// one — and everything else closes the menu.
+//
+// The right-button check is what makes right-click menus possible at all. pointerdown fires before
+// contextmenu, so without it every right-click closed the menu its own contextmenu handler was
+// about to open. That used to be worked around by marking whole cards data-menu-anchor, which cured
+// the symptom and caused a worse one: the attribute means "clicking here does not dismiss", and a
+// card is most of the screen — so with the group cards and the workspace cards both marked, there
+// was nearly nowhere left to click to get rid of a menu. The button number is the actual
+// distinction, so it is the thing to test.
 (function () {
     'use strict';
 
@@ -28,9 +36,23 @@
             if (handler) { return; }
 
             handler = function (event) {
-                if (event.target && event.target.closest && event.target.closest('[data-menu-anchor]')) {
+                // A right-click is opening a menu of its own; its contextmenu handler owns it.
+                if (event.button === 2) { return; }
+
+                var target = event.target;
+                if (!target || !target.closest) {
+                    owner.invokeMethodAsync(method);
                     return;
                 }
+
+                // Inside an open menu: the item's own handler owns the click. Checked explicitly
+                // rather than relying on the menu sitting inside a marked anchor, because a menu
+                // positioned at the cursor is position: fixed and only incidentally a descendant.
+                if (target.closest('.ws-menu')) { return; }
+
+                // On a menu's own toggle — the ⋮, the sort button, a quick-open chip. Its click
+                // toggles the menu, and closing it here first would fight that.
+                if (target.closest('[data-menu-anchor]')) { return; }
 
                 owner.invokeMethodAsync(method);
             };

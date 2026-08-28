@@ -90,11 +90,11 @@
    expanded. The ⋮ is a 20px target in the corner of a card that may be one of sixty on screen, and
    it is the only way in to renaming, hiding and the aliases.
 
-   data-menu-anchor covers the card so menu.js's document listener leaves the right-click alone;
-   without it the pointerdown that precedes contextmenu closes the menu it is about to open.
-   stopPropagation because the group card underneath has its own right-click handler. *@
+   Deliberately not marked data-menu-anchor: that attribute means "clicking here does not dismiss a
+   menu", which is the wrong thing to say about a whole card. menu.js ignores right-button
+   pointerdown instead, which is the actual distinction. stopPropagation because the group card
+   underneath has its own right-click handler. *@
 <div class="workspace-card ws-card cursor-pointer @CardStateClass"
-     data-menu-anchor
      @onclick="ToggleExpand"
      @oncontextmenu="OpenCardMenu"
      @oncontextmenu:preventDefault="true"
@@ -180,7 +180,7 @@
                             {
                                 <button class="dropdown-item" @onclick="Unmerge">
                                     <i class="bi bi-arrows-expand"></i>
-                                    <span>Unmerge @Override.Absorb.Count</span>
+                                    <span>Split Cards</span>
                                 </button>
                             }
                         }
@@ -268,7 +268,6 @@
                    the row is the thing under the pointer, and its ⋮ is the smallest target on the
                    card. Stops propagation so it does not also open the card's menu. *@
                 <div class="ws-loc @(missing.Contains(location.Path) ? "is-missing" : "")"
-                     data-menu-anchor
                      @oncontextmenu="e => OpenLocationMenu(e, location)"
                      @oncontextmenu:preventDefault="true"
                      @oncontextmenu:stopPropagation="true">
@@ -542,10 +541,30 @@
     /// a scanned card is alphabetical — <c>demo</c> then <c>dev</c> — and for a hand-made one is
     /// whatever order they were added in.
     /// </summary>
-    private List<WorkspaceLocation> QuickLocations =>
-        QuickOpenCount <= 0
-            ? new List<WorkspaceLocation>()
-            : WorkspaceViewModel.Locations.Take(QuickOpenCount).ToList();
+    private List<WorkspaceLocation> QuickLocations
+    {
+        get
+        {
+            if (QuickOpenCount <= 0)
+            {
+                return new List<WorkspaceLocation>();
+            }
+
+            var all = WorkspaceViewModel.Locations;
+            if (all.Count <= QuickOpenCount)
+            {
+                return all.ToList();
+            }
+
+            // One fewer than asked for when there are more than fit, so the +N badge has room on
+            // the same line. Three chips plus a badge does not fit a 17rem card: the row either
+            // wrapped, putting the badge alone on a second line and making the card taller than its
+            // neighbours, or every label truncated — and a chip reading "dem…" is a quick-open
+            // button you cannot identify. Two readable chips and "+2" says more than three
+            // unreadable ones.
+            return all.Take(Math.Max(1, QuickOpenCount - 1)).ToList();
+        }
+    }
 
     private int HiddenLocationCount => WorkspaceViewModel.Locations.Count - QuickLocations.Count;
 
