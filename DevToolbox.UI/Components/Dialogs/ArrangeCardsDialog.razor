@@ -6,23 +6,22 @@
 
 @* Arranging one group, with room to do it in.
 
-   This replaced a mode: a toolbar toggle that put a grip on all 591 cards at once and left you to
-   work out what the mode was for. A mode with no object is a mode nobody can read. Here the object
-   is one group, named in the title, and the two things you can do to it are the two gestures the
-   list affords — drag a row to move it, drop a row on another row's merge target to fold them
-   together.
+   Laid out as the group itself is — the same card grid, the same tiles — because that is the thing
+   being arranged, and a single tall column of rows made you translate between "row seven of a list"
+   and "third card on the second line of a grid" to picture the result. Here the picture *is* the
+   result.
 
-   A flat list rather than the dashboard's grid, because both gestures are one-dimensional: "third
-   instead of eighth" and "this one belongs to that one" are both answered by a column. *@
+   Two gestures, two targets: drop a card on another card to move it into that place, or drop it on
+   that card's "merge into" chip to fold the two together. *@
 
 <div class="ws-arrange">
     <div class="ws-arrange-head">
         <div class="ws-arrange-sort">
             <label class="ws-label">Order</label>
-            <select class="ws-input ws-input-fit" value="@sort" @onchange="SetSort">
-                @foreach (var option in SortOptions)
+            <select class="ws-input ws-input-fit" value="@SelectedSort" @onchange="SetSort">
+                @foreach (var option in CardSortOptions.For(IsFromSource))
                 {
-                    <option value="@option.Value">@option.Label</option>
+                    <option value="@option">@CardSortOptions.Label(option, IsFromSource)</option>
                 }
             </select>
         </div>
@@ -56,106 +55,113 @@
     }
     else
     {
-        <div class="ws-arrange-list">
+        @* The group's own grid, the group's own card classes. Arranging something should look like
+           the thing being arranged. *@
+        <div class="ws-arrange-grid">
             @foreach (var row in rows)
             {
                 var key = row.Workspace.OverrideKey;
                 var patch = Layout.CardOverrideFor(GroupName, key);
                 var hidden = patch?.Hidden == true;
 
-                <div class="ws-arrange-row @RowClass(key, hidden)"
+                <div class="workspace-card ws-card ws-arrange-tile @TileClass(key, hidden)"
                      data-drag-card
+                     draggable="true"
+                     @ondragstart="() => DragStart(key)"
+                     @ondragend="DragEnd"
                      @ondragover:preventDefault="true"
                      @ondragenter:preventDefault="true"
                      @ondragover="() => DragOver(key, merge: false)"
                      @ondrop:preventDefault="true"
                      @ondrop="() => Drop(key, merge: false)">
 
-                    <span class="ws-grip is-on"
-                          draggable="true"
-                          data-drag-handle="@key"
-                          title="Drag to move"
-                          @ondragstart="() => DragStart(key)"
-                          @ondragend="DragEnd">
-                        <i class="bi bi-grip-vertical"></i>
-                    </span>
+                    <div class="ws-arrange-tile-head">
+                        @* The whole tile is draggable here, not just a grip: there is nothing else
+                           to click a card for in this dialog, so the usual reason to keep the card
+                           clickable — expanding it — does not apply. The grip stays as the signal
+                           that it can be dragged at all. *@
+                        <span class="ws-grip is-on"><i class="bi bi-grip-vertical"></i></span>
 
-                    <i class="bi @IconFor(row.Workspace) ws-icon"></i>
-
-                    <div class="ws-arrange-body">
+                        <i class="bi @IconFor(row.Workspace) ws-icon"></i>
                         <span class="ws-arrange-name">@row.Workspace.Name</span>
-                        <span class="ws-arrange-locs">
-                            @foreach (var location in row.Workspace.Locations)
+
+                        <div class="ws-arrange-actions">
+                            <button type="button" class="btn-ghost btn-sm" title="Rename it, and its locations"
+                                    draggable="false"
+                                    @onclick="() => Customize(row.Workspace)">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button type="button" class="btn-ghost btn-sm"
+                                    title="@(hidden ? "Show in the group" : "Hide from the group")"
+                                    draggable="false"
+                                    @onclick="() => ToggleHidden(key, hidden)">
+                                <i class="bi @(hidden ? "bi-eye" : "bi-eye-slash")"></i>
+                            </button>
+                            @if (patch?.Absorb.Count > 0)
                             {
-                                <span class="ws-chip">@location.Name</span>
+                                <button type="button" class="btn-ghost btn-sm"
+                                        title="Give the @patch.Absorb.Count merged card(s) their own back"
+                                        draggable="false"
+                                        @onclick="() => Unmerge(key)">
+                                    <i class="bi bi-arrows-expand"></i>
+                                </button>
                             }
-                        </span>
+                        </div>
                     </div>
 
-                    @if (patch is not null)
-                    {
-                        <span class="ws-badge is-custom" title="@Describe(patch, key)">
-                            <i class="bi bi-pencil-fill"></i>
-                            @(patch.Absorb.Count > 0 ? "merged" : "edited")
-                        </span>
-                    }
-
-                    @if (hidden)
-                    {
-                        <span class="ws-badge is-hidden-badge"><i class="bi bi-eye-slash"></i> hidden</span>
-                    }
-
-                    @* The merge target, and only while something is in flight. A row is two drop
-                       zones — move-before on the body, fold-into here — and an unlabelled second
-                       zone that only exists during a drag is worse than no second zone. *@
-                    @if (dragCard is not null && dragCard != key)
-                    {
-                        <span class="ws-arrange-merge @(dragOverCard == key && dragOverMerge ? "is-over" : "")"
-                              @ondragover:preventDefault="true"
-                              @ondragenter:preventDefault="true"
-                              @ondragover:stopPropagation="true"
-                              @ondragover="() => DragOver(key, merge: true)"
-                              @ondrop:preventDefault="true"
-                              @ondrop:stopPropagation="true"
-                              @ondrop="() => Drop(key, merge: true)">
-                            <i class="bi bi-box-arrow-in-down-right"></i> merge into
-                        </span>
-                    }
-
-                    <div class="ws-arrange-actions">
-                        <button type="button" class="btn-ghost btn-sm" title="Rename it, and its locations"
-                                @onclick="() => Customize(row.Workspace)">
-                            <i class="bi bi-pencil"></i>
-                        </button>
-                        <button type="button" class="btn-ghost btn-sm"
-                                title="@(hidden ? "Show in the group" : "Hide from the group")"
-                                @onclick="() => ToggleHidden(key, hidden)">
-                            <i class="bi @(hidden ? "bi-eye" : "bi-eye-slash")"></i>
-                        </button>
-                        @if (patch?.Absorb.Count > 0)
+                    <div class="ws-arrange-tile-body">
+                        @foreach (var location in row.Workspace.Locations)
                         {
-                            <button type="button" class="btn-ghost btn-sm"
-                                    title="Give the @patch.Absorb.Count merged card(s) their own back"
-                                    @onclick="() => Unmerge(key)">
-                                <i class="bi bi-arrows-expand"></i>
-                            </button>
+                            <span class="ws-chip">@location.Name</span>
+                        }
+
+                        @if (patch is not null)
+                        {
+                            <span class="ws-badge is-custom" title="@Describe(patch, key)">
+                                <i class="bi bi-pencil-fill"></i>
+                                @(patch.Absorb.Count > 0 ? "merged" : "edited")
+                            </span>
+                        }
+
+                        @if (hidden)
+                        {
+                            <span class="ws-badge is-hidden-badge"><i class="bi bi-eye-slash"></i> hidden</span>
                         }
                     </div>
+
+                    @* The merge target, and only while something is in flight. A tile is two drop
+                       zones — move-into-this-place on the tile, fold-together here — and an
+                       unlabelled second zone that only appears during a drag would be worse than no
+                       second zone. It covers the tile's foot so it is a real target at this size
+                       rather than a chip to be aimed at. *@
+                    @if (dragCard is not null && dragCard != key)
+                    {
+                        <div class="ws-arrange-merge @(dragOverCard == key && dragOverMerge ? "is-over" : "")"
+                             @ondragover:preventDefault="true"
+                             @ondragenter:preventDefault="true"
+                             @ondragover:stopPropagation="true"
+                             @ondragover="() => DragOver(key, merge: true)"
+                             @ondrop:preventDefault="true"
+                             @ondrop:stopPropagation="true"
+                             @ondrop="() => Drop(key, merge: true)">
+                            <i class="bi bi-box-arrow-in-down-right"></i> merge into this
+                        </div>
+                    }
                 </div>
             }
 
             @* Last is a position a drop-before rule cannot express, so it needs its own target —
-               the same gap the group list had. *@
+               the same gap the group list had. A tile, so it sits in the flow of the grid. *@
             @if (dragCard is not null)
             {
-                <div class="ws-drop-end @(dragOverCard == string.Empty ? "is-over" : "")"
+                <div class="ws-arrange-tile is-end @(dragOverCard == string.Empty ? "is-over" : "")"
                      @ondragover:preventDefault="true"
                      @ondragenter:preventDefault="true"
                      @ondragover="() => DragOver(string.Empty, merge: false)"
                      @ondrop:preventDefault="true"
                      @ondrop="() => Drop(string.Empty, merge: false)">
                     <i class="bi bi-box-arrow-in-down"></i>
-                    <span>Drop here to make <strong>@dragCard</strong> last</span>
+                    <span>Move to the end</span>
                 </div>
             }
         </div>
@@ -214,13 +220,13 @@
     private Workspace? customizing;
     private bool isCustomizeVisible;
 
-    private static readonly (CardSort Value, string Label)[] SortOptions =
-    {
-        (CardSort.Default, "Default"),
-        (CardSort.Name, "Name A–Z"),
-        (CardSort.Locations, "Most locations first"),
-        (CardSort.Custom, "Custom — as arranged")
-    };
+    private bool IsFromSource => Group?.IsFromSource ?? true;
+
+    /// <summary>
+    /// Which option the dropdown shows. See <see cref="CardSortOptions.Selected"/>: nothing stored
+    /// is Default, and for a scanned group that is the same list Name produces.
+    /// </summary>
+    private CardSort SelectedSort => CardSortOptions.Selected(sort, IsFromSource);
 
     protected override void OnParametersSet() => Reload();
 
@@ -234,7 +240,7 @@
             : Layout.OrderWorkspaces(GroupName, Group.Workspaces).Select(w => new Row(w)).ToList();
     }
 
-    private string RowClass(string key, bool hidden)
+    private string TileClass(string key, bool hidden)
     {
         var classes = new List<string>();
 

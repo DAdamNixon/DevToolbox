@@ -107,10 +107,10 @@
                             class="ws-sort @(sort == CardSort.Default ? "" : "is-set")"
                             title="@SortTooltip"
                             @onclick="() => Menu.Toggle(SortMenuId)">
-                        <i class="bi @SortIcon"></i>
+                        <i class="bi @CardSortOptions.Icon(SelectedSort)"></i>
                         @if (sort != CardSort.Default)
                         {
-                            <span>@SortLabel(sort)</span>
+                            <span>@CardSortOptions.Label(sort, IsFromSource)</span>
                         }
                     </button>
 
@@ -118,12 +118,12 @@
                     {
                         <div class="ws-menu">
                             <div class="ws-menu-heading">Order cards by</div>
-                            @foreach (var option in SortChoices)
+                            @foreach (var option in CardSortOptions.For(IsFromSource))
                             {
-                                <button class="dropdown-item @(sort == option ? "is-on" : "")"
+                                <button class="dropdown-item @(SelectedSort == option ? "is-on" : "")"
                                         @onclick="() => ChooseSort(option)">
-                                    <i class="bi @(sort == option ? "bi-check2" : "bi-dash")"></i>
-                                    <span>@SortLabel(option)</span>
+                                    <i class="bi @(SelectedSort == option ? "bi-check2" : "bi-dash")"></i>
+                                    <span>@CardSortOptions.Label(option, IsFromSource)</span>
                                 </button>
                             }
                             <div class="ws-menu-sep"></div>
@@ -417,32 +417,17 @@
     /// <summary>How this group's cards are ordered. Read in OnParametersSet, like the icon.</summary>
     private CardSort sort;
 
-    private static readonly CardSort[] SortChoices =
-    {
-        CardSort.Default, CardSort.Name, CardSort.Locations, CardSort.Custom
-    };
-
     private string SortMenuId => $"sort:{GroupViewModel.Group.Name}";
 
-    private static string SortLabel(CardSort value) => value switch
-    {
-        CardSort.Name => "Name A–Z",
-        CardSort.Locations => "Most locations",
-        CardSort.Custom => "Custom",
-        _ => "Default"
-    };
+    /// <summary>
+    /// Which option the menu ticks. Nothing stored is Default, and for a scanned group that is
+    /// indistinguishable from Name — the scan sorts alphabetically — so Name gets the tick rather
+    /// than the menu describing a difference nobody can see.
+    /// </summary>
+    private CardSort SelectedSort => CardSortOptions.Selected(sort, IsFromSource);
 
-    private string SortIcon => sort switch
-    {
-        CardSort.Name => "bi-sort-alpha-down",
-        CardSort.Locations => "bi-sort-numeric-down-alt",
-        CardSort.Custom => "bi-list-ol",
-        _ => "bi-arrow-down-up"
-    };
-
-    private string SortTooltip => sort == CardSort.Default
-        ? "Order cards — currently as scanned"
-        : $"Order cards — currently {SortLabel(sort)}";
+    private string SortTooltip =>
+        $"Order cards — currently {CardSortOptions.Label(SelectedSort, IsFromSource)}";
 
     private bool IsFromSource => GroupViewModel.Group.IsFromSource;
 

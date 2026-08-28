@@ -47,8 +47,13 @@
     can actually be reordered as well as merged, and each group header carries its own sort with a
     remembered Custom option.
   -->
+  <!--
+    0.9.4 / beta.5: right-click menus on the workspace cards and their location rows, the arrange
+    dialog laid out as the group's own card grid instead of a column, and the redundant "Default"
+    sort dropped where it was identical to Name A-Z.
+  -->
   <PropertyGroup>
-    <VersionPrefix>0.9.3</VersionPrefix>
-    <VersionSuffix>beta.4</VersionSuffix>
+    <VersionPrefix>0.9.4</VersionPrefix>
+    <VersionSuffix>beta.5</VersionSuffix>
   </PropertyGroup>
 </Project>

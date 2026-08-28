@@ -17,8 +17,8 @@
 @inject ISystemService SystemService
 @implements IDisposable
 
-@* One definition of the location menu, rendered from two places below: the ⋮ on an expanded
-   location row, and a right-click on a collapsed card's quick-open chip.
+@* One definition of the location menu, rendered from three places below: the ⋮ on an expanded
+   location row, a right-click on that row, and a right-click on a collapsed card's quick-open chip.
 
    A templated delegate rather than a child component because the menu needs five of this
    component's callbacks, IsReadOnly, the script list and the open-with options — plumbing all of
@@ -27,7 +27,8 @@
    local declared below its first use does not compile. *@
 @{
     RenderFragment<WorkspaceLocation> LocationMenu = location =>
-    @<div class="ws-menu">
+    @<div class="ws-menu @(AtCursor(LocationMenuId(location)) ? "is-at-cursor" : "")"
+          style="@CursorStyle(LocationMenuId(location))">
         <button class="dropdown-item" @onclick="() => OnOpenInExplorer.InvokeAsync(location)">
             <i class="bi bi-folder2-open"></i>
             <span>Open in Explorer</span>
@@ -83,9 +84,21 @@
    thing to do to it. The regions that must not collapse the card stop the click themselves:
    the pin, the actions menu, the quick-open row, and the locations list. *@
 @* Reordering and merging are not here. They are one group at a time, in the arrange dialog, where
-   the cards are a column and both gestures have somewhere unambiguous to land — a grip on all 591
-   of these at once was a mode with no object. *@
-<div class="workspace-card ws-card cursor-pointer @CardStateClass" @onclick="ToggleExpand">
+   both gestures have somewhere unambiguous to land — a grip on all 591 of these at once was a mode
+   with no object. *@
+@* Right-click anywhere on the card opens the same menu the ⋮ does, at the cursor — collapsed or
+   expanded. The ⋮ is a 20px target in the corner of a card that may be one of sixty on screen, and
+   it is the only way in to renaming, hiding and the aliases.
+
+   data-menu-anchor covers the card so menu.js's document listener leaves the right-click alone;
+   without it the pointerdown that precedes contextmenu closes the menu it is about to open.
+   stopPropagation because the group card underneath has its own right-click handler. *@
+<div class="workspace-card ws-card cursor-pointer @CardStateClass"
+     data-menu-anchor
+     @onclick="ToggleExpand"
+     @oncontextmenu="OpenCardMenu"
+     @oncontextmenu:preventDefault="true"
+     @oncontextmenu:stopPropagation="true">
     <!-- Workspace Header -->
     <div class="ws-card-header">
         <div class="ws-card-title">
@@ -128,13 +141,14 @@
                 <button type="button"
                     class="btn-ghost ws-icon-btn"
                     title="Workspace actions"
-                    @onclick="() => Menu.Toggle(WorkspaceMenuId)">
+                    @onclick="() => ToggleAnchoredMenu(WorkspaceMenuId)">
                     <i class="bi bi-three-dots-vertical"></i>
                 </button>
 
                 @if (Menu.IsOpen(WorkspaceMenuId))
                 {
-                    <div class="ws-menu">
+                    <div class="ws-menu @(AtCursor(WorkspaceMenuId) ? "is-at-cursor" : "")"
+                         style="@CursorStyle(WorkspaceMenuId)">
                         <button class="dropdown-item" @onclick="ShowIconModal">
                             <i class="bi bi-palette"></i>
                             <span>Change Icon</span>
@@ -244,7 +258,14 @@
         <div class="ws-locations" @onclick:stopPropagation="true">
             @foreach (var location in WorkspaceViewModel.Locations)
             {
-                <div class="ws-loc @(missing.Contains(location.Path) ? "is-missing" : "")">
+                @* And on each location row, which gets that row's own menu rather than the card's —
+                   the row is the thing under the pointer, and its ⋮ is the smallest target on the
+                   card. Stops propagation so it does not also open the card's menu. *@
+                <div class="ws-loc @(missing.Contains(location.Path) ? "is-missing" : "")"
+                     data-menu-anchor
+                     @oncontextmenu="e => OpenLocationMenu(e, location)"
+                     @oncontextmenu:preventDefault="true"
+                     @oncontextmenu:stopPropagation="true">
                     <i class="bi @LocationIcon(location) ws-icon" style="color: @LocationColor(location)"></i>
 
                     <div class="ws-loc-body">
@@ -272,7 +293,7 @@
                             <button type="button"
                                 class="btn-ghost btn-sm"
                                 title="More actions"
-                                @onclick="() => Menu.Toggle(LocationMenuId(location))">
+                                @onclick="() => ToggleAnchoredMenu(LocationMenuId(location))">
                                 <i class="bi bi-three-dots"></i>
                             </button>
 
@@ -586,8 +607,52 @@
         Icon = location.Type == LocationType.Folder ? "bi-folder" : "bi-file-earmark-code"
     };
 
+    // ---- menus at the cursor -----------------------------------------------------------------
+    //
+    // Which menu was opened by right-click, and where. Only one menu is ever open — MenuStateService
+    // owns that — so one id and one point is all the state needed, and a menu opened from its own ⋮
+    // simply is not the one named here and hangs off its anchor as before.
+
+    private string? cursorMenuId;
+    private double cursorX;
+    private double cursorY;
+
+    private bool AtCursor(string menuId) => cursorMenuId == menuId;
+
+    private string? CursorStyle(string menuId) =>
+        AtCursor(menuId) ? $"left:{cursorX}px;top:{cursorY}px" : null;
+
+    /// <summary>
+    /// Open rather than toggle: right-clicking a second place on a card whose menu is already up
+    /// should move the menu there, not dismiss it.
+    /// </summary>
+    private void OpenCardMenu(MouseEventArgs e)
+    {
+        cursorMenuId = WorkspaceMenuId;
+        cursorX = e.ClientX;
+        cursorY = e.ClientY;
+        Menu.Open(WorkspaceMenuId);
+    }
+
+    private void OpenLocationMenu(MouseEventArgs e, WorkspaceLocation location)
+    {
+        var id = LocationMenuId(location);
+        cursorMenuId = id;
+        cursorX = e.ClientX;
+        cursorY = e.ClientY;
+        Menu.Open(id);
+    }
+
+    /// <summary>Back to hanging off the anchor, whatever a previous right-click set.</summary>
+    private void ToggleAnchoredMenu(string menuId)
+    {
+        cursorMenuId = null;
+        Menu.Toggle(menuId);
+    }
+
     private void ToggleExpand()
     {
+        cursorMenuId = null;
         CardStateService.ToggleExpand("workspace", WorkspaceViewModel.StateKey);
         WorkspaceViewModel.IsExpanded = !WorkspaceViewModel.IsExpanded;
         Menu.Close();
