@@ -2,7 +2,17 @@
 // themes.css do the rest. Also decides whether animation is allowed at all, and
 // publishes that two ways: to themeEffects.js, which builds the particle layer, and
 // as data-fx-motion on <html>, which is how the CSS-only ornament in themeDecor.css
-// knows whether it may move.
+// — and the transient half of js/themeDecor.js — knows whether it may move.
+//
+// Three consumers get told which theme was painted, and they divide the ornament up
+// between them:
+//
+//   css/themeDecor.css      background images and pseudo-elements: the leaf pile, the
+//                           candles, the pumpkin, the skater, the garland
+//   js/themeEffects.js      ambient particles — snow, leaves, bats
+//   js/themeDecor.js        props that need their own box or their own lifetime — the
+//                           cobwebs, the cornucopia, the grass, the flag, and the
+//                           fireworks, turkeys and sparks they throw
 //
 // Two stores are involved, and only one of them is authoritative:
 //
@@ -190,6 +200,20 @@
         window.devtoolboxThemeEffects.set(animations && def ? def.effect : null);
     }
 
+    // The other half of the ornament: the props that have to be elements — cobwebs, the
+    // cornucopia, the grass, the flag. Optional in the same way and for the same reason.
+    //
+    // Given the *theme* rather than an effect id, and not given the animations flag at
+    // all, which is the difference that matters. The particle layer is weather and turning
+    // it off means no weather; these are objects, and an object does not disappear because
+    // you asked the app to hold still. themeDecor.js reads data-fx-motion itself for the
+    // parts of its job that genuinely are motion — a firework, a spark, a turkey.
+    function driveDecor(painted) {
+        if (!window.devtoolboxThemeDecor) return;
+
+        window.devtoolboxThemeDecor.set(find(painted) ? painted : null);
+    }
+
     // The particle layer is built by JS, so themeEffects.js can simply not be asked
     // for it. Decoration that lives entirely in CSS — the twinkling lights
     // (Better)Christmas wraps its cards in — has no such switch, so the setting is
@@ -201,6 +225,7 @@
         document.documentElement.setAttribute('data-theme', painted);
         document.documentElement.setAttribute('data-fx-motion', animations ? 'on' : 'off');
         driveEffects(painted, animations);
+        driveDecor(painted);
         return painted;
     }
 

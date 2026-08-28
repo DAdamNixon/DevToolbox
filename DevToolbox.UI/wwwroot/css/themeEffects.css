@@ -1,4 +1,4 @@
-/* The seasonal animation layer — falling leaves, snow, bats.
+/* The seasonal animation layer — falling leaves, snow, bats, twinkling stars.
  *
  * Off unless two things are true: the active theme names an effect (see
  * js/themeCatalog.js) and the user has animations enabled in Settings. Neither
@@ -77,10 +77,37 @@
     50%      { transform: translateX(var(--fx-sway)); }
 }
 
-/* A full tumble, for anything with a recognisable up. */
+/* A full tumble, for anything with a recognisable up.
+ *
+ * THIS IS THE ANIMATION THAT USED TO MAKE THE LEAVES STUTTER, and the fix is why it
+ * animates `rotate` rather than folding the rotation into `transform`. The old version was
+ *
+ *     from { transform: translateX(calc(var(--fx-sway) * -1)) rotate(0deg); }
+ *     to   { transform: translateX(var(--fx-sway)) rotate(var(--fx-spin)); }
+ *
+ * and both of its endpoints disagreed with each other. An infinite animation that does not
+ * alternate restarts from `from` the instant it reaches `to`, so every 2.5–6 seconds — the
+ * random --fx-sway-duration, which averages a little over four — each leaf's rotation
+ * snapped back from up to two full turns to zero and its sway jumped from one extreme to
+ * the other. That was the glitch: not a dropped frame, a keyframe loop with a seam in it.
+ * Snow and the bats never showed it because fx-sway and fx-flap are symmetric and land back
+ * where they started.
+ *
+ * So the two motions are separated onto two properties instead of two elements. `rotate` and
+ * `transform` are independent animatable properties — the individual one is applied first —
+ * which means one element can run a seamless spin and a seamless sway at unrelated speeds
+ * without either being expressed as a keyframe of the other. The spin is seamless because
+ * --fx-spin is a whole number of turns and n turns is visually zero turns; the sway is
+ * seamless because fx-sway already returns to its start.
+ *
+ * A consequence worth knowing rather than fixing: `transform` resolves inside the frame
+ * `rotate` has already turned, so the sway swings with the leaf instead of staying
+ * horizontal. At 4–14px against a 14–30px leaf that reads as wobble, which is what a leaf
+ * does anyway.
+ */
 @keyframes fx-tumble {
-    from { transform: translateX(calc(var(--fx-sway) * -1)) rotate(0deg); }
-    to   { transform: translateX(var(--fx-sway)) rotate(var(--fx-spin)); }
+    from { rotate: 0turn; }
+    to   { rotate: var(--fx-spin); }
 }
 
 @keyframes fx-flap {
@@ -105,10 +132,13 @@
     text-shadow: 0 0 6px rgb(255 255 255 / 0.55);
 }
 
-/* Winter is light-grounded: white on #eef4f9 is invisible. */
+/* Winter was light-grounded and its snow had to be slate to be visible on #eef4f9. It is a
+ * deep blue night now, so the snow is white again — with a colder cast and a wider halo
+ * than the Christmases get, because on that ground it is the brightest thing in the
+ * window and may as well look like it. */
 :root[data-theme="winter"] #theme-fx[data-fx="snow"] .fx {
-    color: #6f9cc4;
-    text-shadow: 0 0 5px rgb(111 156 196 / 0.35);
+    color: #eaf4ff;
+    text-shadow: 0 0 8px rgb(180 220 255 / 0.7);
 }
 
 /* ---- leaves -------------------------------------------------------------- */
@@ -141,9 +171,13 @@
     -webkit-mask-repeat: no-repeat;
     mask-repeat: no-repeat;
 
-    /* A leaf has a shape, so it tumbles rather than sways. */
-    animation-name: fx-tumble;
-    animation-timing-function: linear;
+    /* A leaf has a shape, so it tumbles as well as swaying — both at once, on two
+     * properties, for the reason fx-tumble's comment gives at length. The sway keeps the
+     * shared rule's easing; the spin is linear, because a tumble that eases is a leaf
+     * being turned by hand. */
+    animation:
+        fx-sway var(--fx-sway-duration) ease-in-out var(--fx-delay) infinite,
+        fx-tumble var(--fx-spin-duration) linear var(--fx-delay) infinite;
 }
 
 /* Fall: ember orange through rust, picked to sit on that palette's ground. */
@@ -182,6 +216,66 @@
 @keyframes fx-cross {
     from { transform: translate3d(0, 0, 0); }
     to   { transform: translate3d(-130vw, var(--fx-drift), 0); }
+}
+
+/* ---- stars ---------------------------------------------------------------- */
+
+/* Fourth of July, and the only effect in this file that is drawn BEHIND the app rather
+ * than in front of it. That is one line, down at the bottom of this block, and
+ * css/themeDecor.css explains at length why the shell has to stop painting its own
+ * background for it to be visible.
+ *
+ * Stars do not travel, so the outer element keeps its position and drops fx-descend
+ * entirely — the same override the bats use to change axis, used here to remove the axis.
+ * --fx-y is the vertical scatter the script already rolls; it tops out at 80vh, which
+ * keeps the field out of the strip where the flag and the footer live.
+ *
+ * The twinkle is opacity on the inner element, which is composited, so seventy stars cost
+ * about what one costs. --fx-delay is negative and up to a whole --fx-duration long, so
+ * every star is already mid-blink on the first frame and no two are in step.
+ */
+#theme-fx[data-fx="stars"] {
+    /* Behind .app-shell rather than over the page. Negative z-index puts this in the root
+     * stacking context's negative layer, which paints after the canvas background and
+     * before every in-flow block background. */
+    z-index: -1;
+}
+
+#theme-fx[data-fx="stars"] .fx {
+    top: var(--fx-y);
+    /* No descent, no drift, no crossing. A star stays where it was put. */
+    animation: none;
+}
+
+#theme-fx[data-fx="stars"] .fx > i {
+    width: var(--fx-size);
+    height: var(--fx-size);
+    border-radius: 50%;
+    background-color: #ffffff;
+    box-shadow: 0 0 calc(var(--fx-size) * 1.8) rgb(255 255 255 / 0.8);
+    animation: fx-twinkle var(--fx-sway-duration) ease-in-out var(--fx-delay) infinite;
+}
+
+/* Red, white and blue, because this is the one theme where that is the point rather than a
+ * coincidence. Two thirds stay white — a sky of evenly mixed colours reads as confetti. */
+#theme-fx[data-fx="stars"] .fx:nth-child(5n+2) > i {
+    background-color: #ffb3b9;
+    box-shadow: 0 0 calc(var(--fx-size) * 2) rgb(255 143 151 / 0.85);
+}
+
+#theme-fx[data-fx="stars"] .fx:nth-child(5n+4) > i {
+    background-color: #bacfff;
+    box-shadow: 0 0 calc(var(--fx-size) * 2) rgb(146 178 255 / 0.85);
+}
+
+/* The floor is 0.45, not the 0.2 this started at, and the reason is that the two opacities
+ * multiply: .fx already carries the --fx-opacity the script rolls (0.45 to 0.95) as the
+ * star's intrinsic brightness, so a twinkle bottoming out at 0.2 put the dimmest stars at
+ * 0.09 — measurably present and visually absent. 0.45 keeps the whole field between about
+ * a fifth and full brightness, which still reads as blinking. */
+@keyframes fx-twinkle {
+    0%, 100% { opacity: 0.45; }
+    50%      { opacity: 1; }
 }
 
 /* ---- opting out ---------------------------------------------------------- */

@@ -220,13 +220,17 @@ public class ThemeCatalogTests
     [Fact]
     public void Out_of_season_only_the_always_available_themes_are_offered()
     {
-        var july = new DateOnly(2026, 7, 4);
+        // Late May, which is the gap the calendar still has: Easter's window closes on 25 April
+        // and Fourth of July's opens on 1 July. This test used to use the 4th of July itself,
+        // which stopped being out of season the day that theme was added — a good failure, and
+        // the reason the date is now chosen against the catalog rather than for being memorable.
+        var gap = new DateOnly(2026, 5, 20);
 
         // Seasonal belongs here rather than in the seasonal group: it is the rule that follows the
         // calendar, so the calendar must never be able to remove it.
         Assert.Equal(
             new[] { ThemeOptions.Seasonal, ThemeOptions.System, ThemeOptions.Dark, ThemeOptions.Light },
-            ThemeCatalog.Offered(july, showAll: false).Select(t => t.Id));
+            ThemeCatalog.Offered(gap, showAll: false).Select(t => t.Id));
     }
 
     [Fact]
@@ -273,7 +277,9 @@ public class ThemeCatalogTests
     [Fact]
     public void An_unknown_theme_falls_back_to_following_the_system()
     {
-        Assert.Equal(ThemeOptions.System, ThemeOptions.Normalize("easter"));
+        // Was "easter", until Easter became a theme. Any string that is not an id will do; this one
+        // is deliberately not a holiday, so it does not become a theme either.
+        Assert.Equal(ThemeOptions.System, ThemeOptions.Normalize("chartreuse"));
         Assert.Equal(ThemeOptions.System, ThemeOptions.Normalize(null));
         Assert.Equal(ThemeOptions.System, ThemeOptions.Normalize(""));
     }

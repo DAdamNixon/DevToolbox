@@ -74,8 +74,20 @@
     0.9.5.3 / beta.9: a .code-workspace opens as the workspace again, rather than as its containing
     folder. 0.9.5.2 shipped without that exception for about a minute.
   -->
+  <!--
+    0.9.6 / beta.10: the seasonal overhaul. Easter and Fourth of July are new themes; Winter is a
+    deep blue night instead of the one light-grounded season; Fall, Halloween and Thanksgiving grew
+    ornament that rests on the footer, and Halloween a cauldron you can stir at the bottom of
+    Settings. Fall and Thanksgiving also lost the stutter in their falling leaves, which was a seam
+    in one keyframe rather than a performance problem — see css/themeEffects.css.
+
+    The patch digit moves rather than the fourth part, which is what 0.9.5.1 above reserved it for:
+    this is the first change in the 0.9.x line big enough to be worth calling a release. Written as
+    four parts all the same — 0.9.6.0 — because MSIX compares VersionPrefix verbatim and 0.9.6.0
+    rises above 0.9.5.3.
+  -->
   <PropertyGroup>
-    <VersionPrefix>0.9.5.3</VersionPrefix>
-    <VersionSuffix>beta.9</VersionSuffix>
+    <VersionPrefix>0.9.6.0</VersionPrefix>
+    <VersionSuffix>beta.10</VersionSuffix>
   </PropertyGroup>
 </Project>

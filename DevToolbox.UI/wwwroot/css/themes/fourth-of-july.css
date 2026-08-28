@@ -1,0 +1,43 @@
+/* Fourth of July — navy night, flag red primary, flag blue second accent.
+ *
+ * Dark, and dark for a reason rather than by convention: the theme's ornament is
+ * fireworks, and a firework on a pale ground is a smudge. The whole palette is built to
+ * be the sky they go off in.
+ *
+ * THE GRADIENT IS NOT USABLE AS-IS, and this is the third palette to hit it.
+ * .text-gradient sweeps --c-accent-blue into --c-accent-purple; red into blue spends its
+ * middle in magenta, which is neither of the three colours this theme is about. So
+ * themeDecor.css retargets .text-gradient here to red → white → blue, which is the
+ * gradient the flag already implies and the only one that keeps all three.
+ *
+ * White on #d12f3c is 5.0:1, so a btn-primary label clears AA comfortably. As text on the
+ * ground it is 3.64:1 — the compromise christmas.css also makes, and unavoidable while
+ * one token serves both a fill under white text and text on a near-black ground.
+ *
+ * --c-danger is pushed lighter than the primary for christmas.css's reason: with red as
+ * the primary accent, a destructive button is only distinguishable from an ordinary one
+ * by lightness.
+ */
+:root[data-theme="fourth-of-july"] {
+    color-scheme: dark;
+
+    --c-bg: 12 21 46;
+    --c-surface: 22 34 63;
+    --c-surface-hover: 31 48 87;
+    --c-border: 51 72 122;
+    --c-text: 240 244 252;
+    --c-text-muted: 166 184 216;
+
+    --c-accent-blue: 209 47 60;
+    --c-accent-blue-hover: 178 31 44;
+    --c-accent-purple: 92 141 228;
+    --c-accent-purple-hover: 63 111 200;
+
+    --c-success: 63 168 92;
+    --c-warning: 224 168 48;
+    --c-danger: 242 132 140;
+
+    --c-danger-text: 255 176 182;
+
+    --shadow-strength: 1;
+}

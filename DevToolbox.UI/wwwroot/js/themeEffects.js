@@ -52,7 +52,15 @@
             '--fx-drift:' + rand(-cfg.maxDrift, cfg.maxDrift).toFixed(2) + 'vw',
             '--fx-sway:' + rand(4, 14).toFixed(1) + 'px',
             '--fx-sway-duration:' + rand(2.5, 6).toFixed(2) + 's',
-            '--fx-spin:' + (Math.random() < 0.5 ? '-' : '') + Math.round(rand(180, 720)) + 'deg',
+            // WHOLE TURNS, and that is the whole point of the unit. This was
+            // rand(180, 720) degrees, which made the tumble's end orientation
+            // different from its start — so an infinite, non-alternating rotation
+            // snapped back to zero once per cycle and every leaf visibly jerked
+            // every 2.5–6 seconds. A whole number of turns is visually identical to
+            // none, so the same animation now loops without a seam. Do not relax
+            // this to an arbitrary angle.
+            '--fx-spin:' + (Math.random() < 0.5 ? '-' : '') + Math.round(rand(1, 2)) + 'turn',
+            '--fx-spin-duration:' + rand(3, 8).toFixed(2) + 's',
             '--fx-opacity:' + rand(0.45, 0.95).toFixed(2)
         ].join(';');
 

@@ -1,30 +1,48 @@
-/* Winter — the only light-grounded seasonal theme, and deliberately so: it is
- * the one season people associate with glare off snow rather than with a dark
- * room. That means it follows the light theme's rules, not the dark ones —
- * accents are a step darker so body text clears 4.5:1 on a near-white ground,
- * and --shadow-strength drops, because the same black that reads as depth over
- * #1a1a1a reads as grime over #eef4f9.
+/* Winter — deep blue night, ice for accents.
+ *
+ * THIS WAS THE ONE LIGHT-GROUNDED SEASONAL THEME, and is not any more. The old reading
+ * was glare off snow at noon; this one is a clear night over it, which is the reading
+ * the rest of the seasonal set already takes — every other palette here is dark, and
+ * Winter being the exception made it the one season that changed the whole app's weight
+ * rather than only its colour. Two consequences of the switch, both of which are edits
+ * elsewhere and both of which the tests check:
+ *
+ *   dashboard.css   Winter came out of the light-ground --chevron-image override, or its
+ *                   select arrows would be near-black on a near-black field.
+ *   themeEffects.css  the snow was tinted slate to be visible on #eef4f9; on this ground
+ *                   it goes back to near-white.
+ *
+ * THE ACCENTS. Ice blue into frost cyan, and the pairing is the point: .text-gradient
+ * sweeps --c-accent-blue into --c-accent-purple, so the two have to be neighbours on the
+ * wheel or every page <h1> spends its middle somewhere unintended — the mistake
+ * better-christmas.css documents at length. Blue into cyan never leaves the ice.
+ *
+ * White on #3d8ae8 is 3.5:1, which is the same compromise the base dark palette makes
+ * with #3b82f6 and is unavoidable while one token has to serve both a btn-primary fill
+ * under white text and text on a near-black ground — where it is 5.2:1.
  */
 :root[data-theme="winter"] {
-    color-scheme: light;
+    color-scheme: dark;
 
-    --c-bg: 238 244 249;
-    --c-surface: 255 255 255;
-    --c-surface-hover: 226 236 245;
-    --c-border: 203 218 232;
-    --c-text: 18 33 46;
-    --c-text-muted: 74 96 114;
+    --c-bg: 11 22 40;
+    --c-surface: 20 34 56;
+    --c-surface-hover: 29 48 80;
+    --c-border: 43 71 110;
+    --c-text: 230 238 250;
+    --c-text-muted: 157 180 208;
 
-    --c-accent-blue: 31 111 178;
-    --c-accent-blue-hover: 23 90 143;
-    --c-accent-purple: 90 99 184;
-    --c-accent-purple-hover: 70 78 155;
+    --c-accent-blue: 61 138 232;
+    --c-accent-blue-hover: 42 113 201;
+    --c-accent-purple: 111 195 224;
+    --c-accent-purple-hover: 74 168 201;
 
-    --c-success: 15 118 110;
-    --c-warning: 180 83 9;
-    --c-danger: 190 53 53;
+    /* Teal rather than a leaf green: on a blue ground a green that warm reads as a
+     * different theme's colour having got in by mistake. */
+    --c-success: 45 195 145;
+    --c-warning: 240 177 58;
+    --c-danger: 239 95 95;
 
-    --c-danger-text: 161 39 39;
+    --c-danger-text: 255 179 179;
 
-    --shadow-strength: 0.35;
+    --shadow-strength: 1;
 }

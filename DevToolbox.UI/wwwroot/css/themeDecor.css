@@ -7,24 +7,1481 @@
  * (.modern-card, .app-shell, the footer), so it has to name that furniture, and it has
  * to load after dashboard.css to be allowed to win against it.
  *
- * Every rule in here is prefixed with a :root[data-theme=...] selector. Nothing in
- * this file may apply to a theme that did not ask for it — that is the whole contract,
- * and it is what lets the file be dropped from <head> with no effect on anything else.
+ * Every rule in here is scoped to one theme. Most carry a :root[data-theme=...]
+ * prefix; the rest are scoped by [data-decor="<theme>"] on the prop layer, which is a
+ * stricter scope and not a loophole — see "the prop layer" below. Nothing in this file
+ * may apply to a theme that did not ask for it. That is the whole contract, and it is
+ * what lets the file be dropped from <head> with no effect on anything else.
+ *
+ * WHAT LIVES WHERE. Four files decorate a theme and they divide by mechanism:
+ *
+ *   this file             background images and pseudo-elements — the garland, the tree,
+ *                         the leaf pile, the candles, the pumpkin, the ice, the skater
+ *   js/themeEffects.js    ambient particles: snow, leaves, bats
+ *   js/themeDecor.js      props that need their own box (so they can be hovered or
+ *                         transformed independently) or their own lifetime (a firework,
+ *                         a spark, a turkey). It builds #theme-decor; this file styles
+ *                         what goes in it.
+ *   Pages/Settings.razor  the one prop that has to sit in a scrolling page: the cauldron
+ *
+ * The sections below are in calendar order, matching css/themes.css and both catalogs.
  *
  * MOTION. Two switches, and both have to allow it:
  *   data-fx-motion="on"                    the app's "Theme animations" setting, put
  *                                          on <html> by js/theme.js
  *   prefers-reduced-motion: no-preference  the OS setting, which wins either way
- * With motion off the lights stay lit and stop blinking rather than disappearing — the
- * decoration is the point, the twinkle is the flourish.
+ * With motion off the lights stay lit and stop blinking, the candles stay lit and stop
+ * guttering, the skater leaves the ice — the decoration is the point, the flourish is
+ * the flourish. Anything that only exists *as* motion is refused by js/themeDecor.js
+ * before it is built rather than being drawn and frozen.
  *
- * COST. Only `opacity` and a stepped `background-position` are ever animated. Opacity
- * is composited; the position swap is a steps(1) change twice per period, so it
- * repaints on two frames per cycle instead of sixty. That is deliberate, and it keeps
- * the rule themeEffects.css set: nothing here animates a property that forces layout,
- * so a dashboard of thirty garlanded cards costs nothing measurable while a log file
- * is being parsed.
+ * COST. Only `opacity`, `transform`/`translate`/`rotate`/`scale`, and one stepped
+ * `background-position` are ever animated. The transforms and the opacity are
+ * composited; the position swap is a steps(1) change twice per period, so it repaints
+ * on two frames per cycle instead of sixty. That is deliberate, and it keeps the rule
+ * themeEffects.css set: nothing here animates a property that forces layout, so a
+ * dashboard of thirty garlanded cards costs nothing measurable while a log file is
+ * being parsed.
+ *
+ * The individual transform properties are load-bearing rather than stylistic. `translate`
+ * and `rotate` compose with `transform` as translate · rotate · scale · transform, which
+ * is what lets the skater travel and jump, and the turkey fly and tumble, as two
+ * independent animations on one element. Getting the two halves the wrong way round does
+ * not merely look different — it swings the element across the window on the end of an
+ * invisible arm. Both places say so at the keyframe.
  */
+
+
+/* ══ shared machinery ═══════════════════════════════════════════════════════════ */
+
+/* ── the prop layer ──────────────────────────────────────────────────────────────
+   js/themeDecor.js builds #theme-decor and fills it with whatever the active theme's
+   props are; every question of what a prop looks like is answered here. Same division
+   of labour themeEffects.js has with themeEffects.css, and the same reason for it: a
+   new prop should be a block in this file, not a code change.
+
+   The rules below are scoped by [data-decor="<theme>"] on the layer rather than by
+   :root[data-theme=...]. That is not an exception to this file's contract — the script
+   only ever writes the painted theme into that attribute, and the layer only exists for
+   a theme that has props, so the attribute is a *stricter* scope than the ancestor
+   selector, not a looser one.
+
+   z-index 15 is where the particle layer sits; this is one below, so snow drifts in
+   front of the leaf pile rather than behind it. Everything above stays above: the card
+   menus at 20 and 30, the fullscreen log results at 35, the log context menu at 40, the
+   modals at 50.
+
+   pointer-events is the load-bearing line, exactly as in themeEffects.css: this layer
+   covers the whole window, so without it every click in the app would land here. The
+   three props that *are* meant to be pointed at turn it back on for themselves and for
+   nothing else. */
+#theme-decor {
+    position: fixed;
+    inset: 0;
+    z-index: 14;
+    overflow: hidden;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
+
+    /* Where "resting on the footer" is, measured from the bottom of the window: the
+       status bar is 1.25rem tall (.app-statusbar in dashboard.css) and the footer draws
+       a 1px border above it, so this is the y of the footer's top edge. Anything that
+       stands on the footer is positioned from here, which means the whole set moves
+       together if the status bar's height ever changes. */
+    --decor-floor: calc(1.25rem + 1px);
+
+    /* The nav is h-12 and carries z-30, so it is painted *above* this layer and nothing
+       here may start higher than its underside. */
+    --decor-ceiling: 3rem;
+}
+
+#theme-decor > i {
+    position: absolute;
+    display: block;
+}
+
+/* ── the footer shelf ────────────────────────────────────────────────────────────
+   Six themes now rest something on the footer's top edge, and they all need the same
+   two things: a positioning context, and the footer's own top border out of the way.
+
+   The border is hidden for the four whose ornament runs the full width — the leaf pile,
+   the ice, the turf, the snow — because there the ornament *is* that line, and a rule
+   drawn under it reads as a hairline with something balanced on it. Halloween and
+   Thanksgiving keep their border: their props sit at one end, and a footer whose top
+   edge disappears behind two candles is worse than one with a border.
+
+   The ornament straddles the edge rather than clearing it. Held entirely above, it read
+   as floating over the footer instead of lying on it, which is the wrong image — snow
+   settles on a surface and so do leaves. So each tile overlaps a few pixels down into
+   the bar, and near the right-hand end it grazes the version text. That is what selling
+   the effect costs and it is cheap at this size. */
+:root[data-theme="fall"] .app-shell > footer,
+:root[data-theme="halloween"] .app-shell > footer,
+:root[data-theme="thanksgiving"] .app-shell > footer,
+:root[data-theme="winter"] .app-shell > footer,
+:root[data-theme="easter"] .app-shell > footer,
+:root[data-theme="fourth-of-july"] .app-shell > footer {
+    position: relative;
+}
+
+:root[data-theme="fall"] .app-shell > footer,
+:root[data-theme="winter"] .app-shell > footer,
+:root[data-theme="easter"] .app-shell > footer {
+    /* Just enough to keep the text off the thickest part of what is lying on it. */
+    padding-top: 0.25rem;
+    border-top-color: transparent;
+}
+
+/* ── where an interactive prop may take the pointer ──────────────────────────────
+   A prop resting on the footer stands up into whatever the page is showing, because the
+   footer is only 21px tall. For a picture that is fine and long settled — (Better)Christmas's
+   tree has overlapped the dashboard by 44vh from the start, and the candles, the skater and
+   the flag are the same kind of thing: they are drawn over the cards and cannot be clicked,
+   so they cost nothing but their own charm.
+
+   The cornucopia and Easter's tufts are the exception, because they take pointer-events, and
+   a prop that takes the pointer while sitting over a card eats clicks meant for the card.
+   That was measured rather than theorised: the horn covered the bottom card's drag grip on a
+   full dashboard, so pressing the grip fired a turkey.
+
+   THE RULE, and it is the second answer to this rather than the first: an interactive prop
+   may take the pointer only where it overlaps the footer bar. So both props are dropped a
+   few pixels to straddle the footer's top edge — which every tile in this file already does
+   — and each hands its hit area to a ::before pinned inside the bar. Above that line the
+   prop is visible and pointer-transparent, exactly like the candles beside it.
+
+   The first answer was a 3.5rem margin on the scroll container, reserving a strip above the
+   footer for every theme with footer ornament. It worked, and it was wrong: it cut a dead
+   band across the full width of the window to make room for one small object in one corner.
+   The prop is 84px wide; the fix should not be 1900px wide. Nothing pays for the horn now
+   except the horn. */
+
+
+/* Every footer tile shares this; only the image, its height and how far it hangs differ. */
+:root[data-theme="fall"] .app-shell > footer::before,
+:root[data-theme="halloween"] .app-shell > footer::before,
+:root[data-theme="halloween"] .app-shell > footer::after,
+:root[data-theme="winter"] .app-shell > footer::before,
+:root[data-theme="winter"] .app-shell > footer::after,
+:root[data-theme="easter"] .app-shell > footer::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    pointer-events: none;
+    /* Above the status bar's opaque surface fill, and far below the log context menu at
+       40 and the modals at 50. */
+    z-index: 2;
+    background-repeat: no-repeat;
+}
+
+
+
+/* ── positioned cards ────────────────────────────────────────────────────────────
+   Three themes hang something off a card — (Better)Christmas a garland outside its border,
+   Winter a sheet of ice over its surface, Easter a zigzag band round its bottom edge — and
+   all three need the card to be a positioning context. That is the one pair of rules in this file with a consequence outside it, so
+   it is written once here rather than twice in two sections.
+
+   Making a card positioned changes where it paints. A .ws-menu hanging below its own
+   card carries z-30 and is taller than the card it belongs to, and once the cards are
+   positioned it is covered by the *next* card in the list. That was measured, not
+   guessed: the menu stayed visible in the gaps between cards and vanished behind each
+   one. The :has() rule below is the fix.
+
+   Do not add `isolation: isolate` or a z-index to the first rule. Both make every card a
+   stacking context, which traps the menu inside its own card instead of freeing it. */
+:root[data-theme="better-christmas"] .modern-card,
+:root[data-theme="better-christmas"] .workspace-card,
+:root[data-theme="better-christmas"] .glow-card,
+:root[data-theme="winter"] .modern-card,
+:root[data-theme="winter"] .workspace-card,
+:root[data-theme="winter"] .glow-card,
+:root[data-theme="easter"] .modern-card,
+:root[data-theme="easter"] .workspace-card,
+:root[data-theme="easter"] .glow-card {
+    position: relative;
+}
+
+/* The card holding an open menu is lifted above its siblings for as long as the menu
+   exists — Blazor only renders .ws-menu while it is open, so this selector is exactly
+   "this card's menu is showing" and costs nothing the rest of the time.
+
+   20 rather than the 30 the menu itself carries: it only has to beat the other cards,
+   which are all z-index auto. It also clears the particle layer at 15 and the prop layer
+   at 14, so an open menu is no longer snowed on — and it stays under the fullscreen log
+   results at 35, the log context menu at 41 and the modals at 50, all of which render as
+   siblings of the card rather than inside it. */
+:root[data-theme="better-christmas"] .modern-card:has(.ws-menu),
+:root[data-theme="better-christmas"] .workspace-card:has(.ws-menu),
+:root[data-theme="better-christmas"] .glow-card:has(.ws-menu),
+:root[data-theme="winter"] .modern-card:has(.ws-menu),
+:root[data-theme="winter"] .workspace-card:has(.ws-menu),
+:root[data-theme="winter"] .glow-card:has(.ws-menu),
+:root[data-theme="easter"] .modern-card:has(.ws-menu),
+:root[data-theme="easter"] .workspace-card:has(.ws-menu),
+:root[data-theme="easter"] .glow-card:has(.ws-menu) {
+    z-index: 20;
+}
+
+
+/* ══ Easter ═════════════════════════════════════════════════════════════════════ */
+
+/* ── the turf along the footer ───────────────────────────────────────────────────
+   A repeat-x tile: a wavy base in the darker green with five blades in the lighter one
+   standing out of it. Its deltas sum to zero across the tile so it repeats without a
+   seam, and no blade crosses x=0 or x=48 for the same reason.
+
+   Both greens are a step brighter than they were drawn: Easter began as a pale theme and
+   ended as a dark one, and grass that read as grass on #f2f8ee reads as a shadow on
+   #0d1c12. */
+:root[data-theme="easter"] .app-shell > footer::before {
+    top: -11px;
+    height: 16px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='16' viewBox='0 0 48 16'%3E%3Cpath fill='%232f6b36' d='M0 16 V9 q3 -5 6 -2 q3 5 6 2 q3 -6 6 -3 q3 6 6 3 q3 -4 6 -1 q3 4 6 1 q3 -5 6 -2 q3 5 6 2 V16Z'/%3E%3Cg fill='%234b9c52'%3E%3Cpath d='M4 16 q1 -8 4 -12 q-1 8 -2 12z'/%3E%3Cpath d='M14 16 q0 -9 -3 -13 q0 9 1 13z'/%3E%3Cpath d='M22 16 q1 -7 5 -10 q-2 7 -3 10z'/%3E%3Cpath d='M31 16 q0 -8 -3 -11 q0 8 1 11z'/%3E%3Cpath d='M40 16 q1 -9 4 -12 q-1 9 -2 12z'/%3E%3C/g%3E%3C/svg%3E");
+    background-repeat: repeat-x;
+    background-position: left bottom;
+    background-size: 48px 16px;
+}
+
+
+/* ── the tufts, and the eggs in them ─────────────────────────────────────────────
+   Twelve tufts, each hiding one egg. The reveal is a :hover and nothing else — no
+   listener, no state, no JavaScript beyond scattering them and handing each one a colour
+   and a lean.
+
+   THE TUFTS SIT AT THE LEVEL OF THE TURF, which is the one thing about them that is not
+   negotiable. They were briefly dropped to straddle the footer's top edge — so that their
+   hit area could be confined to the bar, the way the cornucopia's is — and the result was
+   twelve tufts sunk 17px below the strip of grass they are supposed to be growing out of.
+   The blades and the turf have to share a baseline or neither reads as ground.
+
+   So the hit area is the lower part of the blades instead, and it does overlap the page by
+   about 18px. That is a deliberate, bounded exception to the rule in the shared section:
+   28px wide at twelve places along the very bottom of the window, over the clipped bottom
+   edge of whatever card the scrollport happens to end on, rather than the 84px of live
+   control the cornucopia was covering. The horn had to move because it was demonstrably
+   swallowing presses on a card's drag grip; nothing that small and that low is.
+
+   A pseudo-element still counts as its originating element for :hover, so pointing at the
+   base of a tuft reveals its egg exactly as if the whole thing were the target.
+
+   The egg is behind the blades (z-index 0 against the grass's 1) so it is *revealed*
+   rather than merely displayed: it rises out from between them. Moving the pointer up onto
+   the egg leaves the hit strip and puts it back, which is the right behaviour — the egg is
+   something you find, not something you pick up. */
+#theme-decor[data-decor="easter"] .decor-tuft {
+    /* Level with the turf tile, which sits 19px up: both have to grow off the same line. */
+    bottom: calc(var(--decor-floor) - 4px);
+    width: 34px;
+    height: 52px;
+    /* The script positions the tuft's centre, so half the width comes back off. */
+    margin-left: -17px;
+    scale: var(--tuft-size);
+    rotate: var(--tuft-lean);
+    transform-origin: 50% 100%;
+}
+
+/* The lower two thirds of the blades. Not the whole tuft box: the top of that box is only
+   there to give the egg somewhere to rise into, and taking the pointer up there would put a
+   52px dead spot over the page for no gain. */
+#theme-decor[data-decor="easter"] .decor-tuft::before {
+    content: "";
+    position: absolute;
+    left: 3px;
+    bottom: 0;
+    width: 28px;
+    height: 22px;
+    pointer-events: auto;
+    z-index: 2;
+}
+
+#theme-decor[data-decor="easter"] .decor-tuft::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    bottom: 0;
+    width: 28px;
+    height: 30px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='30' viewBox='0 0 28 30'%3E%3Cg fill='%232f6b36'%3E%3Cpath d='M14 30 q-2 -15 -9 -22 q3 15 6 22z'/%3E%3Cpath d='M14 30 q2 -16 9 -23 q-3 16 -6 23z'/%3E%3Cpath d='M14 30 q-1 -17 -2 -25 q3 17 5 25z'/%3E%3C/g%3E%3Cg fill='%234b9c52'%3E%3Cpath d='M14 30 q3 -13 8 -17 q-4 13 -5 17z'/%3E%3Cpath d='M14 30 q-3 -12 -8 -16 q4 12 5 16z'/%3E%3C/g%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    z-index: 1;
+}
+
+/* A mask rather than an inline SVG: the colour has to come from a custom property the
+   script sets per tuft, and a data URI cannot read one. Same reason the falling leaves
+   are masked in css/themeEffects.css. */
+#theme-decor[data-decor="easter"] .decor-tuft > b {
+    position: absolute;
+    left: 50%;
+    bottom: 6px;
+    width: 20px;
+    height: 26px;
+    margin-left: -10px;
+    z-index: 0;
+    background-color: var(--egg);
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='26' viewBox='0 0 20 26'%3E%3Cpath fill='%23000000' d='M10 1 C16 1 19 10 19 16 C19 22 15 25 10 25 C5 25 1 22 1 16 C1 10 4 1 10 1Z'/%3E%3C/svg%3E");
+            mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='26' viewBox='0 0 20 26'%3E%3Cpath fill='%23000000' d='M10 1 C16 1 19 10 19 16 C19 22 15 25 10 25 C5 25 1 22 1 16 C1 10 4 1 10 1Z'/%3E%3C/svg%3E");
+    -webkit-mask-size: 100% 100%;
+            mask-size: 100% 100%;
+    -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
+    filter: drop-shadow(0 2px 3px rgb(4 14 8 / 0.55));
+    opacity: 0;
+    translate: 0 6px;
+    /* Overshoots on the way up and settles, which is the difference between an egg
+       popping out of the grass and an egg fading in above it. */
+    transition:
+        opacity 0.2s ease,
+        translate 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+#theme-decor[data-decor="easter"] .decor-tuft:hover > b {
+    opacity: 1;
+    translate: 0 -17px;
+}
+
+/* The decoration on the egg — a zigzag band and two dots — masked to the same egg shape
+   so it cannot spill past the outline whatever the band does. */
+#theme-decor[data-decor="easter"] .decor-tuft > b::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='26' viewBox='0 0 20 26'%3E%3Cpath fill='%23ffffff' fill-opacity='.85' d='M0 11 l4 3 4 -3 4 3 4 -3 4 3 v4 l-4 -3 -4 3 -4 -3 -4 3 -4 -3z'/%3E%3Ccircle cx='6' cy='6.5' r='1.7' fill='%23ffffff' fill-opacity='.62'/%3E%3Ccircle cx='14' cy='20.5' r='1.7' fill='%23ffffff' fill-opacity='.62'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='26' viewBox='0 0 20 26'%3E%3Cpath fill='%23000000' d='M10 1 C16 1 19 10 19 16 C19 22 15 25 10 25 C5 25 1 22 1 16 C1 10 4 1 10 1Z'/%3E%3C/svg%3E");
+            mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='26' viewBox='0 0 20 26'%3E%3Cpath fill='%23000000' d='M10 1 C16 1 19 10 19 16 C19 22 15 25 10 25 C5 25 1 22 1 16 C1 10 4 1 10 1Z'/%3E%3C/svg%3E");
+    -webkit-mask-size: 100% 100%;
+            mask-size: 100% 100%;
+}
+
+
+/* ── cards painted like the eggs ─────────────────────────────────────────────────
+   Easter is forest green everywhere except the cards, and the cards borrow the eggs hiding
+   in the grass on the footer: a soft hue, a lit rim, and the same zigzag band round the
+   bottom that the eggs wear round the middle.
+
+   THREE COLOURS, NOT SEVEN, and the child cards share one. The first version gave every
+   card position its own hue — seven of them, cycling — and a dashboard of thirty cards in
+   thirty colours is a paint chart, not a theme. So the wheel is down to three, spaced a
+   third of the way round it, and the workspace cards inside a group are deliberately left
+   out of the cycle: they take one fixed hue between them, so a group reads as a group and
+   the variety lives at the level you actually scan.
+
+   HOW THE HUE IS PICKED, because "random" and "CSS" do not usually go together. A hue per
+   card, chosen freshly on every render, is the obvious idea and the wrong one — Blazor
+   re-renders these cards constantly (expanding a group, a rescan, a filter keystroke), and
+   a colour re-rolled on each render is a card that flickers through the spectrum while you
+   type. The hue has to be stable for the life of the window.
+
+   So the randomness is one number and the variety is arithmetic. js/themeDecor.js rolls a
+   single --easter-hue-base onto <html> when the theme is painted, and the rules below add a
+   fixed offset to it per card position. The palette is therefore a random *rotation* of one
+   fixed wheel: different every time the theme is applied, identical for every render in
+   between, and free of any per-element bookkeeping. A missing base falls back to 130deg,
+   which matters for the frame before the script has run.
+
+   SATURATED RATHER THAN PALE, and that is the opposite of where this started. An earlier
+   version used a literal pastel — 62% saturation at 74% lightness — and every card came out
+   near-grey: rgb(75,68,75) for one that was supposed to be pink. A light colour laid thinly
+   over #142819 loses its hue before it loses its lightness, so the whole set read as washed
+   slate with a faint cast. Dropping the lightness to 56% and pushing the saturation to 68%
+   blends to rgb(83,47,75) instead, which is unmistakably the colour it is meant to be.
+   "Pastel" here is the reading, not the recipe: on a dark ground a soft hue has to be
+   saturated to read as a hue at all. The band and the rim are the exception — they sit on
+   top of the surface rather than veiling it, so they can be the genuine article, and they
+   are where the eggs' actual lightness comes back.
+
+   READABILITY WAS MEASURED RATHER THAN ASSUMED. Against the veiled card the tokens land at
+   10.5:1 for --c-text and 5.9:1 for --c-text-muted — down from 13.8 and 7.7 on the bare
+   surface, and still well clear of the 4.5:1 the muted text needs. The band is at the very
+   bottom edge, inside the padding every card already has, so no text is ever laid over it.
+
+   --card-veil is registered with @property purely so it can be transitioned; the plain
+   declaration below it is what makes the rules work at all, registration or not. */
+@property --card-veil {
+    syntax: "<number>";
+    inherits: true;
+    initial-value: 1;
+}
+
+:root[data-theme="easter"] .modern-card,
+:root[data-theme="easter"] .workspace-card,
+:root[data-theme="easter"] .glow-card {
+    --card-veil: 1;
+    --card-hue: var(--easter-hue-base, 130deg);
+    background-image: linear-gradient(145deg,
+        hsl(var(--card-hue) 68% 56% / calc(0.30 * var(--card-veil))) 0%,
+        hsl(calc(var(--card-hue) + 30deg) 62% 52% / calc(0.13 * var(--card-veil))) 55%,
+        hsl(calc(var(--card-hue) + 60deg) 60% 58% / calc(0.22 * var(--card-veil))) 100%);
+    border-color: hsl(var(--card-hue) 62% 68% / 0.5);
+    /* A lit top edge in the same hue. One line, and it is what keeps a tinted rectangle
+       from reading as a flat swatch. */
+    box-shadow: inset 0 1px 0 hsl(var(--card-hue) 72% 82% / 0.35);
+    transition: --card-veil 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* The egg's band, round the bottom of the card instead of the middle of the shell.
+   A mask rather than an inline SVG for the reason the eggs themselves are masked: the
+   colour comes from --card-hue and a data URI cannot read a custom property. Same zigzag
+   geometry, drawn as a 32px tile that repeats along the width — its two ends sit at the
+   same y, so it repeats without a seam whatever the card is wide. */
+:root[data-theme="easter"] .modern-card::after,
+:root[data-theme="easter"] .workspace-card::after,
+:root[data-theme="easter"] .glow-card::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 10px;
+    pointer-events: none;
+    /* Inherited from the card so the band is cut off by the same corners it is drawn in. */
+    border-bottom-left-radius: inherit;
+    border-bottom-right-radius: inherit;
+    background-color: hsl(var(--card-hue) 72% 80% / 0.5);
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='10' viewBox='0 0 32 10'%3E%3Cpath fill='%23ffffff' d='M0 3 l4 3 4 -3 4 3 4 -3 4 3 4 -3 4 3 4 -3 v4 l-4 3 -4 -3 -4 3 -4 -3 -4 3 -4 -3 -4 3 -4 -3z'/%3E%3C/svg%3E");
+            mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='10' viewBox='0 0 32 10'%3E%3Cpath fill='%23ffffff' d='M0 3 l4 3 4 -3 4 3 4 -3 4 3 4 -3 4 3 4 -3 v4 l-4 3 -4 -3 -4 3 -4 -3 -4 3 -4 -3 -4 3 -4 -3z'/%3E%3C/svg%3E");
+    -webkit-mask-size: 32px 10px;
+            mask-size: 32px 10px;
+    -webkit-mask-repeat: repeat-x;
+            mask-repeat: repeat-x;
+    transition: background-color 0.3s ease;
+}
+
+:root[data-theme="easter"] .modern-card:hover,
+:root[data-theme="easter"] .workspace-card:hover,
+:root[data-theme="easter"] .glow-card:hover {
+    --card-veil: 1.35;
+    border-color: hsl(var(--card-hue) 70% 76% / 0.85);
+    box-shadow: inset 0 1px 0 hsl(var(--card-hue) 75% 86% / 0.5),
+                0 0 0 1px hsl(var(--card-hue) 66% 72% / 0.25),
+                0 12px 30px -8px rgb(4 16 8 / 0.7);
+}
+
+:root[data-theme="easter"] .modern-card:hover::after,
+:root[data-theme="easter"] .workspace-card:hover::after,
+:root[data-theme="easter"] .glow-card:hover::after {
+    background-color: hsl(var(--card-hue) 78% 84% / 0.8);
+}
+
+/* The wheel: two more thirds of it, for the cards you scan rather than the ones inside
+   them. Each card component renders a single root element, so these count among the real
+   siblings — the group cards inside .ws-groups, the panels inside their page's stack — and
+   no wrapper has to be reached through. */
+:root[data-theme="easter"] .modern-card:nth-child(3n+2),
+:root[data-theme="easter"] .glow-card:nth-child(3n+2) {
+    --card-hue: calc(var(--easter-hue-base, 130deg) + 118deg);
+}
+
+:root[data-theme="easter"] .modern-card:nth-child(3n+3),
+:root[data-theme="easter"] .glow-card:nth-child(3n+3) {
+    --card-hue: calc(var(--easter-hue-base, 130deg) + 236deg);
+}
+
+/* The child cards, all one colour. Listed after the cycle above and matching a class the
+   cycle does not name, so nothing has to out-specify anything: a workspace card is never a
+   .glow-card or a .modern-card. The offset is a sixth of the way round, which puts them
+   between two of the three group colours rather than agreeing with either. */
+:root[data-theme="easter"] .workspace-card {
+    --card-hue: calc(var(--easter-hue-base, 130deg) + 59deg);
+}
+
+
+
+
+/* ══ Fourth of July ═════════════════════════════════════════════════════════════ */
+
+/* ── the red ─────────────────────────────────────────────────────────────────────
+   The third palette to hit this, after Christmas and (Better)Christmas. .text-gradient
+   sweeps --c-accent-blue into --c-accent-purple, and here those are flag red and flag
+   blue — so every page <h1> and the brand mark spent their middle in magenta, which is
+   none of the three colours this theme is about.
+
+   Red through white to blue instead. It is the gradient the flag already implies, it is
+   the only one that keeps all three, and white in the middle of a heading on a navy
+   ground reads as a highlight rather than as a gap. Both coloured ends clear 3:1 against
+   the ground, which is the threshold that applies at this text size. */
+:root[data-theme="fourth-of-july"] .text-gradient {
+    background-image: linear-gradient(100deg, rgb(255 107 116) 0%, rgb(255 255 255) 46%, rgb(126 168 255) 100%);
+}
+
+/* The Settings palette preview is the one place the accents are meant to be seen as
+   themselves, so it shows three hard bands rather than a blend — the same choice
+   (Better)Christmas makes, for the same reason: it reports the colours honestly instead
+   of inventing what lies between them. */
+:root[data-theme="fourth-of-july"] .theme-preview .bg-gradient-to-r {
+    background-image: linear-gradient(to right,
+        rgb(209 47 60) 0 33.33%,
+        rgb(243 244 248) 33.33% 66.66%,
+        rgb(92 141 228) 66.66% 100%);
+}
+
+
+/* ── the sky behind everything ───────────────────────────────────────────────────
+   The stars are the `stars` effect in css/themeEffects.css, built by themeEffects.js like
+   any other particle field. This one line is what puts them *behind* the app instead of in
+   front of it, and it is worth the paragraph.
+
+   #theme-fx is a fixed layer appended to <body>, normally at z-index 15 — above the page,
+   below the menus. For a star field that is the wrong side of everything. Moving it to
+   z-index -1 puts it in the root stacking context's negative layer, which paints after the
+   canvas background and *before* every in-flow block background — so it lands behind
+   .app-shell. Behind .app-shell's opaque `bg-dark-bg` fill, in fact, which is why the
+   stars were invisible until this rule existed.
+
+   TWO ELEMENTS HAVE TO GET OUT OF THE WAY, NOT ONE, and the second is the interesting half.
+   Making .app-shell transparent was not enough: a 60px scarlet test star was provably in the
+   DOM, sized, positioned and painted, and still invisible. The culprit is <body>.
+
+   theme.css paints both html and body with rgb(var(--c-bg)). html's background becomes the
+   canvas, which is painted before everything — fine, the stars are above it. But body is an
+   in-flow, non-positioned block, so *its* background is painted in step 3 of the root
+   stacking context's paint order, and negative-z-index descendants are step 2. Body's fill
+   therefore lands on top of the star layer, however transparent the shell above it is.
+
+   So body goes transparent too and html's identical colour becomes the ground. Nothing
+   changes visually except that the layer between them can now be seen. The nav is
+   translucent with a backdrop blur, so the stars show faintly through it as well, which is
+   the right accident.
+
+   This is also the answer to why the stars are not a pseudo-element of .app-shell, the way
+   (Better)Christmas's tree is a background image of it. A negative-z-index pseudo-element
+   would need .app-shell to be a stacking context to be visible at all, and making it one
+   traps the app's modals at z-50 inside it, underneath the particle layer that is a
+   sibling of #app. That is the hazard the tree's comment describes at length. Reaching for
+   the existing particle layer and moving it down avoids the whole question. */
+:root[data-theme="fourth-of-july"] body,
+:root[data-theme="fourth-of-july"] .app-shell {
+    background-color: transparent;
+}
+
+
+/* ── the flag on its pole ────────────────────────────────────────────────────────
+   Two nested elements, and it has to be two: the pole is rigid and the cloth is not, and
+   one element cannot hold two unrelated transforms.
+
+   The wave is a skew, not a sprite. Three frames of a rippling flag swapped on a steps()
+   keyframe was the other candidate and it is the wrong trade — three drawings of thirteen
+   stripes and a canton is three times the data URI for something that repaints on every
+   frame it changes, where a skew about the hoist is composited and free. Pinned at
+   transform-origin: left center, a ±2.4deg skew with a hair of horizontal breathing is
+   what cloth pulling against a pole actually looks like.
+
+   58px of pole, down from 92. The taller version was the one prop that broke the 56px
+   shelf on its own, and a flag hanging over a card is exactly what the shelf exists to
+   stop. The flag came down with it — 52×32, where the stripes are 2.5px each and still
+   read as stripes. */
+#theme-decor[data-decor="fourth-of-july"] .decor-flagpole {
+    left: 2.5rem;
+    bottom: calc(var(--decor-floor) - 2px);
+    width: 4px;
+    height: 58px;
+    border-radius: 2px 2px 0 0;
+    background-image: linear-gradient(90deg, #6d7686 0%, #d5dae4 40%, #5f6878 100%);
+}
+
+/* The finial. A radial gradient off-centre is a lit brass ball; a flat circle is a dot. */
+#theme-decor[data-decor="fourth-of-july"] .decor-flagpole::before {
+    content: "";
+    position: absolute;
+    top: -8px;
+    left: -3px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-image: radial-gradient(circle at 34% 30%, #ffeaa6 0%, #d9a92b 68%, #a87c14 100%);
+}
+
+#theme-decor[data-decor="fourth-of-july"] .decor-flag {
+    position: absolute;
+    left: 4px;
+    top: 4px;
+    width: 52px;
+    height: 32px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='40' viewBox='0 0 64 40'%3E%3Crect width='64' height='40' fill='%23f3f4f8'/%3E%3Cg fill='%23d12f3c'%3E%3Crect y='0' width='64' height='3.08'/%3E%3Crect y='6.15' width='64' height='3.08'/%3E%3Crect y='12.31' width='64' height='3.08'/%3E%3Crect y='18.46' width='64' height='3.08'/%3E%3Crect y='24.62' width='64' height='3.08'/%3E%3Crect y='30.77' width='64' height='3.08'/%3E%3Crect y='36.92' width='64' height='3.08'/%3E%3C/g%3E%3Crect width='26' height='21.54' fill='%2326418f'/%3E%3Cg fill='%23ffffff'%3E%3Ccircle cx='3.2' cy='3.4' r='.9'/%3E%3Ccircle cx='7.6' cy='3.4' r='.9'/%3E%3Ccircle cx='12' cy='3.4' r='.9'/%3E%3Ccircle cx='16.4' cy='3.4' r='.9'/%3E%3Ccircle cx='20.8' cy='3.4' r='.9'/%3E%3Ccircle cx='5.4' cy='7.8' r='.9'/%3E%3Ccircle cx='9.8' cy='7.8' r='.9'/%3E%3Ccircle cx='14.2' cy='7.8' r='.9'/%3E%3Ccircle cx='18.6' cy='7.8' r='.9'/%3E%3Ccircle cx='3.2' cy='12.2' r='.9'/%3E%3Ccircle cx='7.6' cy='12.2' r='.9'/%3E%3Ccircle cx='12' cy='12.2' r='.9'/%3E%3Ccircle cx='16.4' cy='12.2' r='.9'/%3E%3Ccircle cx='20.8' cy='12.2' r='.9'/%3E%3Ccircle cx='5.4' cy='16.6' r='.9'/%3E%3Ccircle cx='9.8' cy='16.6' r='.9'/%3E%3Ccircle cx='14.2' cy='16.6' r='.9'/%3E%3Ccircle cx='18.6' cy='16.6' r='.9'/%3E%3C/g%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    transform-origin: left center;
+    box-shadow: 0 2px 6px rgb(0 0 0 / 0.4);
+}
+
+@keyframes jy-wave {
+    0%, 100% { transform: skewY(0deg) scaleX(1); }
+    22%      { transform: skewY(2.4deg) scaleX(0.985); }
+    50%      { transform: skewY(0deg) scaleX(1.01); }
+    74%      { transform: skewY(-2.4deg) scaleX(0.985); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    :root[data-theme="fourth-of-july"][data-fx-motion="on"] #theme-decor .decor-flag {
+        animation: jy-wave 3.4s ease-in-out infinite;
+    }
+}
+
+
+/* ── the fireworks ───────────────────────────────────────────────────────────────
+   One shell per click, twenty sparks per shell, and the script throws the whole thing
+   away a moment later — so nothing here has to think about how many are on screen.
+
+   No motion gate in CSS: themeDecor.js does not spawn a burst at all when animations are
+   off, because a firework that cannot move is twenty dots sitting on the window.
+
+   The droop is the 26px added to --by at the end. Without it the sparks stop where they
+   were aimed and a firework becomes a starburst clipart; with it they fall away as they
+   fade, which is the whole difference. */
+#theme-decor[data-decor="fourth-of-july"] .decor-burst {
+    width: 0;
+    height: 0;
+}
+
+#theme-decor[data-decor="fourth-of-july"] .decor-burst > b {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 5px;
+    height: 5px;
+    margin: -2.5px 0 0 -2.5px;
+    border-radius: 50%;
+    background-color: var(--bc);
+    box-shadow: 0 0 10px var(--bc);
+    animation: jy-spark var(--bd) cubic-bezier(0.14, 0.72, 0.3, 1) forwards;
+}
+
+/* The scale curve is not decoration. A spark that shrinks on the same easing it travels
+   on is down to a 2px dot a third of the way out, which is a firework you can only see in
+   the first frame — measured by pausing a burst mid-flight. So it flashes *up* at
+   ignition, holds most of its size through the visible part of the flight, and only
+   collapses as it fades. */
+@keyframes jy-spark {
+    0% {
+        translate: 0 0;
+        scale: 0.6;
+        opacity: 1;
+    }
+    14% {
+        scale: 1.15;
+    }
+    70% {
+        scale: 0.9;
+        opacity: 0.85;
+    }
+    100% {
+        translate: var(--bx) calc(var(--by) + 26px);
+        scale: 0.45;
+        opacity: 0;
+    }
+}
+/* ══ Fall ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── the leaf pile along the footer ──────────────────────────────────────────────
+   The counterpart to (Better)Christmas's snow blanket, and built the same way: one
+   repeat-x tile carrying the whole thing, so nothing can drift out of alignment with
+   anything else when a size changes.
+
+   The tile is a heap rather than a row. Two lumpy mounds in two browns give it depth,
+   and eight of the *same leaf silhouette* the falling leaves use — one <path> in the
+   defs and eight <use> of it at different angles and colours — sit on top. Same shape
+   as the weather, which is the point: the leaves that have already landed should be
+   recognisably the ones that fell.
+
+   Both mound paths start and end at the same y so the tile repeats without a seam. That
+   is the only constraint on editing them; the leaves stay clear of x=0 and x=96 for the
+   same reason. */
+:root[data-theme="fall"] .app-shell > footer::before {
+    /* The mound's base ends 6px inside the bar and the tallest leaves stand 20px above
+       it, so the heap reads as resting on the footer rather than as a band drawn over
+       its edge. */
+    top: -20px;
+    height: 26px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='26' viewBox='0 0 96 26'%3E%3Cdefs%3E%3Cpath id='l' d='M16 2c8.5 6.5 11.5 14 1 24l-1 1-1-1C4.5 16 7.5 8.5 16 2z'/%3E%3C/defs%3E%3Cpath fill='%235e3418' d='M0 26V16 q8 -5 16 -1 q8 4 16 -2 q8 -6 16 1 q8 5 16 -3 q8 -5 16 2 q8 4 16 3 V26Z'/%3E%3Cpath fill='%238a4a20' d='M0 26V21 q10 -4 20 0 q10 4 20 -1 q10 -4 20 1 q10 4 18 -1 q9 -3 18 1 V26Z'/%3E%3Cuse href='%23l' fill='%23c8631f' transform='translate(1.2 5.2) scale(0.55) rotate(-35 16 16)'/%3E%3Cuse href='%23l' fill='%23e08a2c' transform='translate(18.2 2.2) scale(0.55) rotate(28 16 16)'/%3E%3Cuse href='%23l' fill='%23a83a24' transform='translate(35.2 6.2) scale(0.55) rotate(-62 16 16)'/%3E%3Cuse href='%23l' fill='%23d9782c' transform='translate(51.2 1.2) scale(0.55) rotate(48 16 16)'/%3E%3Cuse href='%23l' fill='%238a5a2b' transform='translate(67.2 4.2) scale(0.55) rotate(-22 16 16)'/%3E%3Cuse href='%23l' fill='%23c8631f' transform='translate(81.2 7.2) scale(0.55) rotate(68 16 16)'/%3E%3Cuse href='%23l' fill='%23e0a34a' transform='translate(26.2 10.2) scale(0.55) rotate(105 16 16)'/%3E%3Cuse href='%23l' fill='%23a83a24' transform='translate(58.2 11.2) scale(0.55) rotate(-95 16 16)'/%3E%3C/svg%3E");
+    background-repeat: repeat-x;
+    background-position: left bottom;
+    background-size: 96px 26px;
+}
+
+
+/* ══ Halloween ══════════════════════════════════════════════════════════════════ */
+
+/* ── cobwebs in the corners ──────────────────────────────────────────────────────
+   Four webs, one drawing, three flips.
+
+   The drawing is five radials from the corner plus one sagging arc, and the arc is a
+   single path in the defs used four times under scale(1), scale(1.92), scale(2.92) and
+   scale(4). Because every ring is the same curve scaled about the corner the geometry is
+   exactly right at every radius, which four hand-drawn arcs would not be — and
+   non-scaling-stroke keeps the outer rings from being drawn with a 4px thread.
+
+   TOP TWO ONLY. Four corners was the first version and it was too much of a good thing —
+   a web in every corner reads as an effect applied to the window rather than as cobwebs in
+   a room, and the bottom pair competed with the candles for the same strip of screen. Webs
+   collect where nothing disturbs them, which is up.
+
+   They hang in the corners of the *content*, not of the window. The nav is translucent
+   with a backdrop blur and sits at z-30, above this layer, so a web in the true top-left
+   corner would either be smeared by that blur or drawn across the brand mark. Insetting
+   past the nav and the status bar costs nothing and the corners are still unmistakably
+   corners. */
+#theme-decor[data-decor="halloween"] .decor-web {
+    width: 120px;
+    height: 120px;
+    /* Tasteful is a number here, and this is it: enough to read as a web against the
+       darkest ground in the app, not enough to be read as content. */
+    opacity: 0.3;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120' fill='none' stroke='%23e6ddf5' stroke-width='1.1' stroke-linecap='round'%3E%3Cdefs%3E%3Cpath id='a' d='M25.9 1.6 Q21.6 5.6 23.5 11.2 Q17.7 13.6 16.9 19.8 Q11 19.5 8.4 24.6 Q4.3 21.9 1.6 25.9'/%3E%3C/defs%3E%3Cpath d='M0 0 L117.8 7.3'/%3E%3Cpath d='M0 0 L106.6 50.7'/%3E%3Cpath d='M0 0 L76.6 89.8'/%3E%3Cpath d='M0 0 L38 111.7'/%3E%3Cpath d='M0 0 L7.3 117.8'/%3E%3Cuse href='%23a' vector-effect='non-scaling-stroke'/%3E%3Cuse href='%23a' vector-effect='non-scaling-stroke' transform='scale(1.92)'/%3E%3Cuse href='%23a' vector-effect='non-scaling-stroke' transform='scale(2.92)'/%3E%3Cuse href='%23a' vector-effect='non-scaling-stroke' transform='scale(4)'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+}
+
+#theme-decor[data-decor="halloween"] .decor-web.is-tl {
+    top: var(--decor-ceiling);
+    left: 0;
+}
+
+#theme-decor[data-decor="halloween"] .decor-web.is-tr {
+    top: var(--decor-ceiling);
+    right: 0;
+    scale: -1 1;
+}
+
+
+
+/* ── candles on the footer ───────────────────────────────────────────────────────
+   Two candles at the left end and three at the right, which is the whole reason there are
+   four drawings rather than two. One cluster used twice was cheaper and read as a mirror:
+   the eye finds the repeat immediately at this size, and a mirrored repeat is the most
+   findable kind. Two different clusters of different counts read as candles someone put
+   down.
+
+   The two pseudo-elements are split by what moves rather than by which side of the window
+   they are on:
+
+     ::before   the wax — bodies, drips, wicks. Never moves.
+     ::after    the flames and the light they throw. The only thing that does.
+
+   Each pseudo-element carries two layers, one per cluster: the 2-candle drawing pinned to
+   the left and the 3-candle drawing pinned to the right. background-size therefore takes
+   two values where background-repeat still takes one, because only the sizes differ.
+
+   Within a cluster the wax and the flame drawings share a canvas and put the wicks and
+   flames at the same coordinates, so they line up by construction rather than by nudging.
+   Both canvases are 52 tall for the same reason: one `bottom` and one height serve all
+   four layers. */
+:root[data-theme="halloween"] .app-shell > footer::before,
+:root[data-theme="halloween"] .app-shell > footer::after {
+    /* Bases 3px inside the bar, flames 49px above it. */
+    bottom: 17px;
+    height: 52px;
+    background-size: 50px 52px, 72px 52px;
+    background-position: left 2rem bottom, right 2rem bottom;
+}
+
+:root[data-theme="halloween"] .app-shell > footer::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='50' height='52' viewBox='0 0 50 52'%3E%3Cg fill='%23efe4cd'%3E%3Crect x='8' y='30' width='10' height='22' rx='2'/%3E%3Crect x='30' y='22' width='11' height='30' rx='2'/%3E%3C/g%3E%3Cg fill='%23d9c9ac'%3E%3Cpath d='M8 35 q-3.5 7 0 12z'/%3E%3Cpath d='M41 26 q3.5 8 0 13z'/%3E%3Cellipse cx='13' cy='30' rx='5' ry='1.8'/%3E%3Cellipse cx='35.5' cy='22' rx='5.5' ry='1.8'/%3E%3C/g%3E%3Cg stroke='%233a2b1c' stroke-width='1.4' stroke-linecap='round'%3E%3Cpath d='M13 30 v-4'/%3E%3Cpath d='M35.5 22 v-4'/%3E%3C/g%3E%3C/svg%3E"), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='72' height='52' viewBox='0 0 72 52'%3E%3Cg fill='%23efe4cd'%3E%3Crect x='6' y='28' width='10' height='24' rx='2'/%3E%3Crect x='30' y='22' width='11' height='30' rx='2'/%3E%3Crect x='55' y='32' width='10' height='20' rx='2'/%3E%3C/g%3E%3Cg fill='%23d9c9ac'%3E%3Cpath d='M6 33 q-3.5 7 0 12z'/%3E%3Cpath d='M41 26 q3.5 8 0 13z'/%3E%3Cpath d='M55 38 q-3 5 0 9z'/%3E%3Cellipse cx='11' cy='28' rx='5' ry='1.8'/%3E%3Cellipse cx='35.5' cy='22' rx='5.5' ry='1.8'/%3E%3Cellipse cx='60' cy='32' rx='5' ry='1.8'/%3E%3C/g%3E%3Cg stroke='%233a2b1c' stroke-width='1.4' stroke-linecap='round'%3E%3Cpath d='M11 28 v-4'/%3E%3Cpath d='M35.5 22 v-4'/%3E%3Cpath d='M60 32 v-4'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+:root[data-theme="halloween"] .app-shell > footer::after {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='50' height='52' viewBox='0 0 50 52'%3E%3Cdefs%3E%3CradialGradient id='g'%3E%3Cstop offset='0' stop-color='%23fff3c8' stop-opacity='.85'/%3E%3Cstop offset='.42' stop-color='%23ffa726' stop-opacity='.38'/%3E%3Cstop offset='1' stop-color='%23ff7a18' stop-opacity='0'/%3E%3C/radialGradient%3E%3C/defs%3E%3Cg fill='url(%23g)'%3E%3Ccircle cx='13' cy='21' r='14'/%3E%3Ccircle cx='35.5' cy='13' r='13'/%3E%3C/g%3E%3Cg fill='%23ffb02e'%3E%3Cpath d='M13 17 q4 4 0 9 q-4 -5 0 -9z'/%3E%3Cpath d='M35.5 9 q4.5 4 0 9 q-4.5 -5 0 -9z'/%3E%3C/g%3E%3Cg fill='%23fff3b0'%3E%3Cpath d='M13 20 q2 2 0 5 q-2 -3 0 -5z'/%3E%3Cpath d='M35.5 12 q2.2 2 0 5 q-2.2 -3 0 -5z'/%3E%3C/g%3E%3C/svg%3E"), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='72' height='52' viewBox='0 0 72 52'%3E%3Cdefs%3E%3CradialGradient id='g'%3E%3Cstop offset='0' stop-color='%23fff3c8' stop-opacity='.85'/%3E%3Cstop offset='.42' stop-color='%23ffa726' stop-opacity='.38'/%3E%3Cstop offset='1' stop-color='%23ff7a18' stop-opacity='0'/%3E%3C/radialGradient%3E%3C/defs%3E%3Cg fill='url(%23g)'%3E%3Ccircle cx='11' cy='19' r='14'/%3E%3Ccircle cx='35.5' cy='13' r='13'/%3E%3Ccircle cx='60' cy='23' r='13'/%3E%3C/g%3E%3Cg fill='%23ffb02e'%3E%3Cpath d='M11 15 q4 4 0 9 q-4 -5 0 -9z'/%3E%3Cpath d='M35.5 9 q4.5 4 0 9 q-4.5 -5 0 -9z'/%3E%3Cpath d='M60 19 q3.8 4.5 0 9 q-3.8 -4.5 0 -9z'/%3E%3C/g%3E%3Cg fill='%23fff3b0'%3E%3Cpath d='M11 18 q2 2 0 5 q-2 -3 0 -5z'/%3E%3Cpath d='M35.5 12 q2.2 2 0 5 q-2.2 -3 0 -5z'/%3E%3Cpath d='M60 22 q2 2 0 4.5 q-2 -2.5 0 -4.5z'/%3E%3C/g%3E%3C/svg%3E");
+    /* The lean pivots at the wick, not at the middle of the strip. */
+    transform-origin: 50% 100%;
+}
+
+/* Guttering, once both switches allow it. Two animations on periods that do not divide
+   into each other — 2.7s and 4.3s — so the pair does not visibly repeat, and the opacity
+   curve is written with uneven stops for the same reason: an evenly spaced flicker reads
+   as a pulse.
+
+   With motion off the candles stay lit and stop moving, which is this file's rule
+   everywhere. */
+@keyframes hw-gutter {
+    0%, 100% { opacity: 0.86; }
+    11%      { opacity: 1; }
+    23%      { opacity: 0.72; }
+    39%      { opacity: 0.97; }
+    48%      { opacity: 0.8; }
+    62%      { opacity: 1; }
+    74%      { opacity: 0.76; }
+    89%      { opacity: 0.94; }
+}
+
+@keyframes hw-lean {
+    0%, 100% { transform: scaleY(1) skewX(0deg); }
+    27%      { transform: scaleY(1.09) skewX(-3.5deg); }
+    58%      { transform: scaleY(0.93) skewX(2.5deg); }
+    81%      { transform: scaleY(1.05) skewX(-1.5deg); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    :root[data-theme="halloween"][data-fx-motion="on"] .app-shell > footer::after {
+        animation:
+            hw-gutter 2.7s ease-in-out infinite,
+            hw-lean 4.3s ease-in-out infinite;
+    }
+}
+
+
+/* ── the pumpkin in the background ───────────────────────────────────────────────
+   A background-image on the shell, for the reasons (Better)Christmas's tree gives at
+   length: an element would need either a pseudo-element of .app-shell at z-index -1,
+   which makes the shell a stacking context and traps the app's modals inside it under
+   the particle layer, or new markup in MainLayout for something purely decorative. A
+   background-image paints above the shell's own colour and below every descendant, which
+   is exactly where a background pumpkin belongs.
+
+   THE EYES GLOW BUT DO NOT FLICKER, and that is a consequence of the same choice. A
+   background image cannot animate part of itself: no selector reaches inside it, and the
+   ways round that are all worse than the problem — swapping the whole data URI on a
+   steps() keyframe, or driving a registered custom property through a gradient and
+   repainting the layer every frame. So the light is baked in, as three radial gradients
+   behind the face, and the theme's moving fire is the candles on the footer instead. A
+   carved pumpkin sitting still in the corner of a room is not a compromise; it is a
+   carved pumpkin. */
+:root[data-theme="halloween"] .app-shell {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='170' viewBox='0 0 200 170'%3E%3Cdefs%3E%3CradialGradient id='eg'%3E%3Cstop offset='0' stop-color='%23fff2a8' stop-opacity='.95'/%3E%3Cstop offset='.5' stop-color='%23ffb020' stop-opacity='.4'/%3E%3Cstop offset='1' stop-color='%23ff8a00' stop-opacity='0'/%3E%3C/radialGradient%3E%3C/defs%3E%3Cg opacity='.72'%3E%3Cpath fill='%233f6b2a' d='M100 40 q-16 -14 -32 -13 q19 -7 32 7 q9 -13 24 -11 q-16 6 -24 21z'/%3E%3Crect x='94' y='34' width='13' height='18' rx='5' fill='%234a5f28'/%3E%3Cellipse cx='100' cy='104' rx='72' ry='58' fill='%23a84c17'/%3E%3Cellipse cx='100' cy='104' rx='58' ry='58' fill='%23c95d1c'/%3E%3Cellipse cx='100' cy='104' rx='34' ry='58' fill='%23dd6c24'/%3E%3Cellipse cx='100' cy='104' rx='12' ry='58' fill='%23ea7a2e'/%3E%3Cg fill='url(%23eg)'%3E%3Ccircle cx='74' cy='92' r='32'/%3E%3Ccircle cx='126' cy='92' r='32'/%3E%3Ccircle cx='100' cy='124' r='38'/%3E%3C/g%3E%3Cg fill='%23ffd24a'%3E%3Cpath d='M62 98 L82 84 L86 101z'/%3E%3Cpath d='M138 98 L118 84 L114 101z'/%3E%3Cpath d='M72 116 L128 116 L124 130 L114 122 L106 132 L98 122 L88 130 L76 122z'/%3E%3C/g%3E%3Cg fill='%23fff4c0' opacity='.75'%3E%3Cpath d='M66 97 L80 87 L82 97z'/%3E%3Cpath d='M134 97 L120 87 L118 97z'/%3E%3Cpath d='M78 118 L122 118 L119 124 L112 119 L106 126 L100 119 L92 125 L82 120z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 2.5rem bottom 2rem;
+    background-size: auto min(40vh, 320px);
+}
+
+
+/* ── the cauldron, at the bottom of Settings ──────────────────────────────────────
+   An easter egg, and the only prop in this file that is neither a background image nor
+   in #theme-decor. It is markup in Pages/Settings.razor, because a fixed overlay cannot
+   sit at the end of a scrolling page and that is where it was asked to be.
+
+   It is in the markup unconditionally and hidden by this file, rather than rendered
+   behind an @if on the theme. Settings would otherwise have to know which theme is
+   *painted*, and that is a JavaScript fact — the resolved theme depends on the date and
+   on the OS preference, neither of which the component has when it renders. Scoping it
+   the same way as everything else in this file makes it appear and disappear with the
+   palette for free.
+
+   Drawn in CSS rather than as an SVG for one reason: the brew's colour is a custom
+   property the stirring writes to, and a data URI cannot read a variable. */
+.decor-cauldron {
+    display: none;
+}
+
+:root[data-theme="halloween"] .decor-cauldron {
+    display: block;
+    position: relative;
+    width: 170px;
+    height: 128px;
+    margin: 2.5rem auto 0;
+    /* No label, no tooltip, no cursor change until it is grabbed: an easter egg that
+       announces itself is a feature. `grab` is the one hint, and only on the pot. */
+    --brew-hue: 118;
+}
+
+/* The fire under it. Bottom layer, so everything else is drawn over the glow. */
+:root[data-theme="halloween"] .decor-cauldron::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: -6px;
+    width: 132px;
+    height: 34px;
+    margin-left: -66px;
+    border-radius: 50%;
+    background-image: radial-gradient(ellipse at center,
+        rgb(255 150 40 / 0.5) 0%, rgb(255 110 20 / 0.22) 45%, rgb(255 90 10 / 0) 75%);
+}
+
+:root[data-theme="halloween"] .decor-cauldron-pot {
+    position: absolute;
+    left: 50%;
+    bottom: 4px;
+    width: 128px;
+    height: 88px;
+    margin-left: -64px;
+    /* Round-bellied and slightly narrower at the base, which is the whole silhouette of
+       a cauldron and cheaper than a path. */
+    border-radius: 46% 46% 50% 50% / 26% 26% 74% 74%;
+    background-image: linear-gradient(160deg, #453a52 0%, #241c30 55%, #150f1e 100%);
+    box-shadow:
+        inset 0 -10px 18px rgb(0 0 0 / 0.55),
+        inset 6px 4px 14px rgb(255 255 255 / 0.07);
+    cursor: grab;
+    pointer-events: auto;
+}
+
+:root[data-theme="halloween"] .decor-cauldron.is-stirring .decor-cauldron-pot {
+    cursor: grabbing;
+}
+
+/* The rim, drawn as a separate ellipse so the brew can sit inside it. */
+:root[data-theme="halloween"] .decor-cauldron-pot::before {
+    content: "";
+    position: absolute;
+    left: -6px;
+    right: -6px;
+    top: -7px;
+    height: 26px;
+    border-radius: 50%;
+    background-image: linear-gradient(180deg, #5a4c6b, #2a2138);
+}
+
+:root[data-theme="halloween"] .decor-cauldron-brew {
+    position: absolute;
+    left: 50%;
+    top: 33px;
+    width: 108px;
+    height: 22px;
+    margin-left: -54px;
+    border-radius: 50%;
+    /* Both the fill and the light it throws are the one hue the stirring advances, so a
+       single property changes the whole reading of the pot. */
+    background-image: radial-gradient(ellipse at 40% 35%,
+        hsl(var(--brew-hue) 95% 74%) 0%,
+        hsl(var(--brew-hue) 85% 48%) 60%,
+        hsl(var(--brew-hue) 80% 32%) 100%);
+    box-shadow:
+        0 0 26px hsl(var(--brew-hue) 95% 55% / 0.75),
+        inset 0 -4px 8px rgb(0 0 0 / 0.35);
+    transition: background-image 0.35s linear, box-shadow 0.35s linear;
+}
+
+/* Two bubbles, offset in phase, which at this size is enough to read as a simmer. */
+:root[data-theme="halloween"] .decor-cauldron-brew::before,
+:root[data-theme="halloween"] .decor-cauldron-brew::after {
+    content: "";
+    position: absolute;
+    bottom: 5px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background-color: hsl(var(--brew-hue) 95% 84% / 0.75);
+    opacity: 0;
+}
+
+:root[data-theme="halloween"] .decor-cauldron-brew::before { left: 32px; }
+:root[data-theme="halloween"] .decor-cauldron-brew::after { left: 66px; }
+
+/* THE SPOON ORBITS BUT DOES NOT TURN OVER, which takes two rotations that cancel.
+ *
+ * The first version put one rotation on the pivot and drew the spoon out from it, so the
+ * handle swung round like a clock hand and ended up pointing sideways and upside down at
+ * the bottom of every lap. That is not what stirring looks like: a hand holding a spoon
+ * keeps it upright and walks the bowl round the pot.
+ *
+ * So the pivot still rotates — that is what carries the bowl round the circle — and each
+ * pseudo-element rotates by exactly the negative of the same angle. Orientation cancels to
+ * zero, position does not, because the two rotations are about different points: the
+ * pivot's is about the middle of the brew, and each pseudo-element's is about its own
+ * origin, which both of them place on the orbit circle. The result is a spoon that stays
+ * vertical while its bowl travels round the pot.
+ *
+ * Both origins have to land on the same point or the handle and the bowl come apart as the
+ * angle changes. They are lined up here rather than eyeballed: 24px right and 4px below
+ * the pivot, reached by `left`/`bottom` in each and by nothing else. */
+:root[data-theme="halloween"] .decor-cauldron-spoon {
+    position: absolute;
+    left: 50%;
+    top: 44px;
+    width: 0;
+    height: 0;
+    rotate: var(--spoon-angle, -42deg);
+}
+
+:root[data-theme="halloween"] .decor-cauldron-spoon::before,
+:root[data-theme="halloween"] .decor-cauldron-spoon::after {
+    content: "";
+    position: absolute;
+    rotate: calc(var(--spoon-angle, -42deg) * -1);
+}
+
+/* The handle: bottom-centre on the orbit point, rising straight up from it. */
+:root[data-theme="halloween"] .decor-cauldron-spoon::before {
+    left: 20px;
+    bottom: -4px;
+    width: 8px;
+    height: 56px;
+    border-radius: 4px;
+    transform-origin: 50% 100%;
+    background-image: linear-gradient(90deg, #b58851, #7d5527 55%, #6b4720);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.45);
+}
+
+/* The bowl: centred on the same orbit point, so it sits at the foot of the handle. */
+:root[data-theme="halloween"] .decor-cauldron-spoon::after {
+    left: 14px;
+    bottom: -11px;
+    width: 20px;
+    height: 14px;
+    border-radius: 50% 50% 45% 45%;
+    transform-origin: 50% 50%;
+    background-image: linear-gradient(160deg, #a2763f, #6b4720);
+}
+
+/* Where the sparks are born: the middle of the brew, as a zero-size origin so each spark
+   only needs an offset rather than a position. */
+:root[data-theme="halloween"] .decor-cauldron-sparks {
+    position: absolute;
+    left: 50%;
+    top: 40px;
+    width: 0;
+    height: 0;
+}
+
+:root[data-theme="halloween"] .decor-cauldron-sparks > b {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: var(--ss);
+    height: var(--ss);
+    margin: calc(var(--ss) / -2) 0 0 calc(var(--ss) / -2);
+    border-radius: 50%;
+    background-color: hsl(var(--brew-hue) 100% 82%);
+    box-shadow: 0 0 8px hsl(var(--brew-hue) 100% 65%);
+    animation: hw-spark var(--sd) ease-out forwards;
+}
+
+@keyframes hw-spark {
+    from { translate: 0 0; opacity: 1; scale: 1; }
+    to   { translate: var(--sx) var(--sy); opacity: 0; scale: 0.3; }
+}
+
+@keyframes hw-bubble {
+    0%       { translate: 0 0; opacity: 0; scale: 0.4; }
+    35%      { opacity: 0.8; }
+    100%     { translate: 0 -14px; opacity: 0; scale: 1; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    :root[data-theme="halloween"][data-fx-motion="on"] .decor-cauldron-brew::before {
+        animation: hw-bubble 2.1s ease-in infinite;
+    }
+
+    :root[data-theme="halloween"][data-fx-motion="on"] .decor-cauldron-brew::after {
+        animation: hw-bubble 2.1s ease-in -1.05s infinite;
+    }
+}
+
+
+/* ══ Thanksgiving ═══════════════════════════════════════════════════════════════ */
+
+/* Thanksgiving shares Fall's falling leaves, and therefore shared Fall's stutter — the
+   seam in fx-tumble that made every leaf jerk once every few seconds. That is fixed in
+   css/themeEffects.css, which is where the fix belonged: one keyframe, both themes.
+   Nothing about it is here. */
+
+/* ── the cornucopia ──────────────────────────────────────────────────────────────
+   An element rather than a background image, because it is the one thing on the footer
+   you are meant to press.
+
+   THE DRAWING IS A STACK OF CIRCLES, and that is why it looks like a horn. A cornucopia
+   is a cone wrapped into a curl, and neither an outline path nor a blob gets the taper
+   right by hand — the first attempt was one lumpy <path> and read as a bread roll. Eleven
+   circles of shrinking radius laid along a curve give a taper that is correct by
+   construction, and the whole thing is then drawn four times off that one <g>: a dark
+   copy shifted down for the shadow, the body, a smaller lighter stack for the lit edge,
+   and seven arcs across it for the woven coils. Each arc's ends land exactly on the
+   circle it belongs to, so nothing pokes outside the silhouette and no clip is needed.
+   The mouth is a tilted ellipse with a bright rim; the fruit spills up and to the right,
+   out of it.
+
+   NOT FOCUSABLE, and deliberately. #theme-decor is aria-hidden — twelve tufts of grass
+   and a cobweb are not worth announcing — and a focusable control inside an aria-hidden
+   subtree is worse than an unreachable one: a keyboard user lands on something a screen
+   reader has been told does not exist. This is a turkey, not a feature of the app, so
+   pointer-only is the honest answer rather than a compromise. */
+#theme-decor[data-decor="thanksgiving"] .decor-horn {
+    left: 2rem;
+    /* Straddling the footer's top edge rather than standing on it, which is what every
+       tile in this file does and what makes the hit strip below possible at all. */
+    bottom: 2px;
+    width: 88px;
+    height: 56px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='88' height='56' viewBox='0 0 88 56'%3E%3Cdefs%3E%3Cg id='coil'%3E%3Ccircle cx='60' cy='24' r='16'/%3E%3Ccircle cx='52' cy='25.5' r='14.6'/%3E%3Ccircle cx='44.5' cy='27' r='13'/%3E%3Ccircle cx='37.5' cy='28.8' r='11.3'/%3E%3Ccircle cx='31.5' cy='31' r='9.6'/%3E%3Ccircle cx='26' cy='33.6' r='8'/%3E%3Ccircle cx='21.5' cy='36.4' r='6.6'/%3E%3Ccircle cx='17.8' cy='39.4' r='5.3'/%3E%3Ccircle cx='15.2' cy='42.4' r='4.1'/%3E%3Ccircle cx='14' cy='45.4' r='3.1'/%3E%3Ccircle cx='15.4' cy='47.8' r='2.3'/%3E%3C/g%3E%3C/defs%3E%3Cuse href='%23coil' fill='%2363380f' transform='translate(0 3.5)'/%3E%3Cuse href='%23coil' fill='%239c6a33'/%3E%3Cg fill='%23c08b4a'%3E%3Ccircle cx='56.8' cy='19.8' r='9.9'/%3E%3Ccircle cx='49.1' cy='21.7' r='9.1'/%3E%3Ccircle cx='41.9' cy='23.6' r='8.1'/%3E%3Ccircle cx='35.2' cy='25.9' r='7'/%3E%3Ccircle cx='29.6' cy='28.5' r='6'/%3E%3Ccircle cx='24.4' cy='31.5' r='5'/%3E%3Ccircle cx='20.2' cy='34.7' r='4.1'/%3E%3Ccircle cx='16.7' cy='38' r='3.3'/%3E%3Ccircle cx='14.4' cy='41.3' r='2.5'/%3E%3Ccircle cx='13.4' cy='44.6' r='1.9'/%3E%3Ccircle cx='14.9' cy='47.2' r='1.4'/%3E%3C/g%3E%3Cg fill='none' stroke='%237d4a1c' stroke-width='1.3' stroke-opacity='.65' stroke-linecap='round'%3E%3Cpath d='M49.1 11.2 Q56.6 24.6 54.9 39.8'/%3E%3Cpath d='M41.3 14.4 Q48.5 26 47.7 39.6'/%3E%3Cpath d='M33.6 18.2 Q40.9 27.6 41.4 39.4'/%3E%3Cpath d='M27.4 22.3 Q34.3 29.7 35.6 39.7'/%3E%3Cpath d='M21.8 26.8 Q28.2 32.3 30.2 40.4'/%3E%3Cpath d='M17.4 31.3 Q23.1 35.1 25.7 41.5'/%3E%3Cpath d='M13.8 35.9 Q18.9 38.1 21.8 42.9'/%3E%3C/g%3E%3Cg transform='rotate(-16 61 22)'%3E%3Cellipse cx='61' cy='22' rx='12' ry='15.5' fill='%234e2b0f'/%3E%3Cellipse cx='61' cy='22' rx='12' ry='15.5' fill='none' stroke='%23cd964f' stroke-width='2.6'/%3E%3Cellipse cx='61' cy='22' rx='8.4' ry='11' fill='%23341b06'/%3E%3C/g%3E%3Cg%3E%3Cellipse cx='70' cy='11' rx='7' ry='6' fill='%239aa832' transform='rotate(-18 70 11)'/%3E%3Ccircle cx='79' cy='16' r='6.4' fill='%23c9412f'/%3E%3Ccircle cx='72' cy='23' r='6' fill='%23d1762b'/%3E%3Cellipse cx='82' cy='27' rx='5.4' ry='6.6' fill='%23d9b03b' transform='rotate(22 82 27)'/%3E%3Cg fill='%237b3f6b'%3E%3Ccircle cx='64' cy='7' r='3'/%3E%3Ccircle cx='69' cy='4.5' r='2.7'/%3E%3Ccircle cx='74' cy='6' r='2.9'/%3E%3Ccircle cx='66.5' cy='11' r='2.8'/%3E%3Ccircle cx='71.5' cy='9.5' r='2.6'/%3E%3C/g%3E%3Cg fill='%23ffffff' fill-opacity='.28'%3E%3Ccircle cx='77' cy='13.6' r='2'/%3E%3Ccircle cx='70.2' cy='20.8' r='1.8'/%3E%3Ccircle cx='80.6' cy='24.4' r='1.6'/%3E%3C/g%3E%3Cpath fill='%235f7a2a' d='M76 10 q7 -7 11 -5 q-4 6 -11 6z'/%3E%3Cpath fill='%235f7a2a' d='M63 15 q-5 -6 -3 -9 q5 3 5 9z'/%3E%3C/g%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    /* The horn itself is pointer-transparent; only the strip inside the footer bar takes
+       the pointer. See "where an interactive prop may take the pointer" above. */
+    pointer-events: none;
+    /* Swells from the curled tip, so the charge reads as the horn filling rather than as
+       the whole thing growing. */
+    transform-origin: 15% 100%;
+}
+
+/* The hit strip: the part of the horn that overlaps the footer bar, and nothing above it.
+   19px of the bar's 21px, the full width of the horn — a small target for a mouse and a
+   large one compared with the ⋮ buttons this app is already full of. */
+#theme-decor[data-decor="thanksgiving"] .decor-horn::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 19px;
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+/* THE CHARGE IS THE ANIMATION, which is why it is one keyframe run once with `forwards`
+   rather than a class per level. Its duration is the same 1.4s js/themeDecor.js clamps
+   the charge at, so at any moment the horn is exactly as swollen as the shot will be
+   powerful, and holding past full changes neither. Nothing has to be kept in step by
+   hand except that one number. */
+@keyframes tg-charge {
+    from {
+        transform: scale(1) rotate(0deg);
+        filter: drop-shadow(0 0 0 rgb(240 190 70 / 0));
+    }
+    to {
+        transform: scale(1.2) rotate(-8deg);
+        filter: drop-shadow(0 0 15px rgb(240 190 70 / 0.85));
+    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    :root[data-theme="thanksgiving"][data-fx-motion="on"] #theme-decor .decor-horn.is-charging {
+        animation: tg-charge 1.4s ease-out forwards;
+    }
+}
+
+/* ── the turkey ──────────────────────────────────────────────────────────────────
+   THE ARC IS ON `translate` AND THE SPIN ON `transform`, AND SWAPPING THEM BREAKS IT.
+   The composite is translate · rotate · scale · transform, so whatever `transform` does
+   happens *first*, in the element's own frame, and the individual properties are applied
+   to the result. Put the travel in `transform` and the spin in `rotate` and the rotation
+   is applied to a point already a thousand pixels away — the turkey swings across the
+   window on the end of an invisible arm instead of tumbling. Same trap fx-tumble
+   documents in css/themeEffects.css, and the same way out.
+
+   There is no CSS motion gate on this: themeDecor.js will not launch one at all when
+   motion is off, and a turkey that cannot move is not a shorter turkey, it is a picture
+   of one stuck to the footer. */
+#theme-decor[data-decor="thanksgiving"] .decor-turkey {
+    width: var(--tk-size);
+    height: calc(var(--tk-size) * 0.85);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='34' viewBox='0 0 40 34'%3E%3Cellipse cx='20' cy='22' rx='15' ry='11' fill='%23b87a2b'/%3E%3Cellipse cx='20' cy='19' rx='13.5' ry='9.5' fill='%23d99a3f'/%3E%3Cpath fill='%23e8b45e' d='M9 13 q4 -8 11 -8 q7 0 11 8 q-11 -3 -22 0z'/%3E%3Cg fill='%23c9873a'%3E%3Cpath d='M11 10 q-6 -6 -10 -5 q1 5 6 7z'/%3E%3Cpath d='M29 10 q6 -6 10 -5 q-1 5 -6 7z'/%3E%3C/g%3E%3Cg fill='%23f4ead6'%3E%3Ccircle cx='3' cy='4.4' r='2.7'/%3E%3Ccircle cx='37' cy='4.4' r='2.7'/%3E%3C/g%3E%3Cellipse cx='20' cy='27' rx='9' ry='3' fill='%23a06a24' fill-opacity='.55'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    animation:
+        tg-launch var(--tk-dur) linear forwards,
+        tg-tumble var(--tk-dur) linear forwards;
+}
+
+/* A SAMPLED PARABOLA UNDER LINEAR TIMING, and the sampling is the point.
+ *
+ * The first version was three keyframes — origin, apex at 50%, landing at 100% — with
+ * ease-out into the apex and ease-in out of it. It was unsatisfying for two reasons that
+ * are both about x rather than y. An easing curve applies to the whole `translate`, so
+ * easing the rise also decelerated the *horizontal* travel: the turkey slowed almost to a
+ * stop at the top and then accelerated away, which is how a thrown object behaves in no
+ * physical situation whatsoever. And the apex forced to exactly 50% made the rise and the
+ * fall symmetrical, so it never read as leaving.
+ *
+ * A real projectile has constant horizontal speed and a quadratic drop. CSS cannot ease
+ * two axes of one property differently, so the curve is sampled instead: eleven stops
+ * with x spaced evenly and y taken from y(t) = rise·(5.669t² − 4.762t), interpolated
+ * linearly. That puts the apex at t≈0.42 — past halfway, so the fall is the longer half —
+ * and lands at +0.907·rise, far enough below a launch point already near the footer that
+ * the turkey leaves the window rather than stopping in it. Linear interpolation between
+ * ten segments of a parabola is smooth to within about 4px at the largest shot, which is
+ * a quarter of the turkey.
+ *
+ * --tk-fall is gone with the old version: the landing is a fixed multiple of the rise
+ * now, so one number from the script decides the whole shape and the two cannot disagree.
+ */
+@keyframes tg-launch {
+    0%   { translate: 0 0; }
+    10%  { translate: calc(var(--tk-dx) * 0.1) calc(var(--tk-rise) * -0.420); }
+    20%  { translate: calc(var(--tk-dx) * 0.2) calc(var(--tk-rise) * -0.726); }
+    30%  { translate: calc(var(--tk-dx) * 0.3) calc(var(--tk-rise) * -0.918); }
+    40%  { translate: calc(var(--tk-dx) * 0.4) calc(var(--tk-rise) * -0.998); }
+    50%  { translate: calc(var(--tk-dx) * 0.5) calc(var(--tk-rise) * -0.964); }
+    60%  { translate: calc(var(--tk-dx) * 0.6) calc(var(--tk-rise) * -0.816); }
+    70%  { translate: calc(var(--tk-dx) * 0.7) calc(var(--tk-rise) * -0.556); }
+    80%  { translate: calc(var(--tk-dx) * 0.8) calc(var(--tk-rise) * -0.181); }
+    90%  { translate: calc(var(--tk-dx) * 0.9) calc(var(--tk-rise) *  0.306); }
+    100% { translate: var(--tk-dx) calc(var(--tk-rise) * 0.907); }
+}
+
+@keyframes tg-tumble {
+    from { transform: rotate(0turn); }
+    to   { transform: rotate(var(--tk-spin)); }
+}
+
+
+/* ══ Winter ═════════════════════════════════════════════════════════════════════ */
+
+/* ── ice on the cards, on hover ──────────────────────────────────────────────────
+   One pseudo-element per card, faded in on hover, carrying two layers:
+
+     the frost      a 120px tile of crystal facets, and it is seamless by construction —
+                    every path that leaves an edge has a partner leaving the opposite
+                    edge at the same coordinate, so the tile can repeat without the
+                    lattice showing a grid. That is the only constraint on editing it.
+     the sheen      a diagonal gradient, which is what makes the surface read as glazed
+                    rather than merely patterned.
+
+   Drawn *inside* the card, unlike (Better)Christmas's garland, which is drawn outside for
+   reasons that do not apply here. A garland is a thing hung round a card and must never
+   cover content; ice forms on a surface, so it has to be on the surface. The sheen tops
+   out around 20% white, which is a wash the text underneath survives — and it only
+   appears while the pointer is on the card, so nothing is ever read through it for long.
+
+   The border and the shadow change with it: an inner white line for the lit edge of the
+   ice and a cold outer glow. box-shadow is set directly rather than through --tw-shadow
+   because the Tailwind rules for these classes drive that variable themselves, and a
+   value that has to win against them may as well not go through them. */
+:root[data-theme="winter"] .modern-card::after,
+:root[data-theme="winter"] .workspace-card::after,
+:root[data-theme="winter"] .glow-card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    /* Follows whatever the card's own radius is — 0.75rem on the panels, 0.5rem on the
+       dense dashboard cards — with nothing to keep in step by hand. */
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120' fill='none' stroke='%23ffffff' stroke-opacity='.15' stroke-width='1' stroke-linejoin='round'%3E%3Cpath d='M0 24 L28 40 L56 20 L60 0'/%3E%3Cpath d='M18 0 L28 40 L18 70 L0 82'/%3E%3Cpath d='M56 20 L84 34 L120 24'/%3E%3Cpath d='M84 34 L74 62 L44 88 L18 120'/%3E%3Cpath d='M74 62 L104 78 L120 82'/%3E%3Cpath d='M104 78 L96 110 L60 120'/%3E%3Cpath d='M18 70 L44 88 L96 110'/%3E%3C/svg%3E"),
+        linear-gradient(135deg,
+            rgb(255 255 255 / 0.09) 0%,
+            rgb(180 220 255 / 0.02) 45%,
+            rgb(255 255 255 / 0.06) 100%);
+    background-repeat: repeat, no-repeat;
+    background-size: 120px 120px, auto;
+    /* THE EDGE IS THE EFFECT. The first version put most of its weight in the middle — a
+       sheen topping out at 20% white over a frost lattice at 34% — and read as a card
+       behind frosted glass rather than as one *under ice*. Ice is almost clear where it is
+       thick and bright white where it breaks: at the rim, where the light catches the cut.
+       So the body dropped to a tenth of its former weight and all of it moved out here.
+       inset 0 0 0 2px is a hard white band following the border radius; the two lines above
+       it are the lit top edge and the faint bloom just inside the rim. */
+    box-shadow:
+        inset 0 0 0 2px rgb(240 250 255 / 0.72),
+        inset 0 1px 0 rgb(255 255 255 / 0.9),
+        inset 0 0 14px rgb(190 230 255 / 0.14);
+}
+
+:root[data-theme="winter"] .modern-card:hover::after,
+:root[data-theme="winter"] .workspace-card:hover::after,
+:root[data-theme="winter"] .glow-card:hover::after {
+    opacity: 1;
+}
+
+:root[data-theme="winter"] .modern-card:hover,
+:root[data-theme="winter"] .workspace-card:hover,
+:root[data-theme="winter"] .glow-card:hover {
+    /* Near-white, to carry on the rim the glaze draws just inside it. */
+    border-color: rgb(232 246 255 / 0.9);
+    box-shadow:
+        0 0 0 1px rgb(214 240 255 / 0.35),
+        0 14px 34px -8px rgb(6 26 56 / 0.75);
+}
+
+/* ── vapour off the bottom edge ──────────────────────────────────────────────────
+   Cold air rolling off the ice, drawn below the card and following the same hover as the
+   glaze above it.
+
+   IT HANGS AND TURNS RATHER THAN DRIFTING AWAY. The first version was a puff cycle: the
+   whole group rose from nothing, travelled 18px down the screen, spread, and faded out.
+   That is a smoke signal, not vapour. Cold air coming off ice does not go anywhere — it
+   pools at the edge, rolls over itself and thins. So the motion is now four separate slow
+   animations on four separate properties, and the travel is ±4px.
+
+   FOUR PROPERTIES IS THE WHOLE TRICK. `translate`, `scale`, `rotate` and `filter` are
+   independent animatable properties, so one element can run four animations at four
+   unrelated periods without any of them clobbering another. The periods — 7.3s, 5.1s,
+   11.7s and 4.3s — share no small common multiple, so the combination does not visibly
+   repeat inside a minute of hovering. That is what buys the organic look without a
+   particle system: one element, four curves, no JavaScript.
+
+   The rotation is what reads as "rolling". It is only ±2.5deg, but applied to an
+   asymmetric group of five blobs it slides them past each other rather than turning them,
+   which is exactly what a rolling edge of vapour does.
+
+   THE FADE IS `filter: opacity()`, NOT `opacity`, and that is the load-bearing oddity.
+   `opacity` is spoken for: it gates the whole effect on hover, transitioning 0 → 1 so the
+   vapour arrives with the ice rather than snapping on. The breathing needs its own
+   independent fade, and filter's opacity() is a separate property that multiplies with it.
+   The static blur() rides along in the same filter list, which is also why every keyframe
+   has to restate it: a filter list only interpolates against a list of the same shape.
+   Unlike the old cycle it never reaches zero — vapour is continuous, and a haze that
+   blinks out once a cycle is a puff again.
+
+   Nothing here is masked or clipped, so the blobs are drawn outside the card's box. That
+   needs the hovered card lifted above its neighbours — see the z-index rule below — or the
+   next card in a dense list paints over the vapour and cuts it off in a straight line. */
+:root[data-theme="winter"] .modern-card::before,
+:root[data-theme="winter"] .workspace-card::before,
+:root[data-theme="winter"] .glow-card::before {
+    content: "";
+    position: absolute;
+    /* Inset from the sides: vapour leaving from the corners looks like a leak. */
+    left: 7%;
+    right: 7%;
+    /* Hugging the edge it comes off, not hanging below it. */
+    bottom: -18px;
+    height: 30px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.35s ease;
+    /* Everything pivots and swells about the card's edge rather than the blob group's own
+       middle, so the vapour stays attached to what it is coming off. */
+    transform-origin: 50% 0;
+    filter: blur(3px) opacity(0);
+    background-image:
+        radial-gradient(closest-side, rgb(214 236 255 / 0.42), rgb(214 236 255 / 0)),
+        radial-gradient(closest-side, rgb(234 246 255 / 0.34), rgb(234 246 255 / 0)),
+        radial-gradient(closest-side, rgb(200 228 255 / 0.38), rgb(200 228 255 / 0)),
+        radial-gradient(closest-side, rgb(226 242 255 / 0.3), rgb(226 242 255 / 0)),
+        radial-gradient(closest-side, rgb(210 234 255 / 0.36), rgb(210 234 255 / 0));
+    background-repeat: no-repeat;
+    background-size: 46px 30px, 32px 24px, 52px 34px, 28px 22px, 40px 28px;
+    background-position: 4% 20%, 26% 62%, 48% 8%, 70% 56%, 90% 26%;
+}
+
+:root[data-theme="winter"] .modern-card:hover::before,
+:root[data-theme="winter"] .workspace-card:hover::before,
+:root[data-theme="winter"] .glow-card:hover::before {
+    opacity: 1;
+}
+
+/* The hovered card is lifted so the vapour below it is not clipped by the next card in the
+   list. :not(:has(.ws-menu)) rather than a bare :hover, and the exclusion is the point: the
+   shared "positioned cards" rule gives a card holding an open menu z-index 20, and this
+   section is later in the file, so a bare :hover would out-order it and drop an open menu
+   from 20 to 5. Hovering the card you have just opened a menu on is the common case, not
+   an edge one. */
+:root[data-theme="winter"] .modern-card:hover:not(:has(.ws-menu)),
+:root[data-theme="winter"] .workspace-card:hover:not(:has(.ws-menu)),
+:root[data-theme="winter"] .glow-card:hover:not(:has(.ws-menu)) {
+    z-index: 5;
+}
+
+/* A small closed loop, so the group wanders and comes back rather than going anywhere. */
+@keyframes wt-vapour-drift {
+    0%, 100% { translate: 0 0; }
+    25%      { translate: 3px 3px; }
+    50%      { translate: 0 4px; }
+    75%      { translate: -3px 2px; }
+}
+
+/* Breathing out and in, about the card's edge. Wider than it is taller, because vapour
+   spreads sideways along a surface before it climbs off it. */
+@keyframes wt-vapour-swell {
+    0%, 100% { scale: 1 1; }
+    50%      { scale: 1.12 1.06; }
+}
+
+/* The roll. Tiny, and the reason the whole thing reads as moving rather than pulsing. */
+@keyframes wt-vapour-roll {
+    0%, 100% { rotate: -2.5deg; }
+    50%      { rotate: 2.5deg; }
+}
+
+@keyframes wt-vapour-breathe {
+    0%, 100% { filter: blur(3px) opacity(0.5); }
+    50%      { filter: blur(3.8px) opacity(0.9); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    :root[data-theme="winter"][data-fx-motion="on"] .modern-card:hover::before,
+    :root[data-theme="winter"][data-fx-motion="on"] .workspace-card:hover::before,
+    :root[data-theme="winter"][data-fx-motion="on"] .glow-card:hover::before {
+        animation:
+            wt-vapour-drift 7.3s ease-in-out infinite,
+            wt-vapour-swell 5.1s ease-in-out infinite,
+            wt-vapour-roll 11.7s ease-in-out infinite,
+            wt-vapour-breathe 4.3s ease-in-out infinite;
+    }
+}
+
+/* Fullscreen log results are position:fixed at inset 0 with no radius — glazing the
+   whole window on hover would put a wash over every row of a log file, which is the one
+   place in the app where reading is the entire job. Dropped explicitly rather than left
+   to be discovered. */
+:root[data-theme="winter"] .log-results-card.is-fullscreen::after,
+:root[data-theme="winter"] .log-results-card.is-fullscreen::before {
+    content: none;
+}
+
+
+/* ── the ice along the footer ────────────────────────────────────────────────────
+   A repeat-x tile: a pale sheet with a slightly undulating top edge, a colder band
+   beneath it, and three scratch marks. It replaces the footer's top border, and it is
+   also the surface the skater below needs — a skater on a hairline is a skater falling
+   through the floor. */
+:root[data-theme="winter"] .app-shell > footer::before {
+    top: -5px;
+    height: 11px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='11' viewBox='0 0 64 11'%3E%3Cpath fill='%23cfe6ff' d='M0 3 q8 -3 16 0 q8 3 16 0 q8 -3 16 0 q8 3 16 0 V11 H0Z'/%3E%3Cpath fill='%238fc0ea' fill-opacity='.55' d='M0 6 q8 -2 16 0 q8 2 16 0 q8 -2 16 0 q8 2 16 0 V11 H0Z'/%3E%3Cg stroke='%23ffffff' stroke-width='.8' stroke-opacity='.5' stroke-linecap='round'%3E%3Cpath d='M6 8.4 h10'/%3E%3Cpath d='M24 9.6 h14'/%3E%3Cpath d='M44 8.8 h12'/%3E%3C/g%3E%3C/svg%3E");
+    background-repeat: repeat-x;
+    background-position: left top;
+    background-size: 64px 11px;
+}
+
+
+/* ── the skater ──────────────────────────────────────────────────────────────────
+   TRAVEL ON `translate`, JUMP AND LEAN ON `transform`, for exactly the reason the
+   turkey's comment gives: the composite is translate · rotate · scale · transform, so
+   `transform` resolves in the element's own frame and the individual properties are
+   applied to the result. A -16deg lean expressed as a `rotate` on top of a 100vw
+   `transform` would sweep the skater off the bottom of the window; the same lean inside
+   `transform`, under a `translate` that does the travelling, pivots on the blades where
+   it belongs.
+
+   Parked off-screen in the base rule rather than at left:0, so with animations off the
+   footer is a clean sheet of ice instead of a figure standing motionless in the corner
+   of it. */
+:root[data-theme="winter"] .app-shell > footer::after {
+    left: auto;
+    right: auto;
+    /* Feet 2px inside the bar, on the ice the tile above draws. */
+    bottom: 17px;
+    width: 26px;
+    height: 38px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='38' viewBox='0 0 26 38'%3E%3Cg fill='%23e2eeff'%3E%3Ccircle cx='15' cy='6' r='4.2'/%3E%3Cpath d='M12.6 10.2 q5.4 .6 5.4 6.4 l-.8 6.4 -6.6 0 -.8 -6.4 q0 -5.8 2.8 -6.4z'/%3E%3Cpath d='M17.4 12.6 q4.6 -1.4 6.4 -4.8 l1.9 1.4 q-2.4 5.2 -7.6 5.8z'/%3E%3Cpath d='M11 13.4 q-4.6 .8 -6.6 -2.4 l-2 1.3 q2.6 4.6 8.2 4.4z'/%3E%3Cpath d='M14.6 22.4 q1.6 6 -.6 11.2 l3 .8 q2.8 -6.4 1.4 -12.4z'/%3E%3Cpath d='M11.4 22.4 q-2.6 5 -6.8 7 l1.2 2.6 q5.8 -2.6 8.4 -8.4z'/%3E%3C/g%3E%3Cg stroke='%23ffffff' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M14.4 35.6 h6.4'/%3E%3Cpath d='M2.6 33.6 h6'/%3E%3C/g%3E%3Cpath fill='none' stroke='%237fb6e6' stroke-width='2.2' stroke-linecap='round' d='M12.4 12 q-6.4 2.6 -9.4 .4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: left bottom;
+    background-size: 100% 100%;
+    transform-origin: 50% 100%;
+    translate: -16vw 0;
+}
+
+@keyframes wt-glide {
+    from { translate: -16vw 0; }
+    to   { translate: 108vw 0; }
+}
+
+/* One jump per crossing, a little past halfway, so it is not always at the same place on
+   screen relative to whatever the window happens to be showing. Up fast and down slow,
+   which is the wrong physics and the right animation: the top of a jump is the part
+   worth looking at.
+
+   22px, not the 30 this started at, and the ceiling is not aesthetic: 17px of standing
+   height plus a 38px skater plus the jump has to stay inside the 56px shelf the shared
+   section reserves, or the skater tops out over a card again. */
+@keyframes wt-jump {
+    0%, 42% {
+        transform: translateY(0) rotate(0deg);
+        animation-timing-function: ease-out;
+    }
+    52% {
+        transform: translateY(-22px) rotate(-16deg);
+        animation-timing-function: ease-in;
+    }
+    63%, 100% {
+        transform: translateY(0) rotate(0deg);
+    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    :root[data-theme="winter"][data-fx-motion="on"] .app-shell > footer::after {
+        animation:
+            wt-glide 21s linear infinite,
+            wt-jump 21s infinite;
+    }
+}
 
 
 /* ══ (Better)Christmas ══════════════════════════════════════════════════════════ */
@@ -65,34 +1522,11 @@
 
    The ring is the two-layer mask trick: one mask clipped to the border box, one to the
    content box, excluded from each other, leaving a band exactly as thick as the
-   padding. It follows border-radius, which border-image would not. */
-:root[data-theme="better-christmas"] .modern-card,
-:root[data-theme="better-christmas"] .workspace-card,
-:root[data-theme="better-christmas"] .glow-card {
-    /* What the rings are positioned against, and the one line in this file with a
-       consequence outside it. Making a card positioned changes where it paints: a
-       .ws-menu hanging below its own card (z-30, and taller than the card it belongs
-       to) is then covered by the *next* card in the list, which was measured — the
-       menu stayed visible in the gaps between cards and vanished behind each one.
-       :has() below is the fix. Do not add `isolation: isolate` or a z-index here: both
-       make every card a stacking context, which traps the menu instead of freeing it. */
-    position: relative;
-}
+   padding. It follows border-radius, which border-image would not.
 
-/* The card holding an open menu is lifted above its siblings for as long as the menu
-   exists — Blazor only renders .ws-menu while it is open, so this selector is exactly
-   "this card's menu is showing" and costs nothing the rest of the time.
-
-   20 rather than the 30 the menu itself carries: it only has to beat the other cards,
-   which are all z-index auto. It also clears the snow layer at 15, so an open menu is
-   no longer drifted over — and it stays under the log context menu at 41 and the
-   modals at 50, both of which render as siblings of the card rather than inside it. */
-:root[data-theme="better-christmas"] .modern-card:has(.ws-menu),
-:root[data-theme="better-christmas"] .workspace-card:has(.ws-menu),
-:root[data-theme="better-christmas"] .glow-card:has(.ws-menu) {
-    z-index: 20;
-}
-
+   What the rings are positioned against — and the z-index rule that keeps an open card
+   menu out from behind its neighbour once they are — is in "positioned cards" up in the
+   shared section, because Winter's ice needs exactly the same pair. */
 :root[data-theme="better-christmas"] .modern-card::before,
 :root[data-theme="better-christmas"] .modern-card::after,
 :root[data-theme="better-christmas"] .workspace-card::before,
@@ -303,3 +1737,5 @@
     background-position: left top;
     background-size: 64px 25px;
 }
+
+

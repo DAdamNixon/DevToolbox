@@ -35,6 +35,8 @@
  * a seasonal theme outranks both the dark default and the light override without
  * needing !important.
  */
+@import url("themes/easter.css");
+@import url("themes/fourth-of-july.css");
 @import url("themes/fall.css");
 @import url("themes/halloween.css");
 @import url("themes/thanksgiving.css");

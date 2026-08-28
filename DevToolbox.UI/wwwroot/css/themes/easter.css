@@ -1,0 +1,55 @@
+/* Easter — forest night, and the eggs are the cards.
+ *
+ * IT STARTED LIGHT AND ENDED DARK. The first version was a pale lawn, on the reasoning that
+ * pastel objects need a pale field to read as pastel. That was wrong twice over: it made
+ * Easter the one seasonal theme that changed the whole app's weight rather than only its
+ * colour — the mistake Winter had just been rescued from — and it wasted the pastels. A
+ * pastel on white is a wash; a pastel on #0d1c12 is an Easter egg. So the ground went deep
+ * forest green and the colour moved onto the cards, where css/themeDecor.css gives every
+ * one of them a hue of its own.
+ *
+ * Two consequences of the switch, both of them edits elsewhere:
+ *
+ *   dashboard.css     Easter came out of the light-ground --chevron-image override, leaving
+ *                     the plain light theme as the only entry. ThemeCatalogTests checks it.
+ *   themeDecor.css    the turf and the tufts went a step brighter. Grass that read as grass
+ *                     on #f2f8ee reads as a shadow on this.
+ *
+ * BOTH ACCENTS ARE GREEN, which is what "green is the palette" costs and buys.
+ * .text-gradient sweeps --c-accent-blue into --c-accent-purple, so a green primary with a
+ * pastel second accent would put every page <h1> through mud in the middle — the failure
+ * better-christmas.css documents. Leaf green into a yellower lime stays inside the family
+ * and still reads as a sheen rather than as flat fill. The pastels are the cards' job, and
+ * keeping them off the chrome is what stops the theme becoming a bag of sweets.
+ *
+ * White on #3f9c4d is 3.45:1, the same compromise the base dark palette makes with #3b82f6
+ * and unavoidable while one token has to serve both a btn-primary fill under white text and
+ * text on a near-black ground — where it is 5.1:1.
+ *
+ * --c-success is the one deliberate exception to the green: it is teal. With green as the
+ * primary accent a green "saved" tick is indistinguishable from ordinary chrome, and the one
+ * job that colour has is to be noticed.
+ */
+:root[data-theme="easter"] {
+    color-scheme: dark;
+
+    --c-bg: 13 28 18;
+    --c-surface: 20 40 26;
+    --c-surface-hover: 28 54 35;
+    --c-border: 44 78 52;
+    --c-text: 232 244 234;
+    --c-text-muted: 158 190 165;
+
+    --c-accent-blue: 63 156 77;
+    --c-accent-blue-hover: 48 126 61;
+    --c-accent-purple: 143 191 63;
+    --c-accent-purple-hover: 120 163 48;
+
+    --c-success: 45 190 160;
+    --c-warning: 240 177 58;
+    --c-danger: 239 95 95;
+
+    --c-danger-text: 255 179 179;
+
+    --shadow-strength: 1;
+}

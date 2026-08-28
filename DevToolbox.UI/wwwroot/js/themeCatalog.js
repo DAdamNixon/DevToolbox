@@ -16,7 +16,10 @@
 //            comparison is on month and day only, so there is no year to get
 //            wrong and 02-29 simply includes the 28th every year.
 //   effect   the id of an animation in `effects` below, or null for a still
-//            theme. Standard themes never animate.
+//            theme. Standard themes never animate. Null does not mean "no
+//            ornament": Easter and Fourth of July have none of the *ambient*
+//            particles this field switches on, and both still decorate — see
+//            js/themeDecor.js for the layer that does that instead.
 //   auto     whether the 'seasonal' theme may resolve to this one. Where two
 //            windows overlap the shorter one wins, so nesting is enough to
 //            express "Halloween beats Fall in October" — but Christmas and
@@ -28,6 +31,8 @@ window.devtoolboxThemes = {
         { id: 'system',           season: null,           effect: null,     auto: false },
         { id: 'dark',             season: null,           effect: null,     auto: false },
         { id: 'light',            season: null,           effect: null,     auto: false },
+        { id: 'easter',           season: '03-15..04-25', effect: null,     auto: true },
+        { id: 'fourth-of-july',   season: '07-01..07-31', effect: 'stars',  auto: true },
         { id: 'fall',             season: '09-01..11-30', effect: 'leaves', auto: true },
         { id: 'halloween',        season: '10-01..10-31', effect: 'bats',   auto: true },
         { id: 'thanksgiving',     season: '11-01..11-30', effect: 'leaves', auto: true },
@@ -44,6 +49,10 @@ window.devtoolboxThemes = {
     effects: {
         snow:   { count: 55, minSize: 8,  maxSize: 20, minDuration: 9, maxDuration: 20, maxDrift: 12 },
         leaves: { count: 26, minSize: 14, maxSize: 30, minDuration: 8, maxDuration: 17, maxDrift: 22 },
-        bats:   { count: 7,  minSize: 16, maxSize: 30, minDuration: 7, maxDuration: 14, maxDrift: 10 }
+        bats:   { count: 7,  minSize: 16, maxSize: 30, minDuration: 7, maxDuration: 14, maxDrift: 10 },
+        // Stars neither fall nor drift, so duration and drift are not travel here: the
+        // duration range only exists to spread the negative delays that stagger the
+        // blinking, and maxDrift is 0 because nothing reads it.
+        stars:  { count: 90, minSize: 2,  maxSize: 6,  minDuration: 3, maxDuration: 9,  maxDrift: 0 }
     }
 };

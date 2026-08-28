@@ -39,8 +39,9 @@
    chrome, not text, and every dropdown in the app now agrees.
 
    Hence --chevron-color for the masked buttons and a URI baked to match it. Two
-   values, one for dark grounds and one for light, and only two because there are
-   only two light-grounded palettes — ThemeCatalogTests fails if that changes.
+   values, one for dark grounds and one for light, and only two because the plain
+   light theme is the only light-grounded palette left — ThemeCatalogTests fails if a
+   seasonal one becomes light and is not added to the override below.
 
    These four literals are the exception to this file's no-hardcoded-colour rule,
    and the only one. They cannot be rgb(var(--c-…)) because a background image's
@@ -54,10 +55,12 @@
     --chevron-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23a1a1aa'%3E%3Cpath d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
 }
 
-/* The light-grounded palettes. Keep in step with the `color-scheme: light`
-   declarations in theme.css and css/themes/. */
-:root[data-theme="light"],
-:root[data-theme="winter"] {
+/* The light-grounded palettes — which is now the plain light theme and nothing else.
+   Keep in step with the `color-scheme: light` declarations in theme.css and css/themes/.
+   Winter was here until it became a deep blue night rather than glare off snow, and Easter
+   until it became a forest one; every seasonal palette is dark today. ThemeCatalogTests
+   fails if a light one is added and not listed here. */
+:root[data-theme="light"] {
     --chevron-color: #52525b;
     --chevron-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%2352525b'%3E%3Cpath d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
 }

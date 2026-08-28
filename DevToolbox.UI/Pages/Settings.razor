@@ -127,9 +127,12 @@
                     <label for="theme-animations" class="text-sm font-medium text-dark-text cursor-pointer">Theme animations</label>
                     <p class="text-xs text-dark-text-muted">
                         Let a seasonal theme animate: leaves for Fall and Thanksgiving, snow for
-                        Winter and both Christmases, bats for Halloween, and the twinkling lights
-                        on (Better)Christmas's garlands. Windows' own "reduce motion" setting
-                        overrides this either way.
+                        Winter and both Christmases, bats for Halloween, stars for Fourth of July,
+                        and the ornament each one carries — twinkling lights on (Better)Christmas,
+                        guttering candles on Halloween, a skater on Winter's footer, vapour off its
+                        cards, a waving flag on Fourth of July. Turning it off also stops the
+                        fireworks, the turkey and the cauldron's sparks; the eggs in Easter's grass
+                        stay. Windows' own "reduce motion" setting overrides this either way.
                     </p>
                 </div>
                 <label class="relative inline-flex items-center cursor-pointer">
@@ -410,6 +413,25 @@
                 <span>Save Settings</span>
             </button>
         </div>
+    </div>
+
+    @* An easter egg, and the last thing on the page on purpose — you find it by having
+       scrolled to the bottom of Settings under the Halloween theme, and nowhere else.
+       Stir it with the mouse and the brew changes colour and throws sparks.
+
+       Rendered unconditionally and hidden by css/themeDecor.css rather than wrapped in an
+       @if on the theme. Which theme is *painted* is a JavaScript fact — it depends on the
+       date and on the OS colour preference, neither of which this component has when it
+       renders — so asking CSS is both correct and free, and it appears and disappears
+       with the palette without a re-render.
+
+       aria-hidden because it is a picture of a cauldron with no function; the stirring is
+       pointer-only for the same reason, see js/themeDecor.js. *@
+    <div class="decor-cauldron" data-decor="cauldron" data-hue="118" aria-hidden="true">
+        <div class="decor-cauldron-pot"></div>
+        <div class="decor-cauldron-brew"></div>
+        <div class="decor-cauldron-sparks"></div>
+        <div class="decor-cauldron-spoon"></div>
     </div>
 </div>
 

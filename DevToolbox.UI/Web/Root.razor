@@ -28,11 +28,13 @@
     <link href="css/themeEffects.css" rel="stylesheet" />
     <!-- Theme boot. Inline and before the body so the correct palette is in
          place at first paint — a deferred script would flash the wrong theme.
-         Order matters within it: the catalog is data the other two read, and the
-         effects layer must have registered itself before boot() asks for snow. -->
+         Order matters within it: the catalog is data the other three read, and
+         both the effects and the decor layer must have registered themselves
+         before boot() asks for snow or for a cornucopia. -->
     <script src="js/themeCatalog.js"></script>
     <script src="js/theme.js"></script>
     <script src="js/themeEffects.js"></script>
+    <script src="js/themeDecor.js"></script>
     <script>window.devtoolboxTheme.boot();</script>
     <!-- Tailwind CSS -->
     <link href="css/output.css" rel="stylesheet" />
@@ -40,7 +42,7 @@
     <link href="css/bootstrap-icons.min.css" rel="stylesheet" />
     <!-- Dashboard layout; plain CSS so it does not need the Tailwind npm build -->
     <link href="css/dashboard.css" rel="stylesheet" />
-    <!-- Theme-scoped ornament (the (Better)Christmas garland, tree and footer snow).
+    <!-- Theme-scoped ornament (the garlands, the pumpkin, the leaf pile, the skater).
          Last of the stylesheets because it is the only one that has to out-specify
          dashboard.css and the Tailwind build rather than merely be read by them. -->
     <link href="css/themeDecor.css" rel="stylesheet" />

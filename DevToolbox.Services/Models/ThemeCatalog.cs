@@ -74,8 +74,16 @@ public sealed record ThemeSeason(int StartMonth, int StartDay, int EndMonth, int
 /// <c>wwwroot/css/themes/</c>, and the id in <c>js/themeCatalog.js</c>.</param>
 /// <param name="Label">What the dropdown shows.</param>
 /// <param name="Season">When it is offered, or <c>null</c> for one that always is.</param>
-/// <param name="Effect">The animation it runs — <c>snow</c>, <c>leaves</c>, <c>bats</c> — or
-/// <c>null</c> for a still theme. Only ever honoured when the user has animations enabled.</param>
+/// <param name="Effect">The <em>ambient particle</em> animation it runs — <c>snow</c>,
+/// <c>leaves</c>, <c>bats</c> — or <c>null</c> for one that has none. Only ever honoured when the
+/// user has animations enabled.
+/// <para>
+/// Null does not mean undecorated. Easter and Fourth of July name no effect and still have
+/// ornament: the grass along the footer, the flag, the fireworks. That layer is CSS and
+/// <c>wwwroot/js/themeDecor.js</c>, keyed off <c>data-theme</c> directly, and this field says
+/// nothing about it — which is why the Settings hint about an unseen animation is worded as being
+/// about one and not about the theme as a whole.
+/// </para></param>
 /// <param name="Automatic">Whether the <c>seasonal</c> mode is allowed to choose this one. False for
 /// a theme that exists only to be picked by hand — plain Christmas, which (Better)Christmas
 /// supersedes — and meaningless for a theme with no season, which the mode never considers anyway.
@@ -116,6 +124,12 @@ public static class ThemeCatalog
         new ThemeDefinition(ThemeOptions.System, "System Default", null, null),
         new ThemeDefinition(ThemeOptions.Dark, "Dark Theme", null, null),
         new ThemeDefinition(ThemeOptions.Light, "Light Theme", null, null),
+
+        // The window is wider than the holiday because the holiday moves: Easter Sunday can fall
+        // anywhere from 22 March to 25 April, and a fixed window is the only kind ThemeSeason has.
+        // 15 March to 25 April covers every year's date with a fortnight of run-up.
+        new ThemeDefinition("easter", "Easter", new ThemeSeason(3, 15, 4, 25), null, Automatic: true),
+        new ThemeDefinition("fourth-of-july", "Fourth of July", new ThemeSeason(7, 1, 7, 31), "stars", Automatic: true),
 
         new ThemeDefinition("fall", "Fall", new ThemeSeason(9, 1, 11, 30), "leaves", Automatic: true),
         new ThemeDefinition("halloween", "Halloween", new ThemeSeason(10, 1, 10, 31), "bats", Automatic: true),
@@ -177,6 +191,7 @@ public static class ThemeCatalog
         "snow" => "falling snow",
         "leaves" => "falling leaves",
         "bats" => "bats crossing the window",
+        "stars" => "a twinkling star field",
         _ => "an animation",
     };
 
