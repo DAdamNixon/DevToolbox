@@ -52,8 +52,12 @@
     dialog laid out as the group's own card grid instead of a column, and the redundant "Default"
     sort dropped where it was identical to Name A-Z.
   -->
+  <!--
+    0.9.5 / beta.6: fixes right-clicking a collapsed card's quick-open chip, which gave the card's
+    menu instead of the chip's — a regression from the card-level right-click added in 0.9.4.
+  -->
   <PropertyGroup>
-    <VersionPrefix>0.9.4</VersionPrefix>
-    <VersionSuffix>beta.5</VersionSuffix>
+    <VersionPrefix>0.9.5</VersionPrefix>
+    <VersionSuffix>beta.6</VersionSuffix>
   </PropertyGroup>
 </Project>

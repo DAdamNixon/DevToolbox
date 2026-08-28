@@ -227,11 +227,17 @@
                    pointerdown that precedes the contextmenu closes the menu the contextmenu is
                    about to open, and clicking an item would dismiss instead of running it. *@
                 <div class="ws-menu-anchor ws-quick-anchor" data-menu-anchor>
+                    @* stopPropagation, or the chip's menu is opened and then immediately replaced:
+                       contextmenu bubbles to the card, whose own handler runs second and wins, so
+                       right-clicking a chip gave you the card's menu. Positioned at the cursor like
+                       the location rows, rather than anchored to a chip that may be at the left
+                       edge of the card. *@
                     <button type="button" class="ws-quick-btn"
                             title="Open @location.Path — right-click for more"
                             @onclick="() => OpenLocation(location)"
-                            @oncontextmenu="() => Menu.Toggle(LocationMenuId(location))"
-                            @oncontextmenu:preventDefault="true">
+                            @oncontextmenu="e => OpenLocationMenu(e, location)"
+                            @oncontextmenu:preventDefault="true"
+                            @oncontextmenu:stopPropagation="true">
                         <i class="bi @LocationIcon(location)" style="color: @LocationColor(location)"></i>
                         <span>@location.Name</span>
                     </button>
