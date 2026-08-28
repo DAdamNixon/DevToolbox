@@ -56,8 +56,18 @@
     0.9.5 / beta.6: fixes right-clicking a collapsed card's quick-open chip, which gave the card's
     menu instead of the chip's — a regression from the card-level right-click added in 0.9.4.
   -->
+  <!--
+    0.9.5.1 / beta.7: context menus dismiss on any outside left-click, the +N location badge stays
+    on its own row, and the merge-undo button says "Split cards".
+
+    Four parts in VersionPrefix from here, not three. The four-part number only has to *rise*, and
+    the last digit is the smallest step that does it — which keeps the patch digit for something
+    worth calling a release rather than spending one on every fix. AssemblyVersion and FileVersion
+    take VersionPrefix verbatim when it already has four parts, so 0.9.5.1 is what MSIX compares and
+    what Build-Installer.ps1 reads back out of the executable.
+  -->
   <PropertyGroup>
-    <VersionPrefix>0.9.5</VersionPrefix>
-    <VersionSuffix>beta.6</VersionSuffix>
+    <VersionPrefix>0.9.5.1</VersionPrefix>
+    <VersionSuffix>beta.7</VersionSuffix>
   </PropertyGroup>
 </Project>
