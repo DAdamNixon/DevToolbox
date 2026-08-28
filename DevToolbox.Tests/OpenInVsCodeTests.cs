@@ -109,16 +109,18 @@ public class OpenInVsCodeTests : IDisposable
     }
 
     [Fact]
-    public async Task A_code_workspace_opens_its_folder_too()
+    public async Task A_code_workspace_opens_as_itself()
     {
         var (service, system) = NewService();
         var location = At(@"Bench\bench.code-workspace");
 
         await service.OpenLocationInVsCodeAsync(location);
 
-        // No exception for .code-workspace: the rule is the folder, never the file. Opening the
-        // workspace file itself would land you in a JSON tab.
-        Assert.Equal(Path.Combine(_root, "Bench"), system.OpenedPath);
+        // The one exception to the folder rule: VS Code reads a .code-workspace as a project, so it
+        // opens as the workspace it describes. It also matters here because these files tend to
+        // live together in one directory — handing over the folder would open the same place for
+        // every one of them.
+        Assert.Equal(location.Path, system.OpenedPath);
     }
 
     [Fact]

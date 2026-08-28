@@ -225,10 +225,17 @@ namespace DevToolbox.Services.Services
                 return null;
             }
 
-            // Always the folder, never the file — including a .code-workspace. These locations point
-            // at project entry points (.sln, .slnf, .csproj, .code-workspace), and opening one in an
-            // editor shows you its XML or JSON in a tab, which is never what "open in VS Code" is
-            // asking for. The folder around it is the project.
+            // A .code-workspace *is* a VS Code workspace, so it opens as one — multi-root folders,
+            // settings and all. It is the one file type here that VS Code understands as a project
+            // rather than as text, so it is the one exception to the folder rule.
+            if (location.Path.EndsWith(".code-workspace", StringComparison.OrdinalIgnoreCase))
+            {
+                return location.Path;
+            }
+
+            // Everything else is a project entry point — .sln, .slnf, .csproj. Opening one in an
+            // editor shows you its XML in a tab, which is never what "open in VS Code" is asking
+            // for; the folder around it is the project.
             return Path.GetDirectoryName(location.Path);
         }
 

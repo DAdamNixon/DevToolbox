@@ -12,9 +12,10 @@ namespace DevToolbox.Services.Interfaces
         Task<OpenResult> OpenLocationInTerminalAsync(WorkspaceLocation location);
 
         /// <summary>
-        /// Opens a location's <em>folder</em> in VS Code. A folder location opens as itself; a file
-        /// location opens the directory containing it, because the point of this is to get at the
-        /// project rather than to read a <c>.sln</c> as text.
+        /// Opens a location in VS Code. A folder opens as itself and a <c>.code-workspace</c> as the
+        /// workspace it describes — the one file type VS Code reads as a project rather than as
+        /// text. Every other file opens the folder containing it, because the point is to get at
+        /// the project rather than to read a <c>.sln</c> in an editor tab.
         /// </summary>
         Task<OpenResult> OpenLocationInVsCodeAsync(WorkspaceLocation location);
         Task<OpenResult> OpenLocationWithCustomAppAsync(Workspace workspace, WorkspaceLocation location, CustomOpenOption option);
