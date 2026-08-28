@@ -146,6 +146,7 @@
             OnOpenWorkspaceLocation="OpenWorkspaceLocation"
             OnOpenInExplorer="OpenLocationInExplorer"
             OnOpenInTerminal="OpenLocationInTerminal"
+            OnOpenInVsCode="OpenLocationInVsCode"
             OnOpenWithCustomApp="OpenLocationWithCustomApp"
             OnRunScriptOnLocation="RunScriptOnLocation"
             OnAddWorkspace="SaveWorkspaces"
@@ -847,6 +848,11 @@
     private async Task OpenLocationInTerminal(WorkspaceLocation location)
     {
         Report(await WorkspaceService.OpenLocationInTerminalAsync(location));
+    }
+
+    private async Task OpenLocationInVsCode(WorkspaceLocation location)
+    {
+        Report(await WorkspaceService.OpenLocationInVsCodeAsync(location));
     }
 
     private async Task OpenLocationWithCustomApp((Workspace workspace, WorkspaceLocation location, CustomOpenOption option) args)

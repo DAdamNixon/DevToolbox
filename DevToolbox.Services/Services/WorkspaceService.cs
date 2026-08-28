@@ -175,6 +175,64 @@ namespace DevToolbox.Services.Services
         }
 
         /// <summary>
+        /// VS Code, asked for by name. <c>code</c> on PATH is <c>code.cmd</c>, which
+        /// <see cref="ISystemService.OpenWithCustomAppAsync"/> already resolves across PATH x PATHEXT
+        /// and then the App Paths registry — the same route openHandlers.yaml uses to open a
+        /// .code-workspace, so this needs no new configuration and no hardcoded install path.
+        /// </summary>
+        private static readonly CustomOpenOption VsCode = new()
+        {
+            Name = "VS Code",
+            Type = OpenOptionType.Executable,
+            ExecutablePath = "code",
+            Icon = "bi-code-slash"
+        };
+
+        public async Task<OpenResult> OpenLocationInVsCodeAsync(WorkspaceLocation location)
+        {
+            var target = ResolveEditorTarget(location);
+
+            if (target is null)
+            {
+                return OpenResult.Fail($"{location.Path} no longer exists, so VS Code was not opened.");
+            }
+
+            return await _systemService.OpenWithCustomAppAsync(target, VsCode);
+        }
+
+        /// <summary>
+        /// What to hand VS Code for a location.
+        /// <para>
+        /// Reads <see cref="WorkspaceLocation.Path"/> rather than <c>Root</c>: Root is blank on any
+        /// location added by hand rather than produced by a scan, which is the bug
+        /// <see cref="RunScriptOnLocationAsync"/> documents.
+        /// </para>
+        /// </summary>
+        private static string? ResolveEditorTarget(WorkspaceLocation location)
+        {
+            if (string.IsNullOrWhiteSpace(location.Path))
+            {
+                return null;
+            }
+
+            if (Directory.Exists(location.Path))
+            {
+                return location.Path;
+            }
+
+            if (!File.Exists(location.Path))
+            {
+                return null;
+            }
+
+            // Always the folder, never the file — including a .code-workspace. These locations point
+            // at project entry points (.sln, .slnf, .csproj, .code-workspace), and opening one in an
+            // editor shows you its XML or JSON in a tab, which is never what "open in VS Code" is
+            // asking for. The folder around it is the project.
+            return Path.GetDirectoryName(location.Path);
+        }
+
+        /// <summary>
         /// Runs a script against a location, in a terminal window the user can watch.
         /// <para>
         /// Both of the ways this used to fail were invisible. It required <c>Directory.Exists</c> on

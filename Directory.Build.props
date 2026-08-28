@@ -66,8 +66,12 @@
     take VersionPrefix verbatim when it already has four parts, so 0.9.5.1 is what MSIX compares and
     what Build-Installer.ps1 reads back out of the executable.
   -->
+  <!--
+    0.9.5.2 / beta.8: "Open in VS Code" on the location menus, opening the folder around the
+    location rather than the file itself.
+  -->
   <PropertyGroup>
-    <VersionPrefix>0.9.5.1</VersionPrefix>
-    <VersionSuffix>beta.7</VersionSuffix>
+    <VersionPrefix>0.9.5.2</VersionPrefix>
+    <VersionSuffix>beta.8</VersionSuffix>
   </PropertyGroup>
 </Project>

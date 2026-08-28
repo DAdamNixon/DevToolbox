@@ -37,6 +37,13 @@
             <i class="bi bi-terminal"></i>
             <span>Open in Terminal</span>
         </button>
+        @* Alongside Explorer and Terminal rather than down in "Open With": those three are the same
+           question — which of my usual tools do I want this in — and the answer is VS Code often
+           enough that it should not be two sections away. *@
+        <button class="dropdown-item" @onclick="() => OnOpenInVsCode.InvokeAsync(location)">
+            <i class="bi bi-code-slash"></i>
+            <span>Open in VS Code</span>
+        </button>
         <button class="dropdown-item" @onclick="() => CopyPath(location)">
             <i class="bi bi-clipboard"></i>
             <span>Copy Path</span>
@@ -401,6 +408,7 @@
     [Parameter] public EventCallback<(Workspace, WorkspaceLocation)> OnOpenWorkspaceLocation { get; set; }
     [Parameter] public EventCallback<WorkspaceLocation> OnOpenInExplorer { get; set; }
     [Parameter] public EventCallback<WorkspaceLocation> OnOpenInTerminal { get; set; }
+    [Parameter] public EventCallback<WorkspaceLocation> OnOpenInVsCode { get; set; }
     [Parameter] public EventCallback<(Workspace, WorkspaceLocation, CustomOpenOption)> OnOpenWithCustomApp { get; set; }
     [Parameter] public EventCallback<(ScriptInfo, Workspace, WorkspaceLocation)> OnRunScriptOnLocation { get; set; }
     [Parameter] public EventCallback OnAddLocation { get; set; }

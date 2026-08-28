@@ -258,6 +258,7 @@
                     OnOpenWorkspaceLocation="OnOpenWorkspaceLocation"
                     OnOpenInExplorer="OnOpenInExplorer"
                     OnOpenInTerminal="OnOpenInTerminal"
+                    OnOpenInVsCode="OnOpenInVsCode"
                     OnOpenWithCustomApp="OnOpenWithCustomApp"
                     OnRunScriptOnLocation="OnRunScriptOnLocation"
                     OnAddLocation="SaveWorkspaces"
@@ -358,6 +359,7 @@
     [Parameter] public EventCallback<(Workspace, WorkspaceLocation)> OnOpenWorkspaceLocation { get; set; }
     [Parameter] public EventCallback<WorkspaceLocation> OnOpenInExplorer { get; set; }
     [Parameter] public EventCallback<WorkspaceLocation> OnOpenInTerminal { get; set; }
+    [Parameter] public EventCallback<WorkspaceLocation> OnOpenInVsCode { get; set; }
     [Parameter] public EventCallback<(Workspace, WorkspaceLocation, CustomOpenOption)> OnOpenWithCustomApp { get; set; }
     [Parameter] public EventCallback<(ScriptInfo, Workspace, WorkspaceLocation)> OnRunScriptOnLocation { get; set; }
     [Parameter] public EventCallback<(Workspace, string)> OnMoveToGroup { get; set; }
