@@ -86,8 +86,16 @@
     four parts all the same — 0.9.6.0 — because MSIX compares VersionPrefix verbatim and 0.9.6.0
     rises above 0.9.5.3.
   -->
+  <!--
+    0.9.7 / beta.11: the Log Viewer's advanced SQL mode can save, group and recall its queries, and
+    colours what you type; and restoring a bundled config file now shows you the diff first, with
+    every backup on disk offered as something to compare against and restore from.
+
+    The patch digit again rather than a fourth part, on the same rule 0.9.6 used: two features
+    rather than a fix. 0.9.7.0 rises above 0.9.6.0, which is what App Installer compares.
+  -->
   <PropertyGroup>
-    <VersionPrefix>0.9.6.0</VersionPrefix>
-    <VersionSuffix>beta.10</VersionSuffix>
+    <VersionPrefix>0.9.7.0</VersionPrefix>
+    <VersionSuffix>beta.11</VersionSuffix>
   </PropertyGroup>
 </Project>
