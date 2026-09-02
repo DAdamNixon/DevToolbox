@@ -1,0 +1,303 @@
+@using DevToolbox.Services.Services
+@using System.IO
+
+@*
+    Compare one config file against a version of itself, and put that version back.
+
+    One dialog for both halves of the ask, because they are the same act: "show me what would
+    change, then change it". The versions on the left are the shipped copy and every backup;
+    the diff on the right is always *your current file* against whichever is selected. There is
+    no second screen for backups — a backup is just another version to compare against.
+
+    The diff is the point. Restore used to overwrite the moment it was pressed: the backup meant
+    nothing was lost, but you found out what changed afterwards, by opening two files in an
+    editor. Now the change is on screen before the button is live.
+*@
+
+<Modal Title="@($"Compare {FileName}")" SizeClass="is-wide" IsVisible="IsVisible" IsVisibleChanged="OnVisibleChanged">
+    @if (IsVisible)
+    {
+        <div class="log-config cfg-compare">
+            @if (_message is not null)
+            {
+                <div class="ws-notice @(_failed ? null : "is-info")">
+                    <i class="bi @(_failed ? "bi-exclamation-triangle-fill" : "bi-info-circle-fill")"></i>
+                    <span>@_message</span>
+                </div>
+            }
+
+            @if (_versions.Count == 0)
+            {
+                <p class="log-config-hint">
+                    There is nothing to compare this file against — no copy shipped with this build, and
+                    no backup of it on this machine. That is normal when running from source.
+                </p>
+            }
+            else
+            {
+                <div class="log-config-split">
+                    <div class="log-config-list">
+                        <div class="saved-queries-group">
+                            <span class="saved-queries-group-name">Compare against</span>
+                        </div>
+
+                        @foreach (var version in _versions)
+                        {
+                            var selected = _selected is not null && _selected.FullPath == version.FullPath;
+                            <button type="button" class="log-config-list-item @(selected ? "active" : null)"
+                                    @onclick="() => Select(version)">
+                                <span class="log-config-list-name">
+                                    <i class="bi @(version.Origin == ConfigVersions.Origin.Shipped ? "bi-box-seam" : "bi-clock-history")"
+                                       aria-hidden="true"></i>
+                                    @version.Label
+                                </span>
+                                <span class="log-config-list-note">
+                                    @(version.Taken is { } taken ? taken.ToString("ddd d MMM yyyy, HH:mm") : version.FileName)
+                                </span>
+                            </button>
+                        }
+                    </div>
+
+                    <div class="log-config-pane">
+                        @if (_selected is null)
+                        {
+                            <p class="log-config-hint">Pick a version on the left.</p>
+                        }
+                        else
+                        {
+                            <div class="cfg-diff-head">
+                                <span class="cfg-diff-legend">
+                                    <span class="cfg-diff-chip is-removed">− yours</span>
+                                    <span class="cfg-diff-chip is-added">+ @(_selected.Origin == ConfigVersions.Origin.Shipped ? "shipped" : "this backup")</span>
+                                </span>
+                                <span class="cfg-diff-count">
+                                    @if (_diff is null)
+                                    {
+                                        <span>Could not read one of the files.</span>
+                                    }
+                                    else if (_diff.Identical)
+                                    {
+                                        <span>Identical — restoring would change nothing.</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="cfg-diff-added">+@_diff.Added</span>
+                                        <span class="cfg-diff-removed">−@_diff.Removed</span>
+                                        <span>lines</span>
+                                    }
+                                </span>
+                            </div>
+
+                            @if (_diff is { Truncated: true })
+                            {
+                                <p class="log-config-hint">
+                                    These two have almost nothing in common, so this is shown as a wholesale
+                                    replacement rather than a line-by-line diff.
+                                </p>
+                            }
+
+                            @if (_liveMissing)
+                            {
+                                <p class="log-config-hint">
+                                    You do not have this file — everything below would be added.
+                                </p>
+                            }
+
+                            @if (_diff is not null && !_diff.Identical)
+                            {
+                                <div class="cfg-diff" role="region" aria-label="Differences">
+                                    @{
+                                        var previousEnd = 0;
+                                    }
+                                    @foreach (var hunk in _diff.Hunks)
+                                    {
+                                        var skipped = hunk.LeftStart - previousEnd - 1;
+                                        @if (previousEnd > 0 && skipped > 0)
+                                        {
+                                            <div class="cfg-diff-gap">@skipped unchanged line@(skipped == 1 ? "" : "s")</div>
+                                        }
+
+                                        @foreach (var line in hunk.Lines)
+                                        {
+                                            <div class="cfg-diff-line @LineClass(line.Kind)">
+                                                <span class="cfg-diff-num">@(line.LeftNumber?.ToString() ?? "")</span>
+                                                <span class="cfg-diff-num">@(line.RightNumber?.ToString() ?? "")</span>
+                                                @* The sign is real text, not a ::before, so copying a
+                                                   hunk out of here pastes something a person can read
+                                                   and a patch tool can almost use. *@
+                                                <span class="cfg-diff-sign" aria-hidden="true">@Sign(line.Kind)</span>
+                                                <span class="cfg-diff-text">@line.Text</span>
+                                            </div>
+                                        }
+
+                                        previousEnd = hunk.Lines.Where(l => l.LeftNumber.HasValue)
+                                                                .Select(l => l.LeftNumber!.Value)
+                                                                .DefaultIfEmpty(previousEnd)
+                                                                .Max();
+                                    }
+                                </div>
+                            }
+
+                            <div class="log-config-actions">
+                                <span class="log-config-hint cfg-diff-note">
+                                    Your current file is copied to a dated <code>.bak-</code> first, always.
+                                </span>
+                                <div class="flex-1"></div>
+                                <button type="button" class="btn-secondary" @onclick="Cancel">Cancel</button>
+                                <button type="button" class="btn-primary"
+                                        disabled="@(_busy || _diff is null || _diff.Identical)"
+                                        @onclick="RestoreAsync">
+                                    <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>
+                                    <span>@(_liveMissing ? "Install this version" : "Accept and restore")</span>
+                                </button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</Modal>
+
+@code {
+    [Parameter] public bool IsVisible { get; set; }
+
+    [Parameter] public EventCallback<bool> IsVisibleChanged { get; set; }
+
+    /// <summary>The config file being compared, e.g. <c>log_paths.yaml</c>.</summary>
+    [Parameter] public string FileName { get; set; } = "";
+
+    /// <summary>Where the live config lives.</summary>
+    [Parameter] public string ConfigDirectory { get; set; } = "";
+
+    /// <summary>Where the bundled defaults live, when this build has any.</summary>
+    [Parameter] public string? SourceDirectory { get; set; }
+
+    /// <summary>Raised with the file name after a successful restore, so the caller can refresh
+    /// its list and drop any cached copy of the file.</summary>
+    [Parameter] public EventCallback<string> OnRestored { get; set; }
+
+    private List<ConfigVersions.Version> _versions = new();
+    private ConfigVersions.Version? _selected;
+    private TextDiff.Result? _diff;
+
+    /// <summary>The machine has no copy of this file, so everything in the version is an addition.</summary>
+    private bool _liveMissing;
+
+    private bool _busy;
+    private string? _message;
+    private bool _failed;
+    private bool _wasVisible;
+
+    protected override void OnParametersSet()
+    {
+        // Only on the transition into visible. OnParametersSet also runs on every re-render while
+        // open, and re-reading then would throw away the selection on each keystroke elsewhere.
+        if (IsVisible && !_wasVisible) Open();
+        _wasVisible = IsVisible;
+    }
+
+    private void Open()
+    {
+        _message = null;
+        _failed = false;
+        _busy = false;
+
+        Load();
+
+        // Shipped is first out of ConfigVersions.For, and is what someone pressing this button on a
+        // "changed" row is nearly always asking about.
+        _selected = _versions.FirstOrDefault();
+        Diff();
+    }
+
+    private void Load() => _versions = ConfigVersions.For(FileName, SourceDirectory, ConfigDirectory).ToList();
+
+    private void Select(ConfigVersions.Version version)
+    {
+        _selected = version;
+        _message = null;
+        _failed = false;
+        Diff();
+    }
+
+    private void Diff()
+    {
+        if (_selected is null)
+        {
+            _diff = null;
+            return;
+        }
+
+        var livePath = Path.Combine(ConfigDirectory, FileName);
+        var live = ConfigVersions.ReadText(livePath);
+        var other = ConfigVersions.ReadText(_selected.FullPath);
+
+        _liveMissing = live is null;
+
+        // Null from the *other* side is a genuine read failure — the file was listed a moment ago.
+        // Null from the live side is the ordinary "not on this machine" case, which diffs as an
+        // empty left-hand text rather than as an error.
+        _diff = other is null ? null : TextDiff.Compare(live ?? "", other);
+    }
+
+    private async Task RestoreAsync()
+    {
+        if (_selected is null) return;
+
+        _busy = true;
+        try
+        {
+            var backup = ConfigVersions.RestoreFrom(_selected, FileName, ConfigDirectory, DateTime.Now);
+
+            // RestoreFrom answers null both for "nothing to back up" and for "it failed", so the
+            // file itself is the evidence of which happened.
+            var livePath = Path.Combine(ConfigDirectory, FileName);
+            var landed = ConfigVersions.ReadText(livePath);
+            var wanted = ConfigVersions.ReadText(_selected.FullPath);
+
+            if (landed is null || !string.Equals(landed, wanted, StringComparison.Ordinal))
+            {
+                _message = $"Could not restore {FileName}. Your file has not been changed.";
+                _failed = true;
+                return;
+            }
+
+            _message = backup is null
+                ? $"Restored {FileName}. There was nothing to back up."
+                : $"Restored {FileName}. Your copy was kept as {Path.GetFileName(backup)}.";
+            _failed = false;
+
+            await OnRestored.InvokeAsync(FileName);
+
+            // The restore just created another backup and changed the live file, so both the list
+            // and the diff are stale. Re-reading leaves the dialog showing "identical", which is
+            // the honest state and also disables the button that was just pressed.
+            Load();
+            _selected = _versions.FirstOrDefault(v => v.FullPath == _selected.FullPath) ?? _versions.FirstOrDefault();
+            Diff();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static string LineClass(TextDiff.LineKind kind) => kind switch
+    {
+        TextDiff.LineKind.Added => "is-added",
+        TextDiff.LineKind.Removed => "is-removed",
+        _ => null!,
+    };
+
+    private static string Sign(TextDiff.LineKind kind) => kind switch
+    {
+        TextDiff.LineKind.Added => "+",
+        TextDiff.LineKind.Removed => "−",
+        _ => " ",
+    };
+
+    private Task Cancel() => IsVisibleChanged.InvokeAsync(false);
+
+    private Task OnVisibleChanged(bool visible) => IsVisibleChanged.InvokeAsync(visible);
+}

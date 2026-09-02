@@ -3,6 +3,7 @@
 @using DevToolbox.Services.Models
 @using DevToolbox.Services.Services
 @using DevToolbox.UI.Services
+@using DevToolbox.UI.Components.Dialogs
 @using DevToolbox.UI.Web
 @using Microsoft.JSInterop
 @using System.IO
@@ -282,10 +283,15 @@
 
                         <div class="flex items-center gap-3 flex-shrink-0">
                             <span class="text-xs @StateClass(file.State)">@StateLabel(file.State)</span>
+                            @* Enabled even for a file that matches shipped: it may still have
+                               backups worth going back to, and the dialog is also how you look at
+                               them. Whether anything can actually be restored is decided in there,
+                               against the version you pick. *@
                             <button class="btn-secondary btn-sm"
-                                    disabled="@(file.State == ConfigRestore.State.Unchanged || isRestoring)"
-                                    @onclick="() => RestoreOneAsync(file.Name)">
-                                Restore
+                                    disabled="@isRestoring"
+                                    title="See what would change before restoring"
+                                    @onclick="() => OpenCompare(file.Name)">
+                                Compare…
                             </button>
                         </div>
                     </div>
@@ -296,11 +302,14 @@
                 <span class="text-xs text-dark-text-muted">
                     @RestorableCount of @bundled.Count differ from the shipped copy.
                 </span>
+                @* The bulk path, and the one that does not show a diff — which is the whole
+                   reason it says so on the button. Backups are still written for every file. *@
                 <button class="btn-ghost flex items-center space-x-2"
                         disabled="@(RestorableCount == 0 || isRestoring)"
+                        title="Restores every differing file at once, without showing the changes"
                         @onclick="RestoreAllAsync">
                     <i class="bi bi-arrow-counterclockwise"></i>
-                    <span>Restore all @RestorableCount</span>
+                    <span>Restore all @RestorableCount without reviewing</span>
                 </button>
             </div>
 
@@ -435,6 +444,13 @@
     </div>
 </div>
 
+<ConfigCompareDialog IsVisible="compareVisible"
+                     IsVisibleChanged="@(v => compareVisible = v)"
+                     FileName="@compareFile"
+                     ConfigDirectory="@ConfigDirectory"
+                     SourceDirectory="@ConfigDefaults.SourceDirectory"
+                     OnRestored="OnComparedRestore" />
+
 @code {
 
     /// <summary>
@@ -485,35 +501,28 @@
         _ => "text-accent-purple",
     };
 
+    private bool compareVisible;
+    private string compareFile = "";
+
+    private void OpenCompare(string name)
+    {
+        compareFile = name;
+        compareVisible = true;
+    }
+
+    /// <summary>
+    /// A restore landed from inside the dialog. The dialog owns the write — including the backup
+    /// — so all that is left here is the tidying that must follow one: the list is stale, and
+    /// whichever service caches this file is still holding the copy that was there before.
+    /// </summary>
+    private void OnComparedRestore(string name)
+    {
+        DropCachedCopy(name);
+        RefreshBundled();
+    }
+
     private void RefreshBundled() =>
         bundled = ConfigRestore.Compare(ConfigDefaults.SourceDirectory, ConfigDirectory).ToList();
-
-    private async Task RestoreOneAsync(string name)
-    {
-        isRestoring = true;
-        try
-        {
-            // One timestamp per action, so restoring several files groups their backups together.
-            var backup = ConfigRestore.Restore(name, ConfigDefaults.SourceDirectory, ConfigDirectory, DateTime.Now);
-            SetRestoreResult(
-                backup is null
-                    ? $"Restored {name}. There was nothing to back up."
-                    : $"Restored {name}. Your copy was kept as {Path.GetFileName(backup)}.",
-                failed: false);
-
-            DropCachedCopy(name);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            SetRestoreResult($"Could not restore {name}: {ex.Message}", failed: true);
-        }
-        finally
-        {
-            isRestoring = false;
-        }
-
-        await Task.CompletedTask;
-    }
 
     private async Task RestoreAllAsync()
     {
