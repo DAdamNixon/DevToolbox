@@ -1,0 +1,194 @@
+@using DevToolbox.Services.Interfaces
+@using DevToolbox.Services.Models
+
+@inject ISavedQueryService SavedQueries
+
+@*
+    Save the SQL currently in the advanced query box.
+
+    Deliberately small: name, group, description, and the choice between updating the query
+    this one came from and saving a new one. Editing SQL, moving things around and deleting
+    belong to SavedQueriesDialog — a save that also offered those would be a management screen
+    the user has to read every time they want to keep a query.
+
+    The group is a free-text input over a <datalist> rather than a <select>: a new group is a
+    thing you make by naming it, and a picker forces a separate "new group" step for what is
+    one word of typing.
+*@
+
+<Modal Title="Save query" IsVisible="IsVisible" IsVisibleChanged="OnVisibleChanged">
+    @if (IsVisible)
+    {
+        <div class="saved-query-form">
+            @if (_error is not null)
+            {
+                <div class="ws-notice">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <span>@_error</span>
+                </div>
+            }
+
+            @if (Existing is not null)
+            {
+                <div class="log-segmented saved-query-mode" role="group" aria-label="Save mode">
+                    <button type="button" class="@(_asNew ? null : "active")" aria-pressed="@(!_asNew)"
+                            @onclick="() => SetMode(false)">
+                        <i class="bi bi-pencil"></i> Update '@Existing.Name'
+                    </button>
+                    <button type="button" class="@(_asNew ? "active" : null)" aria-pressed="@_asNew"
+                            @onclick="() => SetMode(true)">
+                        <i class="bi bi-plus-lg"></i> Save as new
+                    </button>
+                </div>
+            }
+
+            <div class="log-config-row">
+                <div>
+                    <label for="saveQueryName" class="block text-sm font-medium text-dark-text mb-2">Name</label>
+                    <input id="saveQueryName" class="input-modern w-full" @bind="_name" @bind:event="oninput"
+                           placeholder="Orders by hour" />
+                </div>
+                <div>
+                    <label for="saveQueryGroup" class="block text-sm font-medium text-dark-text mb-2">Group</label>
+                    <input id="saveQueryGroup" class="input-modern w-full" list="saveQueryGroups" @bind="_group"
+                           @bind:event="oninput" placeholder="Checkout" />
+                    <datalist id="saveQueryGroups">
+                        @foreach (var group in _groups)
+                        {
+                            <option value="@group"></option>
+                        }
+                    </datalist>
+                </div>
+            </div>
+
+            <div>
+                <label for="saveQueryDescription" class="block text-sm font-medium text-dark-text mb-2">
+                    Description <span class="text-dark-text-muted font-normal">(optional)</span>
+                </label>
+                <input id="saveQueryDescription" class="input-modern w-full" @bind="_description"
+                       placeholder="What this answers, and when it is worth running" />
+            </div>
+
+            @* The SQL is shown but not editable here: this dialog is about *where the query
+               goes*, and an editor in it would be a second place to change the text that the
+               box behind the dialog is already showing. *@
+            <div>
+                <span class="block text-sm font-medium text-dark-text mb-2">SQL</span>
+                <pre class="saved-query-preview">@Sql</pre>
+            </div>
+
+            <div class="log-config-actions">
+                <button type="button" class="btn-secondary" @onclick="Cancel">Cancel</button>
+                <button type="button" class="btn-primary" @onclick="SaveAsync" disabled="@(!CanSave)">
+                    <i class="bi bi-bookmark-plus"></i>
+                    <span>@(_asNew || Existing is null ? "Save" : "Update")</span>
+                </button>
+            </div>
+        </div>
+    }
+</Modal>
+
+@code {
+    [Parameter] public bool IsVisible { get; set; }
+
+    [Parameter] public EventCallback<bool> IsVisibleChanged { get; set; }
+
+    /// <summary>The SQL to store — whatever is in the query box right now.</summary>
+    [Parameter] public string Sql { get; set; } = "";
+
+    /// <summary>The log template the query was written against, recorded as a hint.</summary>
+    [Parameter] public string? Template { get; set; }
+
+    /// <summary>The saved query the box was loaded from, if any. Enables the update option.</summary>
+    [Parameter] public SavedQuery? Existing { get; set; }
+
+    /// <summary>Raised with the stored query once a save succeeds.</summary>
+    [Parameter] public EventCallback<SavedQuery> OnSaved { get; set; }
+
+    private string _name = "";
+    private string _group = "";
+    private string _description = "";
+    private string? _error;
+
+    // Saving a *copy* of a loaded query. Defaults off: someone who loaded a query, edited it
+    // and pressed Save almost always means to update the one they are looking at.
+    private bool _asNew;
+
+    private bool _wasVisible;
+
+    private List<string> _groups = new();
+
+    private bool CanSave => !string.IsNullOrWhiteSpace(_name) && !string.IsNullOrWhiteSpace(Sql);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Only on the transition into visible: OnParametersSetAsync also runs on every
+        // re-render while open, and refilling the fields then would undo what is being typed.
+        if (IsVisible && !_wasVisible) await OpenAsync();
+        _wasVisible = IsVisible;
+    }
+
+    private async Task OpenAsync()
+    {
+        _error = null;
+        _asNew = false;
+        _name = Existing?.Name ?? "";
+        _group = Existing?.Group ?? "";
+        _description = Existing?.Description ?? "";
+
+        try
+        {
+            _groups = await SavedQueries.GetGroupsAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            // The suggestions are a convenience; a group can still be typed in full.
+            _groups = new();
+            _error = $"Could not list the existing groups: {ex.Message}";
+        }
+    }
+
+    private void SetMode(bool asNew)
+    {
+        _asNew = asNew;
+        _error = null;
+
+        // A copy needs a name of its own — the service refuses two of the same name in one
+        // group, and finding that out after pressing Save is worse than being told now.
+        if (asNew && Existing is not null && _name == Existing.Name) _name = $"{Existing.Name} copy";
+        else if (!asNew && Existing is not null) _name = Existing.Name;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+
+        var query = new SavedQuery
+        {
+            Id = _asNew ? "" : Existing?.Id ?? "",
+            Name = _name,
+            Group = _group,
+            Sql = Sql,
+            Description = _description,
+            Template = Template
+        };
+
+        try
+        {
+            var stored = await SavedQueries.SaveAsync(query);
+            await OnSaved.InvokeAsync(stored);
+            await IsVisibleChanged.InvokeAsync(false);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            // Both are the service saying no for a reason worth reading — a blank name, or a
+            // name already used in this group. Neither is a bug, so the dialog stays open with
+            // the message rather than closing over it.
+            _error = ex.Message;
+        }
+    }
+
+    private Task Cancel() => IsVisibleChanged.InvokeAsync(false);
+
+    private Task OnVisibleChanged(bool visible) => IsVisibleChanged.InvokeAsync(visible);
+}

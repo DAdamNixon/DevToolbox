@@ -1,0 +1,415 @@
+@using DevToolbox.UI.Components
+@using DevToolbox.Services.Interfaces
+@using DevToolbox.Services.Models
+
+@inject ISavedQueryService SavedQueries
+
+@*
+    Browse, edit, regroup and delete the saved advanced-mode queries.
+
+    List on the left, editor on the right — the shape LogSourceConfigDialog already uses for
+    the templates, and for the same reason: these are a set of things where you pick one and
+    work on it, not a form.
+
+    Nothing here writes as you type. Every save is a button press, so a click through the list
+    to *read* a query can never change one — and an unsaved edit is announced before it is
+    abandoned rather than silently discarded.
+*@
+
+<Modal Title="Saved queries" SizeClass="is-wide" IsVisible="IsVisible" IsVisibleChanged="OnVisibleChanged">
+    @if (IsVisible)
+    {
+        <div class="log-config saved-queries">
+            @if (_error is not null)
+            {
+                <div class="ws-notice">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <span>@_error</span>
+                </div>
+            }
+
+            @* An unsaved edit is never thrown away by a click in the list — it becomes this,
+               which is the same click with the consequence spelled out. *@
+            @if (_pending is not null && _draft is not null)
+            {
+                <div class="ws-notice is-caution">
+                    <i class="bi bi-exclamation-circle-fill"></i>
+                    <span>'@_draft.Name' has unsaved changes.</span>
+                    <button type="button" class="btn-ghost" @onclick="DiscardAndSelect">Discard them</button>
+                    <button type="button" class="btn-ghost" @onclick="() => _pending = null">Keep editing</button>
+                </div>
+            }
+
+            <div class="log-config-split">
+                <div class="log-config-list">
+                    @if (_queries.Count == 0)
+                    {
+                        <p class="log-config-hint">
+                            Nothing saved yet. Write a query in advanced mode and press <strong>Save</strong>.
+                        </p>
+                    }
+
+                    @foreach (var group in _queries.GroupBy(q => q.Group ?? "").OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
+                    {
+                        <div class="saved-queries-group">
+                            <span class="saved-queries-group-name">
+                                @(string.IsNullOrWhiteSpace(group.Key) ? "Ungrouped" : group.Key)
+                            </span>
+                            @if (!string.IsNullOrWhiteSpace(group.Key))
+                            {
+                                @* aria-label as well as title: the button's only content is an
+                                   <i> icon element with no text, so the accessibility tree gets
+                                   no name from it and `title` alone is not reliably announced. *@
+                                <button type="button" class="log-config-open"
+                                        title="Rename this group"
+                                        aria-label="Rename the @group.Key group"
+                                        @onclick="() => StartGroupRename(group.Key)">
+                                    <i class="bi bi-pencil" aria-hidden="true"></i>
+                                </button>
+                            }
+                        </div>
+
+                        @if (_renamingGroup is not null && string.Equals(_renamingGroup, group.Key, StringComparison.OrdinalIgnoreCase))
+                        {
+                            <div class="saved-queries-rename">
+                                <input class="input-modern" @bind="_renamedGroupTo" @bind:event="oninput"
+                                       aria-label="New name for the group" />
+                                <button type="button" class="btn-primary" disabled="@_busy" @onclick="CommitGroupRename">Rename</button>
+                                <button type="button" class="btn-ghost" @onclick="() => _renamingGroup = null">Cancel</button>
+                            </div>
+                        }
+
+                        @foreach (var query in group)
+                        {
+                            var selected = _draft is not null && _draft.Id == query.Id;
+                            <button type="button" class="log-config-list-item @(selected ? "active" : null)"
+                                    @onclick="() => SelectQuery(query)">
+                                <span class="log-config-list-name">@query.Name</span>
+                                @if (!string.IsNullOrWhiteSpace(query.Description))
+                                {
+                                    <span class="log-config-list-note">@query.Description</span>
+                                }
+                            </button>
+                        }
+                    }
+                </div>
+
+                <div class="log-config-pane">
+                    @if (_draft is null)
+                    {
+                        <p class="log-config-hint">Pick a query on the left to edit it.</p>
+                    }
+                    else
+                    {
+                        <div class="log-config-row">
+                            <div>
+                                <label for="savedQueryName" class="block text-sm font-medium text-dark-text mb-2">Name</label>
+                                <input id="savedQueryName" class="input-modern w-full" @bind="_draft.Name"
+                                       @bind:event="oninput" @bind:after="MarkDirty" />
+                            </div>
+                            <div>
+                                <label for="savedQueryGroup" class="block text-sm font-medium text-dark-text mb-2">Group</label>
+                                <input id="savedQueryGroup" class="input-modern w-full" list="savedQueriesGroups"
+                                       @bind="_draft.Group" @bind:event="oninput" @bind:after="MarkDirty" />
+                                <datalist id="savedQueriesGroups">
+                                    @foreach (var name in GroupNames())
+                                    {
+                                        <option value="@name"></option>
+                                    }
+                                </datalist>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label for="savedQueryDesc" class="block text-sm font-medium text-dark-text mb-2">
+                                Description <span class="text-dark-text-muted font-normal">(optional)</span>
+                            </label>
+                            <input id="savedQueryDesc" class="input-modern w-full" @bind="_draft.Description"
+                                   @bind:event="oninput" @bind:after="MarkDirty" />
+                        </div>
+
+                        <div>
+                            <label for="@($"savedQuerySql-{_draft.Id}")" class="block text-sm font-medium text-dark-text mb-2">SQL</label>
+                            @* Keyed on the draft's id so switching queries gives the editor a new
+                               element rather than reusing one whose highlight layer is still
+                               painted from the last query. *@
+                            <SqlEditor @key="_draft.Id" Id="@($"savedQuerySql-{_draft.Id}")" Rows="8"
+                                       AriaLabel="SQL for this saved query"
+                                       Value="@_draft.Sql" ValueChanged="OnSqlChanged" />
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(_draft.Template))
+                        {
+                            <p class="log-config-hint">
+                                Written against the <strong>@_draft.Template</strong> template. It will still run
+                                under another one — it just expects those columns.
+                            </p>
+                        }
+
+                        <div class="log-config-actions">
+                            @if (_confirmDelete)
+                            {
+                                <button type="button" class="btn-danger" disabled="@_busy" @onclick="DeleteAsync">
+                                    Delete '@_draft.Name' for good
+                                </button>
+                                <button type="button" class="btn-ghost" @onclick="() => _confirmDelete = false">Keep it</button>
+                            }
+                            else
+                            {
+                                <button type="button" class="btn-ghost" disabled="@_busy" @onclick="() => _confirmDelete = true">
+                                    <i class="bi bi-trash"></i> Delete
+                                </button>
+                            }
+                            <div class="flex-1"></div>
+                            @if (_dirty)
+                            {
+                                <span class="log-config-dirty">Unsaved</span>
+                            }
+                            <button type="button" class="btn-secondary" disabled="@_busy" @onclick="RunAsync">
+                                <i class="bi bi-play"></i> Load &amp; run
+                            </button>
+                            <button type="button" class="btn-primary" disabled="@(_busy || !_dirty)" @onclick="SaveAsync">
+                                Save
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+</Modal>
+
+@code {
+    [Parameter] public bool IsVisible { get; set; }
+
+    [Parameter] public EventCallback<bool> IsVisibleChanged { get; set; }
+
+    /// <summary>Raised when the store changed, so the picker behind the dialog can re-read it.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    /// <summary>Raised with the query to put in the box and run. Closes the dialog.</summary>
+    [Parameter] public EventCallback<SavedQuery> OnRun { get; set; }
+
+    /// <summary>The id the caller wants selected when the dialog opens — usually the loaded query.</summary>
+    [Parameter] public string? InitialSelectionId { get; set; }
+
+    private List<SavedQuery> _queries = new();
+
+    // A copy, never the stored instance: editing the list's own object would show every
+    // keystroke in the list on the left and leave no way to abandon the edit.
+    private SavedQuery? _draft;
+
+    // The query a click asked for while an edit was unsaved. Non-null puts the notice up.
+    private SavedQuery? _pending;
+
+    private bool _dirty;
+    private bool _busy;
+    private bool _confirmDelete;
+    private bool _wasVisible;
+    private string? _error;
+
+    private string? _renamingGroup;
+    private string _renamedGroupTo = "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsVisible && !_wasVisible) await OpenAsync();
+        _wasVisible = IsVisible;
+    }
+
+    private async Task OpenAsync()
+    {
+        _error = null;
+        _dirty = false;
+        _confirmDelete = false;
+        _renamingGroup = null;
+        _draft = null;
+        _pending = null;
+
+        await ReloadAsync();
+
+        var initial = string.IsNullOrWhiteSpace(InitialSelectionId)
+            ? null
+            : _queries.FirstOrDefault(q => q.Id == InitialSelectionId);
+
+        if (initial is not null) _draft = Copy(initial);
+    }
+
+    private async Task ReloadAsync()
+    {
+        try
+        {
+            _queries = await SavedQueries.GetAllAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = $"Could not read the saved queries: {ex.Message}";
+            _queries = new();
+        }
+    }
+
+    private IEnumerable<string> GroupNames() =>
+        _queries.Select(q => (q.Group ?? "").Trim())
+                .Where(g => g.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(g => g, StringComparer.OrdinalIgnoreCase);
+
+    private static SavedQuery Copy(SavedQuery source) => new()
+    {
+        Id = source.Id,
+        Name = source.Name,
+        Group = source.Group,
+        Sql = source.Sql,
+        Description = source.Description,
+        Template = source.Template,
+        UpdatedUtc = source.UpdatedUtc
+    };
+
+    private void SelectQuery(SavedQuery query)
+    {
+        // A click in a list is how you browse, so it must not be how you lose an edit. The
+        // selection is held instead and the notice above offers both ways out of it.
+        if (_dirty && _draft is not null && _draft.Id != query.Id)
+        {
+            _pending = query;
+            return;
+        }
+
+        Show(query);
+    }
+
+    private void DiscardAndSelect()
+    {
+        if (_pending is null) return;
+        Show(_pending);
+    }
+
+    private void Show(SavedQuery query)
+    {
+        _error = null;
+        _pending = null;
+        _confirmDelete = false;
+        _dirty = false;
+        _draft = Copy(query);
+    }
+
+    private void MarkDirty()
+    {
+        _dirty = true;
+        _error = null;
+    }
+
+    private void OnSqlChanged(string sql)
+    {
+        if (_draft is null) return;
+        _draft.Sql = sql;
+        MarkDirty();
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_draft is null) return;
+
+        _busy = true;
+        _error = null;
+        try
+        {
+            var stored = await SavedQueries.SaveAsync(_draft);
+            await ReloadAsync();
+            _draft = Copy(stored);
+            _dirty = false;
+            await OnChanged.InvokeAsync();
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_draft is null) return;
+
+        _busy = true;
+        _error = null;
+        try
+        {
+            await SavedQueries.DeleteAsync(_draft.Id);
+            await ReloadAsync();
+            _draft = null;
+            _dirty = false;
+            _confirmDelete = false;
+            await OnChanged.InvokeAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = $"Could not delete the query: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RunAsync()
+    {
+        if (_draft is null) return;
+
+        // The saved copy, not the draft: "Load & run" on an edited draft would run text that
+        // is not what the query says it is. Save first is the honest order.
+        if (_dirty)
+        {
+            _error = "Save the changes first — running would use the saved query, not what is on screen.";
+            return;
+        }
+
+        await OnRun.InvokeAsync(_draft);
+        await IsVisibleChanged.InvokeAsync(false);
+    }
+
+    private void StartGroupRename(string group)
+    {
+        _renamingGroup = group;
+        _renamedGroupTo = group;
+        _error = null;
+    }
+
+    private async Task CommitGroupRename()
+    {
+        if (_renamingGroup is null) return;
+
+        _busy = true;
+        _error = null;
+        try
+        {
+            await SavedQueries.RenameGroupAsync(_renamingGroup, _renamedGroupTo);
+            await ReloadAsync();
+
+            // The draft carries the old group name and would write it straight back on the next
+            // save, undoing the rename for that one query.
+            if (_draft is not null)
+            {
+                var refreshed = _queries.FirstOrDefault(q => q.Id == _draft.Id);
+                if (refreshed is not null) _draft = Copy(refreshed);
+            }
+
+            _renamingGroup = null;
+            _dirty = false;
+            await OnChanged.InvokeAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private Task OnVisibleChanged(bool visible) => IsVisibleChanged.InvokeAsync(visible);
+}

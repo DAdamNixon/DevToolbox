@@ -1,4 +1,4 @@
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using DevToolbox.Services.Interfaces;
 using DevToolbox.Services.Services;
 using DevToolbox.Services.Services.Hosts;
@@ -51,6 +51,8 @@ namespace DevToolbox.UI
             // Reads and writes the same YAML DbLogService reads. Scoped alongside it because it holds
             // nothing between calls — every method goes to the file.
             services.AddScoped<ILogConfigService, LogConfigService>();
+            // Same shape and the same reason: one YAML file, nothing held between calls.
+            services.AddScoped<ISavedQueryService, SavedQueryService>();
 
             // Register UI-specific services
             services.AddScoped<ViewModelFactory>();

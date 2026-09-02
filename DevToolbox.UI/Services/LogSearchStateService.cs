@@ -105,6 +105,35 @@ public sealed class LogSearchStateService : IDisposable
     public bool AdvancedRawMode { get; set; }
     public string AdvancedExpression { get; set; } = "";
 
+    // --- saved queries ---
+
+    /// <summary>
+    /// Every saved advanced-mode query, ordered group-then-name — the order the picker draws.
+    /// Loaded on demand rather than at startup: the list only matters once advanced mode is on,
+    /// and most sessions never turn it on.
+    /// </summary>
+    public List<SavedQuery> SavedQueries { get; private set; } = new();
+
+    /// <summary>Whichever saved query the SQL box was last loaded from, or null.</summary>
+    public SavedQuery? ActiveSavedQuery { get; private set; }
+
+    /// <summary>
+    /// The SQL as it was when <see cref="ActiveSavedQuery"/> was loaded, so the bar can say the
+    /// query has been edited since. Kept apart from the saved copy because that one is replaced
+    /// wholesale whenever the store is re-read.
+    /// </summary>
+    private string _activeSavedQuerySql = "";
+
+    /// <summary>True when a saved query is loaded and the box no longer matches it.</summary>
+    public bool SavedQueryIsModified =>
+        ActiveSavedQuery is not null &&
+        !string.Equals((AdvancedExpression ?? "").Trim(), _activeSavedQuerySql, StringComparison.Ordinal);
+
+    /// <summary>"Checkout / Orders by hour", or just the name when it is ungrouped.</summary>
+    public string? ActiveSavedQueryLabel => ActiveSavedQuery is not { } q
+        ? null
+        : string.IsNullOrWhiteSpace(q.Group) ? q.Name : $"{q.Group} / {q.Name}";
+
     // --- split into tabs ---
 
     /// <summary>
@@ -155,11 +184,16 @@ public sealed class LogSearchStateService : IDisposable
 
     private readonly ILogFileService _logFileService;
     private readonly IYamlStorageService _yamlStorage;
+    private readonly ISavedQueryService _savedQueries;
 
-    public LogSearchStateService(ILogFileService logFileService, IYamlStorageService yamlStorage)
+    public LogSearchStateService(
+        ILogFileService logFileService,
+        IYamlStorageService yamlStorage,
+        ISavedQueryService savedQueries)
     {
         _logFileService = logFileService;
         _yamlStorage = yamlStorage;
+        _savedQueries = savedQueries;
     }
 
     public void Notify() => OnChanged?.Invoke();
@@ -777,6 +811,65 @@ public sealed class LogSearchStateService : IDisposable
         ActiveSorts.Clear();
         if (HasSearched) await RunLiveQueryAsync();
     }
+
+    // --- saved queries ---
+
+    /// <summary>
+    /// Re-reads the saved queries. Failure is reported and leaves the previous list in place: the
+    /// picker being stale is a great deal better than the SQL box disappearing behind a banner.
+    /// </summary>
+    public async Task LoadSavedQueriesAsync()
+    {
+        try
+        {
+            SavedQueries = await _savedQueries.GetAllAsync();
+
+            // The active query may have been renamed, regrouped or deleted by the manage dialog.
+            // Re-resolving it by id keeps the label honest without disturbing the box.
+            if (ActiveSavedQuery is { } active)
+                ActiveSavedQuery = SavedQueries.FirstOrDefault(q => q.Id == active.Id);
+        }
+        catch (InvalidOperationException ex)
+        {
+            // What YamlStorageService wraps every read failure in — a missing file is not one of
+            // them, it returns null, so getting here means the file is there and unreadable.
+            SetError($"Could not read the saved queries: {ex.Message}");
+        }
+        finally
+        {
+            Notify();
+        }
+    }
+
+    /// <summary>
+    /// Puts a saved query in the SQL box and runs it. Switches advanced mode on if it is off —
+    /// choosing a saved SQL query and then not being in SQL mode would be a trap.
+    /// </summary>
+    public async Task ApplySavedQueryAsync(SavedQuery query)
+    {
+        if (query is null) return;
+
+        AdvancedRawMode = true;
+        AdvancedExpression = query.Sql;
+        ActiveSavedQuery = query;
+        _activeSavedQuerySql = (query.Sql ?? "").Trim();
+        ActiveSorts.Clear();
+        Notify();
+
+        if (HasSearched) await RunLiveQueryAsync();
+    }
+
+    /// <summary>
+    /// Records that the box now holds <paramref name="query"/> exactly — what a save or an update
+    /// leaves behind, so the bar stops reporting the query as modified.
+    /// </summary>
+    public void MarkSavedQueryApplied(SavedQuery query)
+    {
+        ActiveSavedQuery = query;
+        _activeSavedQuerySql = (query?.Sql ?? "").Trim();
+        Notify();
+    }
+
 
     public async Task AddKeywordRowAsync()
     {

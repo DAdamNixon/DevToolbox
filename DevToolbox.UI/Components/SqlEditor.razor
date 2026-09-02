@@ -1,0 +1,129 @@
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@*
+    A textarea with SQLite syntax colouring behind it.
+
+    The colours are painted onto a <pre> layer sitting exactly under a transparent textarea —
+    see wwwroot/js/sqlEditor.js for why that shape and not a contenteditable. This component's
+    whole job is to own the pair, keep the ids unique, and tell the script when the value
+    changed from C# rather than from typing.
+
+    Value binding is @bind-Value, so a parent uses it the way it used the plain textarea:
+
+        <SqlEditor Id="advExpr" @bind-Value="State.AdvancedExpression"
+                   OnValueInput="OnCriteriaInput" />
+
+    ValueChanged fires on every keystroke (oninput), which is what the Log Viewer's 500ms
+    debounce is built on. OnValueInput is a separate callback rather than something the parent
+    hangs off ValueChanged because @bind-Value consumes ValueChanged.
+*@
+
+<div class="sql-editor @Class">
+    @* aria-hidden and inert: this layer is a picture of the textarea's contents. A screen
+       reader that read both would read the query twice, and a tab stop here would land the
+       caret nowhere. *@
+    <pre class="sql-editor-ink" aria-hidden="true"><code id="@InkId"></code></pre>
+    <textarea id="@Id"
+              class="sql-editor-input"
+              rows="@Rows"
+              spellcheck="false"
+              autocomplete="off"
+              autocapitalize="off"
+              autocorrect="off"
+              placeholder="@Placeholder"
+              aria-label="@AriaLabel"
+              value="@Value"
+              @oninput="OnInput"></textarea>
+</div>
+
+@code {
+    /// <summary>The textarea's DOM id. Must be unique on the page — the script keys off it.</summary>
+    [Parameter, EditorRequired] public string Id { get; set; } = "";
+
+    [Parameter] public string? Value { get; set; }
+
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    /// <summary>Raised after <see cref="ValueChanged"/>, for a parent that also wants to react to typing.</summary>
+    [Parameter] public EventCallback OnValueInput { get; set; }
+
+    [Parameter] public int Rows { get; set; } = 3;
+
+    [Parameter] public string? Placeholder { get; set; }
+
+    [Parameter] public string? AriaLabel { get; set; }
+
+    /// <summary>Extra classes on the wrapper, for sizing it where it is used.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    private string InkId => $"{Id}-ink";
+
+    // What the highlight layer was last painted from. A repaint is only worth a JS call when
+    // the value changed from outside — every keystroke already repaints itself in the browser,
+    // and asking for another one would fight the caret on a slow render.
+    private string? _painted;
+
+    private bool _attached;
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        var text = e.Value?.ToString() ?? "";
+        Value = text;
+
+        // Recorded here as well: the script has already repainted from the input event, so a
+        // repaint on the render that follows would be redundant.
+        _painted = text;
+
+        await ValueChanged.InvokeAsync(text);
+        await OnValueInput.InvokeAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            if (!_attached)
+            {
+                await JS.InvokeVoidAsync("sqlEditor.attach", Id, InkId);
+                _attached = true;
+                _painted = Value;
+                return;
+            }
+
+            if (_painted != Value)
+            {
+                await JS.InvokeVoidAsync("sqlEditor.refresh", Id);
+                _painted = Value;
+            }
+        }
+        catch (JSException)
+        {
+            // Non-fatal by design: the textarea is a working query box with or without the
+            // colours, and a script that failed to load must not take the Log Viewer down.
+        }
+        catch (JSDisconnectedException)
+        {
+            // The circuit went away between the render and this call.
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_attached) return;
+
+        try
+        {
+            // The listeners are on an element this component is about to lose, and the script
+            // holds a reference to it until told otherwise.
+            await JS.InvokeVoidAsync("sqlEditor.detach", Id);
+        }
+        catch (JSException)
+        {
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+}

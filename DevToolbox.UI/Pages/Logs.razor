@@ -2,6 +2,7 @@
 @using DevToolbox.Services.Interfaces
 @using DevToolbox.Services.Models
 @using DevToolbox.UI.Services
+@using DevToolbox.UI.Components
 @using DevToolbox.UI.Components.Dialogs
 @using Microsoft.AspNetCore.Components.Web.Virtualization
 @using Microsoft.JSInterop
@@ -295,10 +296,81 @@
     @if (State.AdvancedRawMode)
     {
         <div>
-            <label for="advExpr" class="block text-sm font-medium text-dark-text mb-2">Custom SQL query</label>
-            <textarea id="advExpr" rows="3" class="input-modern w-full font-mono text-sm"
-                      placeholder="SELECT LEFT(DateTime,4) AS Year, COUNT(*) AS Hits FROM logs GROUP BY Year"
-                      @bind="State.AdvancedExpression" @bind:event="oninput" @bind:after="OnCriteriaInput"></textarea>
+            @* data-menu-anchor for the same reason the Location picker carries one: MainLayout
+               closes the open menu on any pointerdown that lands outside one, and a click inside
+               this panel would otherwise count as outside. *@
+            <div class="log-field-head saved-query-bar relative" data-menu-anchor>
+                <label for="advExpr" class="text-sm font-medium text-dark-text">Custom SQL query</label>
+
+                @if (State.ActiveSavedQueryLabel is { } loaded)
+                {
+                    <span class="saved-query-active" title="The saved query this box was loaded from">
+                        <i class="bi bi-bookmark-fill"></i>
+                        @loaded@(State.SavedQueryIsModified ? " · edited" : "")
+                    </span>
+                }
+
+                <div class="flex-1"></div>
+
+                <button type="button" class="saved-query-btn" @onclick="ToggleSavedQueryMenu"
+                        aria-expanded="@(SavedQueryMenuOpen ? "true" : "false")"
+                        title="Load a saved query">
+                    <i class="bi bi-bookmarks"></i>
+                    <span>Saved</span>
+                    <span class="dropdown-chevron @(SavedQueryMenuOpen ? "is-open" : null)"></span>
+                </button>
+                <button type="button" class="saved-query-btn" @onclick="OpenSaveQuery"
+                        disabled="@string.IsNullOrWhiteSpace(State.AdvancedExpression)"
+                        title="Save what is in the box">
+                    <i class="bi bi-bookmark-plus"></i>
+                    <span>Save</span>
+                </button>
+                <button type="button" class="saved-query-btn" @onclick="OpenManageQueries"
+                        title="Edit, regroup or delete saved queries">
+                    <i class="bi bi-sliders"></i>
+                    <span>Manage</span>
+                </button>
+
+                @if (SavedQueryMenuOpen)
+                {
+                    <div class="saved-query-menu">
+                        @if (State.SavedQueries.Count == 0)
+                        {
+                            <p class="saved-query-empty">
+                                Nothing saved yet. Write a query and press <strong>Save</strong>.
+                            </p>
+                        }
+                        else
+                        {
+                            @foreach (var group in State.SavedQueries.GroupBy(q => q.Group ?? "")
+                                                        .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
+                            {
+                                <div class="saved-query-menu-group">
+                                    @(string.IsNullOrWhiteSpace(group.Key) ? "Ungrouped" : group.Key)
+                                </div>
+                                @foreach (var query in group)
+                                {
+                                    <button type="button" class="saved-query-menu-item" @onclick="() => ApplySavedQuery(query)">
+                                        <span class="saved-query-menu-name">@query.Name</span>
+                                        @if (!string.IsNullOrWhiteSpace(query.Description))
+                                        {
+                                            <span class="saved-query-menu-note">@query.Description</span>
+                                        }
+                                    </button>
+                                }
+                            }
+                        }
+                    </div>
+                }
+            </div>
+
+            <SqlEditor Id="advExpr" Rows="3"
+                       Placeholder="SELECT LEFT(DateTime,4) AS Year, COUNT(*) AS Hits FROM logs GROUP BY Year"
+                       AriaLabel="Custom SQL query"
+                       Value="@State.AdvancedExpression"
+                       ValueChanged="OnAdvancedExpressionChanged"
+                       OnValueInput="OnCriteriaInput" />
+
             <div class="text-xs text-dark-text-muted mt-1">Full SQL against the table <code>logs</code>, which holds whatever was last loaded. Sorting and keyword groups are ignored in this mode. Runs as you type (500ms) or on Enter.</div>
         </div>
     }
@@ -676,7 +748,84 @@ else
                        OpenOn="@_sourceConfigTab"
                        OnSaved="OnSourceConfigSaved" />
 
+<SaveQueryDialog IsVisible="_saveQueryVisible"
+                 IsVisibleChanged="@(v => _saveQueryVisible = v)"
+                 Sql="@State.AdvancedExpression"
+                 Template="@State.SelectedTemplateName"
+                 Existing="State.ActiveSavedQuery"
+                 OnSaved="OnQuerySaved" />
+
+<SavedQueriesDialog IsVisible="_manageQueriesVisible"
+                    IsVisibleChanged="@(v => _manageQueriesVisible = v)"
+                    InitialSelectionId="@State.ActiveSavedQuery?.Id"
+                    OnChanged="State.LoadSavedQueriesAsync"
+                    OnRun="ApplySavedQuery" />
+
 @code {
+
+    // --- saved queries ---
+
+    /// <summary>
+    /// Identifies the saved-query picker to <see cref="MenuStateService"/> — the same one menu
+    /// at a time the Location dropdown uses, which is what buys click-outside dismissal.
+    /// </summary>
+    private const string SavedQueryMenuId = "logSavedQueries";
+
+    private bool SavedQueryMenuOpen => Menu.IsOpen(SavedQueryMenuId);
+
+    private bool _saveQueryVisible;
+    private bool _manageQueriesVisible;
+
+    /// <summary>
+    /// Opens or closes the picker, re-reading the list on the way open. Read here rather than
+    /// once at startup because <c>saved_queries.yaml</c> is meant to be hand-editable, and this
+    /// is the exact moment the list is about to be looked at.
+    /// </summary>
+    private async Task ToggleSavedQueryMenu()
+    {
+        var opening = !SavedQueryMenuOpen;
+        Menu.Toggle(SavedQueryMenuId);
+        if (opening) await State.LoadSavedQueriesAsync();
+    }
+
+    /// <summary>
+    /// Typing in the SQL box. Only the value is set here — the 500ms debounce that actually
+    /// re-queries is <see cref="OnCriteriaInput"/>, wired to the editor's OnValueInput.
+    /// </summary>
+    private void OnAdvancedExpressionChanged(string sql) => State.AdvancedExpression = sql;
+
+    private async Task ApplySavedQuery(SavedQuery query)
+    {
+        Menu.Close();
+        await State.ApplySavedQueryAsync(query);
+    }
+
+    private void OpenSaveQuery()
+    {
+        Menu.Close();
+        _saveQueryVisible = true;
+    }
+
+    private async Task OpenManageQueries()
+    {
+        Menu.Close();
+
+        // Re-read first: the dialog lists from its own load, but the picker behind it is
+        // whatever was read last, and the two disagreeing is the sort of thing that looks
+        // like a lost save.
+        await State.LoadSavedQueriesAsync();
+        _manageQueriesVisible = true;
+    }
+
+    /// <summary>
+    /// A save landed. The box now holds exactly this query, so the "edited" marker goes away and
+    /// the picker re-reads.
+    /// </summary>
+    private async Task OnQuerySaved(SavedQuery stored)
+    {
+        State.MarkSavedQueryApplied(stored);
+        await State.LoadSavedQueriesAsync();
+    }
 
     // --- template and location editor ---
 
