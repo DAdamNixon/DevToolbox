@@ -95,7 +95,7 @@
     rather than a fix. 0.9.7.0 rises above 0.9.6.0, which is what App Installer compares.
   -->
   <PropertyGroup>
-    <VersionPrefix>0.9.7.0</VersionPrefix>
-    <VersionSuffix>beta.11</VersionSuffix>
+    <VersionPrefix>0.9.8.0</VersionPrefix>
+    <VersionSuffix>beta.12</VersionSuffix>
   </PropertyGroup>
 </Project>
