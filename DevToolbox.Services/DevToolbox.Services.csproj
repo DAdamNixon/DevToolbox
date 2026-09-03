@@ -43,4 +43,8 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\DevToolbox.Logs\DevToolbox.Logs.csproj" />
+  </ItemGroup>
+
 </Project>

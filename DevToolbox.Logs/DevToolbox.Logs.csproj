@@ -1,0 +1,42 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <!-- The Log Viewer's data layer, lifted out of DevToolbox.Services so a headless host can
+       reference it WITHOUT linking the rest of the toolbox.
+
+       This exists for one reason, and it is a guardrail rather than tidiness. DevToolbox.Services
+       carries Microsoft.PowerShell.SDK (in-process script execution) and the hosts-file editor
+       including its elevated-command path. DevToolbox.Mcp is called by an AI agent, and the
+       outermost defence against a capability being reached is the absence of a code path to it —
+       so the agent-facing process must not have those assemblies loaded at all, registered as
+       tools or otherwise.
+
+       DEPENDENCY DIRECTION IS LOAD-BEARING: DevToolbox.Services references THIS project, never the
+       reverse. A reference back would re-link everything this separation exists to exclude. This
+       project must depend on nothing of ours.
+
+       NAMESPACES ARE DELIBERATELY UNCHANGED (DevToolbox.Services.Models / .Interfaces / .Services).
+       The assembly boundary and the namespace boundary are allowed to disagree, and here they must:
+       keeping the namespaces means the extraction required ZERO source edits in DevToolbox.UI,
+       DevToolbox.Tests or anywhere else, which is what makes it provably behaviour-preserving
+       against a suite of 804 tests and a release that shipped the same day. Renaming them would
+       have turned a project-file change into hundreds of source edits with no functional gain. -->
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
+    <PackageReference Include="YamlDotNet" Version="13.7.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Mirrors DevToolbox.Services: the moved types keep whatever visibility the tests already
+         relied on, so the extraction cannot break a test by tightening access. -->
+    <InternalsVisibleTo Include="DevToolbox.Tests" />
+  </ItemGroup>
+
+</Project>

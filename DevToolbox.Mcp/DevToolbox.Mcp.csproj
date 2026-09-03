@@ -1,0 +1,42 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>DevToolbox.Mcp</AssemblyName>
+    <!-- Windows-targeted only because DevToolbox.Logs is (it inherits the toolbox's
+         net10.0-windows/win-x64). Nothing here needs Windows itself. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The MCP SDK. PINNED, not floating: a transport SDK moving underneath us is not a surprise
+         worth having, and this exact version is the one EES.Db2Mcp.Server already proved out.
+         Two packages exist; ModelContextProtocol (hosting + DI) depends on
+         ModelContextProtocol.Core (protocol types), so only this one is referenced. -->
+    <PackageReference Include="ModelContextProtocol" Version="2.2.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
+    <!-- Explicit rather than transitive: ServerComposition compiles directly against
+         ConsoleLoggerOptions.LogToStandardErrorThreshold, the single setting that keeps our
+         logging off the JSON-RPC wire. -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- DevToolbox.Logs and NOT DevToolbox.Services. That is the outermost guardrail, and it is
+         structural: Services carries Microsoft.PowerShell.SDK (in-process script execution) and
+         the hosts-file editor with its elevated-command path. This process is driven by an AI
+         agent, so those assemblies must not be loadable here at all — not merely unregistered as
+         tools. Adding a reference to DevToolbox.Services would silently undo it, which is why
+         McpDependencyTests asserts on the loaded assembly set. -->
+    <ProjectReference Include="..\DevToolbox.Logs\DevToolbox.Logs.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DevToolbox.Tests" />
+  </ItemGroup>
+
+</Project>

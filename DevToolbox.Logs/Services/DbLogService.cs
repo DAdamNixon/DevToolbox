@@ -18,8 +18,28 @@ namespace DevToolbox.Services.Services
         private readonly ILogStorageService _logStorage;
         private static readonly SemaphoreSlim _loadSemaphore = new(1, 1);
 
-        // Single active search table; dropped and recreated on every Search.
-        private const string TableName = "logs";
+        /// <summary>The table this instance ingests into and returns from a prepare.</summary>
+        /// <remarks>
+        /// The UI leaves this at <see cref="DefaultTableName"/>: it runs one search at a time, and
+        /// one table dropped and recreated per search is exactly right for it.
+        /// <para>
+        /// It is an instance field rather than a constant because a headless caller does NOT run
+        /// one search at a time. An agent investigating a bug prepares log A, then log B, then
+        /// wants to go back to A — against a single shared table, A was silently destroyed by the
+        /// second prepare, and the query that followed returned real rows from the wrong file with
+        /// no error to notice. The interface already anticipated this: PrepareLogTableAsync
+        /// RETURNS a table name and every query method TAKES one. The constant was the anomaly.
+        /// </para>
+        /// <para>
+        /// <see cref="_loadSemaphore"/> stays static, so concurrent prepares still queue
+        /// process-wide. That is a throughput limit, not a correctness one — the tables they build
+        /// are separate.
+        /// </para>
+        /// </remarks>
+        private readonly string TableName;
+
+        /// <summary>What the table is called when a caller does not name one.</summary>
+        public const string DefaultTableName = "logs";
 
         /// <summary>
         /// Column holding each row's originating file path. Public so the UI can
@@ -27,11 +47,40 @@ namespace DevToolbox.Services.Services
         /// </summary>
         public const string SourcePathColumn = LogProvenanceColumns.SourcePath;
 
-        public DbLogService(IYamlStorageService yamlStorage, ILogStorageService logStorage)
+        /// <param name="tableName">
+        /// The table to ingest into. Null keeps <see cref="DefaultTableName"/> — see the remarks on
+        /// <see cref="TableName"/> for when a caller should pass its own.
+        /// </param>
+        public DbLogService(IYamlStorageService yamlStorage, ILogStorageService logStorage, string? tableName = null)
         {
             _yamlStorage = yamlStorage;
             _logStorage = logStorage;
+            TableName = string.IsNullOrWhiteSpace(tableName) ? DefaultTableName : tableName;
         }
+
+        /// <summary>
+        /// The columns a template actually produces once <c>inherits</c> has been applied — the
+        /// base's columns followed by its own.
+        /// <para>
+        /// Public because a caller describing a template to someone who will then write SQL against
+        /// it needs the resolved list, and resolving inheritance a second time somewhere else is
+        /// how the two copies come to disagree. Does NOT include the overflow (<c>Message…</c>) or
+        /// provenance columns: those depend on the files an ingest actually read, not on the
+        /// template, and are only knowable after a prepare.
+        /// </para>
+        /// </summary>
+        public async Task<List<string>> GetEffectiveColumnsAsync(string templateName)
+        {
+            var entry = (await GetAvailableLogFileTemplatesAsync())
+                .FirstOrDefault(t => t.Name == templateName);
+            if (entry is null) return new List<string>();
+
+            return await ResolveColumnsAsync(await LoadTemplateAsync(entry.File));
+        }
+
+        /// <summary>The template's own multi-column sort, inheritance applied.</summary>
+        public Task<List<SortColumn>> GetEffectiveSortAsync(string templateName)
+            => ResolveEffectiveSortAsync(null, templateName);
 
         public async Task<List<LogTemplateIndexEntry>> GetAvailableLogFileTemplatesAsync()
         {

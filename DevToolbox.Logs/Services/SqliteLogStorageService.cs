@@ -15,19 +15,52 @@ namespace DevToolbox.Services.Services
     public class SqliteLogStorageService : ILogStorageService
     {
         private readonly string _dbPath;
+        private readonly bool _readOnly;
 
-        public SqliteLogStorageService(string? dbPath = null)
+        /// <param name="dbPath">Where the database is. Defaults to <see cref="LogDatabase.Path"/>.</param>
+        /// <param name="readOnly">
+        /// Opens every connection with <c>Mode=ReadOnly</c> and makes the three writing members
+        /// throw.
+        /// <para>
+        /// For a caller that must be able to query but must never modify — the MCP server's query
+        /// path, whose arguments are chosen by an AI agent rather than by the person at the
+        /// keyboard. The flag is not a convenience: SQLite's own refusal at the file handle is a
+        /// second layer underneath the fact that the writing members already throw, so neither
+        /// alone is the whole defence.
+        /// </para>
+        /// <para>Defaults to false, so every existing caller keeps the behaviour it had.</para>
+        /// </param>
+        public SqliteLogStorageService(string? dbPath = null, bool readOnly = false)
         {
             // LogDatabase owns the location, because something other than this class has to be able
             // to delete the file at startup - see LogDatabase for why it is thrown away.
             _dbPath = dbPath ?? LogDatabase.Path;
-            Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+            _readOnly = readOnly;
+
+            // A read-only instance must not bring the folder into being: creating it would make an
+            // instance pointed at a typo look like an empty database rather than a mistake.
+            if (!readOnly)
+                Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
         }
 
-        private SqliteConnection GetConnection() => new($"Data Source={_dbPath}");
+        private SqliteConnection GetConnection() =>
+            new(_readOnly ? $"Data Source={_dbPath};Mode=ReadOnly" : $"Data Source={_dbPath}");
+
+        /// <summary>
+        /// Refuses a write on a read-only instance, naming the member rather than the file — the
+        /// path is not the caller's business and can contain a user name.
+        /// </summary>
+        private void GuardWritable(string member)
+        {
+            if (_readOnly)
+                throw new NotSupportedException(
+                    $"{member} is not available: this log storage was opened read-only.");
+        }
 
         public async Task EnsureTableAsync(string tableName, IEnumerable<string> columns)
         {
+            GuardWritable(nameof(EnsureTableAsync));
+
             var cols = columns.ToList();
             if (!cols.Any())
                 throw new ArgumentException("At least one column is required.");
@@ -147,6 +180,8 @@ namespace DevToolbox.Services.Services
 
         public async Task InsertLogLinesAsync(string tableName, IEnumerable<Dictionary<string, string>> lines, CancellationToken cancellationToken = default)
         {
+            GuardWritable(nameof(InsertLogLinesAsync));
+
             var logLines = lines as IList<Dictionary<string, string>> ?? lines.ToList();
             if (logLines.Count == 0) return;
 
@@ -336,6 +371,8 @@ namespace DevToolbox.Services.Services
 
         public async Task DropTableAsync(string tableName)
         {
+            GuardWritable(nameof(DropTableAsync));
+
             using var conn = GetConnection();
             await conn.OpenAsync();
             using var cmd = conn.CreateCommand();
