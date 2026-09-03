@@ -94,8 +94,33 @@
     The patch digit again rather than a fourth part, on the same rule 0.9.6 used: two features
     rather than a fix. 0.9.7.0 rises above 0.9.6.0, which is what App Installer compares.
   -->
+  <!--
+    0.9.8 / beta.12: the MCP server learned check_log_name, an advisory eleventh tool that reports
+    whether a proposed log file name overlaps one that already exists — in both directions, because
+    an existing name that prefixes yours silently widens every query already written against it.
+    The installer also started bundling saved_queries.yaml, so the saved-query feature 0.9.7 shipped
+    finally arrives with something in it.
+
+    Written up after the fact: 0.9.8.0 was released without an entry here, which is the first time
+    that has happened in this file. The number moved on the same rule as 0.9.6 and 0.9.7 — a feature
+    rather than a fix.
+  -->
+  <!--
+    0.9.9 / beta.13: DevToolbox.Mcp.exe is finally IN the package. Every release up to and including
+    0.9.8 published only DevToolbox.UI.csproj, so the MCP server existed, was tested and was
+    versioned, but shipped to nobody — the only copies running were bin\Debug on the machine that
+    built them.
+
+    It comes with a uap5:AppExecutionAlias, `devtoolbox-mcp.exe`, and that is the load-bearing half.
+    An MSIX installs under a versioned WindowsApps path, so registering the server by path in
+    ~\.claude.json would break on the next upgrade. The alias is a stable name on PATH that Windows
+    repoints at each version, which is what turns registration into a one-time command.
+
+    The patch digit again, on the rule 0.9.6 set: shipping an executable that was never in the
+    package is a feature. 0.9.9.0 rises above 0.9.8.0, which is what App Installer compares.
+  -->
   <PropertyGroup>
-    <VersionPrefix>0.9.8.0</VersionPrefix>
-    <VersionSuffix>beta.12</VersionSuffix>
+    <VersionPrefix>0.9.9.0</VersionPrefix>
+    <VersionSuffix>beta.13</VersionSuffix>
   </PropertyGroup>
 </Project>
