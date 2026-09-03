@@ -9,7 +9,7 @@ namespace DevToolbox.Tests.Mcp;
 /// <summary>
 /// Guardrail #1 asserted at the protocol layer, which is where a caller actually meets it.
 /// Everything else proves the tools behave; these prove the SURFACE is what the server claims —
-/// ten tools, no more, with exactly one of them writing anything persistent.
+/// eleven tools, no more, with exactly one of them writing anything persistent.
 /// </summary>
 public sealed class ToolSurfaceTests
 {
@@ -19,6 +19,7 @@ public sealed class ToolSurfaceTests
         "list_templates",
         "get_template",
         "list_log_files",
+        "check_log_name",
         "prepare_table",
         "query_entries",
         "describe_columns",
@@ -41,18 +42,20 @@ public sealed class ToolSurfaceTests
     }
 
     [Fact]
-    public void Exactly_ten_tools_are_registered()
+    public void Exactly_eleven_tools_are_registered()
     {
-        // Red against an eleventh tool, or against WithToolsFromAssembly picking up a stray
+        // Red against a twelfth tool, or against WithToolsFromAssembly picking up a stray
         // [McpServerToolType] — which is exactly why registration is an explicit list.
-        Assert.Equal(10, RegisteredTools().Count);
+        // Went from ten to eleven on 2026-09-03 for check_log_name; the count is deliberately
+        // hard to change by accident, because every addition widens what an agent can reach.
+        Assert.Equal(11, RegisteredTools().Count);
     }
 
     [Fact]
-    public void The_tool_names_are_exactly_the_ten_wire_names()
+    public void The_tool_names_are_exactly_the_eleven_wire_names()
     {
-        // Set EQUALITY, not Contains: an eleventh tool named delete_query would pass a Contains
-        // check on all ten of these.
+        // Set EQUALITY, not Contains: a twelfth tool named delete_query would pass a Contains
+        // check on all eleven of these.
         var actual = RegisteredTools().Select(t => t.ProtocolTool.Name).OrderBy(n => n, StringComparer.Ordinal).ToList();
         var expected = ExpectedToolNames.OrderBy(n => n, StringComparer.Ordinal).ToList();
 

@@ -51,6 +51,22 @@ public sealed record LogFilesResult(
     IReadOnlyList<string> SearchedLocations,
     string Note);
 
+/// <summary>
+/// The answer to check_log_name: whether a proposed log name overlaps one that already exists.
+/// <para>
+/// Advisory by design. <see cref="Clean"/> being <see langword="false"/> is information, not a
+/// refusal — see <see cref="LogNameCollision"/> for why the rule is taught rather than enforced.
+/// </para>
+/// </summary>
+public sealed record NameCheckResult(
+    string ProposedName,
+    bool Clean,
+    IReadOnlyList<NameCollision> Collisions,
+    IReadOnlyList<string> SearchedLocations,
+    string Method,
+    string Verdict,
+    string Note);
+
 public sealed record PrepareResult(
     string Handle,
     string LogFile,

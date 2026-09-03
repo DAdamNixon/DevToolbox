@@ -111,4 +111,56 @@ public sealed class LogCatalogTools
                 templateName, locations?.Count ?? 0, result.Files.Count, result.Method);
             return result;
         });
+
+    [McpServerTool(Name = "check_log_name", ReadOnly = true, Idempotent = true, OpenWorld = false, UseStructuredContent = true)]
+    [Description(
+        "ADVISORY. Checks whether a proposed NEW log file name would overlap one that already exists in the " +
+        "locations you name, and reports every overlap in both directions. Call this before creating a log " +
+        "file. " +
+        "WHY IT MATTERS: prepare_table matches logFile on a PREFIX and its response never names the files it " +
+        "actually read, so two flows can share one handle and a bare COUNT(*) sums both. That produced a real " +
+        "wrong answer (93 reported, 75 true) on 2026-09-02. " +
+        "Two directions, and they differ: 'existing-is-prefix-of-proposed' is worse, because creating the " +
+        "file silently widens every query already written against the shorter existing name; " +
+        "'proposed-is-prefix-of-existing' only misleads queries not yet written. 'atSeparator' false means " +
+        "the overlap is mid-token (Checkout vs CheckoutLegacy) and easy to miss by eye — the prefix match " +
+        "treats it identically. " +
+        "THIS TOOL DOES NOT REFUSE ANYTHING. A collision may still be the right design once you know it is " +
+        "there; grouping rules differ per log, so the call is yours. It reports, you decide.")]
+    public Task<NameCheckResult> CheckLogName(
+        [Description("The log file name you are proposing to create, e.g. 'Checkout.WithAccount.Modern'.")] string proposedName,
+        [Description("Template name — decides which file extension is searched for. From list_templates.")] string templateName,
+        [Description(
+            "REQUIRED. Which locations to check, by name, exactly as list_locations reports them. No default. " +
+            "Check the location the new log will actually be written to — that is where a collision matters. " +
+            "An unknown name is refused with the list of known ones, never skipped.")]
+        // Optional in the schema, required in the body — same reasoning as list_log_files above.
+        IReadOnlyList<string>? locations = null,
+        CancellationToken cancellationToken = default)
+        => ToolErrors.GuardAsync(async () =>
+        {
+            // Reuses the catalogue read rather than a second discovery path, so this tool can never
+            // disagree with what list_log_files reports. Its refusals (blank/unknown locations) are
+            // therefore the ones the caller already knows.
+            var existing = await _logs.ListLogFilesAsync(templateName, locations, cancellationToken);
+            var collisions = LogNameCollision.Find(proposedName, existing.Files);
+
+            var verdict = collisions.Count == 0
+                ? "No overlap found in the locations checked."
+                : $"{collisions.Count} existing name(s) overlap this one. Read the direction on each before deciding.";
+
+            _log.LogInformation("check_log_name({Template}, {Locations} locations) -> {Count} collisions among {Names} names.",
+                templateName, locations?.Count ?? 0, collisions.Count, existing.Files.Count);
+
+            return new NameCheckResult(
+                proposedName,
+                collisions.Count == 0,
+                collisions,
+                existing.SearchedLocations,
+                existing.Method,
+                verdict,
+                "Advisory only — nothing here blocks creating the file. A clean result is only as good as the " +
+                "locations checked, and names were derived by '" + existing.Method + "'. If you proceed with an " +
+                "overlap, every query over either name needs GROUP BY [SourceFile] to stay correct.");
+        });
 }
