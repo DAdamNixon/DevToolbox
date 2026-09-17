@@ -42,25 +42,6 @@ public class UiSettings
     public bool ShowAllThemes { get; set; }
 
     /// <summary>
-    /// Which icon the window wears: <c>default</c>, <c>classic</c>, or the file name of something
-    /// imported into the Icons folder — <c>acme.ico</c>. Anything that resolves to nothing falls
-    /// back to <c>default</c>, so a typo in a hand-edited file, or an icon deleted from the folder
-    /// by hand, costs the shipped icon rather than the app's ability to start.
-    /// <para>
-    /// There is no list of imported icons here on purpose: the Icons folder is the list. Dropping a
-    /// .ico into it makes it available, deleting one takes it away, and nothing can fall out of step
-    /// with a manifest that would otherwise have to be kept in sync.
-    /// </para>
-    /// <para>
-    /// This reaches the title bar, Alt+Tab and the taskbar button of the running window. It does
-    /// not reach DevToolbox.exe in Explorer, a desktop shortcut, or a taskbar entry that is pinned
-    /// but not running — that icon is compiled in by <c>&lt;ApplicationIcon&gt;</c> and only
-    /// changes with a new build.
-    /// </para>
-    /// </summary>
-    public string AppIcon { get; set; } = AppIconOptions.Default;
-
-    /// <summary>
     /// Where the folder pickers start when you add a workspace, a location or a scan folder.
     /// Empty means no opinion, which is what every picker did before: they opened on This PC and
     /// left you to navigate to the same parent directory every time.
@@ -122,56 +103,4 @@ public static class ThemeOptions
 
     /// <summary>Maps any input onto a supported value, defaulting to <see cref="System"/>.</summary>
     public static string Normalize(string? value) => ThemeCatalog.Normalize(value);
-}
-
-/// <summary>
-/// The two icons that ship with the app, and the rules for the ones that do not. An
-/// <see cref="UiSettings.AppIcon"/> is either one of these ids or the file name of an imported
-/// icon; there is no third state to keep in sync.
-/// </summary>
-public static class AppIconOptions
-{
-    /// <summary>The mark the app ships with.</summary>
-    public const string Default = "default";
-
-    /// <summary>
-    /// The toolbox DevToolbox wore before the redesign. Kept on offer rather than retired: changing
-    /// the icon someone finds in their taskbar every day is the kind of change worth being able to
-    /// undo without waiting for a release.
-    /// </summary>
-    public const string Classic = "classic";
-
-    /// <summary>The shipped ids, in the order the picker shows them. Imported icons follow.</summary>
-    public static IReadOnlyList<string> BuiltIn => [Default, Classic];
-
-    /// <summary>Whether <paramref name="value"/> names a shipped icon rather than an imported file.</summary>
-    public static bool IsBuiltIn(string? value) => value is Default or Classic;
-
-    /// <summary>
-    /// Reduces any input to something safe to resolve: a built-in id, or the bare file name of an
-    /// imported icon.
-    /// <para>
-    /// A value carrying a directory is stripped down to its file name rather than honoured. This
-    /// file is meant to be hand-edited, and a setting that will happily load an icon from anywhere
-    /// on disk is a wider door than a window icon needs.
-    /// </para>
-    /// </summary>
-    public static string Normalize(string? value)
-    {
-        var trimmed = value?.Trim();
-        if (string.IsNullOrEmpty(trimmed)) return Default;
-        if (trimmed.Equals(Default, StringComparison.OrdinalIgnoreCase)) return Default;
-        if (trimmed.Equals(Classic, StringComparison.OrdinalIgnoreCase)) return Classic;
-
-        try
-        {
-            var name = Path.GetFileName(trimmed);
-            return string.IsNullOrEmpty(name) ? Default : name;
-        }
-        catch (ArgumentException)
-        {
-            // Path characters no file name can contain.
-            return Default;
-        }
-    }
 }

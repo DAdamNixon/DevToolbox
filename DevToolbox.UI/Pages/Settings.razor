@@ -13,7 +13,6 @@
 @inject IJSRuntime JS
 @inject WebPreviewInfo WebPreview
 @inject CardStateService Cards
-@inject AppIconService AppIcons
 
 <!-- Page Header -->
 <div class="mb-8">
@@ -159,75 +158,6 @@
                            checked="@showAllThemes" @onchange="OnShowAllChangedAsync" />
                     <div class="w-11 h-6 bg-dark-border peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-accent-blue/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent-blue"></div>
                 </label>
-            </div>
-
-            @* Applied on selection like the theme, and for the same reason: an icon is a thing you
-               judge by glancing at the taskbar, not by reading its name in a dropdown. *@
-            <div class="p-4 bg-dark-surface rounded-lg space-y-4">
-                <div>
-                    <span class="text-sm font-medium text-dark-text">App icon</span>
-                    <p class="text-xs text-dark-text-muted">
-                        The icon on the title bar, in Alt+Tab, and on the taskbar button while
-                        DevToolbox is running.
-                    </p>
-                </div>
-
-                @* Shipped icons first, then imported ones in name order, then the add tile — so the
-                   row grows rightwards and the button that makes it grow stays at the end of it. *@
-                <div class="icon-picker">
-                    @foreach (var id in IconChoices)
-                    {
-                        <div class="icon-swatch">
-                            <button type="button"
-                                    class="icon-swatch__button@(id == appIcon ? " is-selected" : "")"
-                                    title="@IconTitle(id)"
-                                    aria-label="@IconTitle(id)"
-                                    aria-pressed="@(id == appIcon)"
-                                    @onclick="() => ChooseIconAsync(id)">
-                                @if (iconPreviews.TryGetValue(id, out var preview))
-                                {
-                                    <img src="@preview" alt="" />
-                                }
-                            </button>
-                            @if (!AppIconOptions.IsBuiltIn(id))
-                            {
-                                <button type="button" class="icon-swatch__remove"
-                                        title="Remove @id" aria-label="Remove @id"
-                                        @onclick="() => RemoveIconAsync(id)">
-                                    <i class="bi bi-x"></i>
-                                </button>
-                            }
-                        </div>
-                    }
-
-                    <div class="icon-swatch">
-                        <button type="button" class="icon-swatch__button icon-swatch__button--add"
-                                title="Import a .ico" aria-label="Import a .ico"
-                                @onclick="BrowseCustomIconAsync">
-                            <i class="bi bi-plus-lg"></i>
-                        </button>
-                    </div>
-                </div>
-
-                @* The swatches carry no captions, so this is the only thing naming what is on. *@
-                <p class="text-xs text-dark-text-muted">
-                    Using <span class="text-dark-text font-medium">@IconTitle(appIcon)</span>
-                </p>
-
-                @if (appIconError is not null)
-                {
-                    <p class="text-xs text-danger">@appIconError</p>
-                }
-
-                @* Spelled out because Windows has three icons here that look like one: the shell
-                   reads the executable, the window carries this setting, and the notification area
-                   draws its own. Leaving that implicit is how "I changed it and my shortcut still
-                   looks the same" becomes a bug report. *@
-                <p class="text-xs text-dark-text-muted">
-                    The icon on DevToolbox.exe, on a desktop shortcut, and on a taskbar button that
-                    is pinned but not running is built into the app and does not change with this.
-                    Neither does the notification-area icon, which shows which hosts option is live.
-                </p>
             </div>
 
             <div class="flex items-center justify-between p-4 bg-dark-surface rounded-lg">
@@ -745,8 +675,6 @@
         defaultWorkspaceLocation = settings.DefaultWorkspaceLocation;
         expandGroupsByDefault = settings.ExpandGroupsByDefault;
         quickOpenButtons = settings.QuickOpenButtonCount;
-        appIcon = settings.AppIcon;
-        RefreshIcons();
         RefreshOffered();
 
         // A malformed ui_settings.yaml leaves the dropdown showing defaults that
@@ -777,123 +705,6 @@
         await ApplyAndSaveThemeAsync();
     }
 
-    // ── app icon ──────────────────────────────────────────────────────────────
-
-    private string appIcon = AppIconOptions.Default;
-    private string? appIconError;
-
-    /// <summary>The imported icons, by file name, in the order the row shows them.</summary>
-    private IReadOnlyList<string> importedIcons = [];
-
-    /// <summary>
-    /// One data URI per swatch, rebuilt whenever the folder changes. Built up front rather than per
-    /// render: each one rasterises an icon, and the markup asks for them on every pass.
-    /// </summary>
-    private readonly Dictionary<string, string> iconPreviews = [];
-
-    /// <summary>Shipped icons, then imported ones. The add tile is markup, not a choice.</summary>
-    private IEnumerable<string> IconChoices => AppIconOptions.BuiltIn.Concat(importedIcons);
-
-    private void RefreshIcons()
-    {
-        importedIcons = AppIcons.ListImported();
-        iconPreviews.Clear();
-
-        foreach (var id in IconChoices)
-        {
-            try
-            {
-                iconPreviews[id] = AppIconService.PreviewDataUri(AppIcons.Resolve(id));
-            }
-            catch (Exception ex) when (ex is ArgumentException or IOException)
-            {
-                // A preview that will not draw leaves an empty swatch rather than failing the page,
-                // and choosing it still works — Resolve falls back to the default on the same fault.
-            }
-        }
-    }
-
-    private async Task ChooseIconAsync(string choice)
-    {
-        appIcon = AppIconOptions.Normalize(choice);
-        await SaveAppIconAsync();
-    }
-
-    private async Task BrowseCustomIconAsync()
-    {
-        try
-        {
-            // Fully qualified for the same reason as the folder picker above.
-            using var dialog = new System.Windows.Forms.OpenFileDialog
-            {
-                Title = "Import an app icon",
-                Filter = "Windows icon (*.ico)|*.ico",
-                CheckFileExists = true,
-            };
-
-            if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
-
-            // The service copies it into the Icons folder and names the failure if it cannot.
-            var (name, failure) = await AppIcons.ImportAsync(dialog.FileName);
-            if (failure is not null || name is null)
-            {
-                appIconError = failure ?? "That icon could not be imported.";
-                return;
-            }
-
-            // Selected on import: nobody picks a file out of a dialog to then not use it.
-            appIcon = name;
-            await SaveAppIconAsync();
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or IOException)
-        {
-            appIconError = $"Could not open the file picker: {ex.Message}";
-        }
-    }
-
-    private async Task RemoveIconAsync(string name)
-    {
-        if (await AppIcons.RemoveAsync(name) is { } failure)
-        {
-            appIconError = failure;
-            return;
-        }
-
-        // Removing the one in use leaves the window wearing something that is gone, so the choice
-        // goes back to the shipped icon in the same breath.
-        if (appIcon == name) appIcon = AppIconOptions.Default;
-
-        await SaveAppIconAsync();
-    }
-
-    private async Task SaveAppIconAsync()
-    {
-        try
-        {
-            var settings = await UiSettings.GetAsync();
-            settings.AppIcon = appIcon;
-            await UiSettings.SaveAsync(settings);
-
-            await AppIcons.ApplyAsync();
-            RefreshIcons();
-
-            appIconError = null;
-            SetStatus("App icon updated", isError: false);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
-        {
-            appIconError = $"Could not save the icon setting: {ex.Message}";
-        }
-    }
-
-    /// <summary>The name for a swatch's tooltip and for the line under the row.</summary>
-    private static string IconTitle(string id) => id switch
-    {
-        AppIconOptions.Classic => "Classic",
-        AppIconOptions.Default => "Default",
-        _ => id,
-    };
-
     private async Task SaveSettings() => await ApplyAndSaveThemeAsync();
 
     private async Task ResetToDefaults()
@@ -906,14 +717,7 @@
         expandGroupsByDefault = defaults.ExpandGroupsByDefault;
         quickOpenButtons = defaults.QuickOpenButtonCount;
         Cards.DefaultGroupsExpanded = expandGroupsByDefault;
-
-        // The choice goes back to the shipped icon; the Icons folder is deliberately left alone.
-        // Resetting appearance should not delete files somebody imported — they stay in the row,
-        // one click away.
-        appIcon = defaults.AppIcon;
-
         await ApplyAndSaveThemeAsync();
-        await SaveAppIconAsync();
     }
 
     // --- workspace defaults ---

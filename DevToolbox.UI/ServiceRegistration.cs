@@ -128,10 +128,6 @@ namespace DevToolbox.UI
             // The seam between the tray icon, which is Windows Forms, and the Blazor router.
             services.AddSingleton<AppShellService>();
 
-            // Holds the one window and the one icon cache, so the Settings page and MainWindow are
-            // talking to the same thing rather than each resolving the setting on their own.
-            services.AddSingleton<AppIconService>();
-
             return services;
         }
 
@@ -156,10 +152,6 @@ namespace DevToolbox.UI
             services.Borrow<IHostsPermissionService>(owner);
             services.Borrow<IHostsFileService>(owner);
             services.Borrow<AppShellService>(owner);
-            // Borrowed rather than rebuilt, and not only for tidiness: this one holds the Form the
-            // icon is applied to. A second instance would have no window attached, so choosing an
-            // icon from the browser preview would save the setting and change nothing.
-            services.Borrow<AppIconService>(owner);
 
             return services;
         }

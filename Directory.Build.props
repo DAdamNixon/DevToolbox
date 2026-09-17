@@ -163,8 +163,28 @@
     The list is the hazard. Adding a singleton means editing two methods, and nothing fails at
     build time if you edit one; every other owned singleton is borrowed, so this was the only gap.
   -->
+  <!--
+    0.9.9.4 / beta.17: the app icon picker is gone. The icon it arrived with stays.
+
+    On an installed build the setting reached almost nothing. Windows draws a packaged app's
+    taskbar button and Start tile from the package's own logo assets, bound to package identity —
+    Form.Icon cannot reach either, and WindowsApps is signed and read-only, so nothing rewrites
+    them at runtime. Switching to Classic moved the title bar and Alt+Tab and left the taskbar
+    button — the icon anyone actually looks at — exactly as it was. Measured rather than assumed:
+    zero pixels differed between the before and after captures.
+
+    The one technique that would have worked is several <Application> entries carrying different
+    logos, with SetCurrentProcessExplicitAppUserModelID choosing between them. That is a fixed set
+    baked into the package rather than anything a user supplies, and changing AUMID breaks pinned
+    shortcuts, jump lists and notification identity. Not a trade worth making to recolour a title
+    bar.
+
+    So the swatch row, AppIconService, the Icons folder and the AppIcon setting all go, along with
+    the classic_icon resource that only the picker used. An appIcon key left behind in someone's
+    ui_settings.yaml costs nothing: the deserializer is built with IgnoreUnmatchedProperties.
+  -->
   <PropertyGroup>
-    <VersionPrefix>0.9.9.3</VersionPrefix>
-    <VersionSuffix>beta.16</VersionSuffix>
+    <VersionPrefix>0.9.9.4</VersionPrefix>
+    <VersionSuffix>beta.17</VersionSuffix>
   </PropertyGroup>
 </Project>

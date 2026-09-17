@@ -50,7 +50,6 @@ public sealed class UiSettingsService : IUiSettingsService
             }
 
             settings.Theme = ThemeOptions.Normalize(settings.Theme);
-            settings.AppIcon = AppIconOptions.Normalize(settings.AppIcon);
             _cached = settings;
             return _cached;
         }
@@ -65,7 +64,6 @@ public sealed class UiSettingsService : IUiSettingsService
         ArgumentNullException.ThrowIfNull(settings);
 
         settings.Theme = ThemeOptions.Normalize(settings.Theme);
-        settings.AppIcon = AppIconOptions.Normalize(settings.AppIcon);
 
         await _gate.WaitAsync().ConfigureAwait(false);
         try

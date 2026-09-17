@@ -39,9 +39,6 @@ namespace DevToolbox.UI
             blazorWebView1.Services = serviceProvider;
             blazorWebView1.RootComponents.Add<App>("#app");
 
-            // The shipped icon, so the window has one before any file has been read. If the user
-            // has chosen otherwise, MainWindow_Load swaps it as soon as the settings arrive —
-            // reading them here would mean blocking the constructor on disk.
             this.Icon = Properties.Resources.toolbox_icon;
         }
 
@@ -57,13 +54,6 @@ namespace DevToolbox.UI
             // Same reasoning, and one more: the tray icon has to know which hosts
             // options are switched on before anybody opens the tab.
             _ = StartHostsWatchAsync();
-
-            // Hand the window over before the first apply, so a saved choice of Classic or a
-            // custom file replaces the constructor's default rather than sitting unread until
-            // somebody opens Settings.
-            var icons = _serviceProvider.GetRequiredService<AppIconService>();
-            icons.Attach(this);
-            _ = icons.ApplyAsync();
         }
 
         private async Task StartHostsWatchAsync()
