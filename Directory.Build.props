@@ -135,8 +135,22 @@
     keeping for the next thing that is. 0.9.9.1 rises above 0.9.9.0, which is what App Installer
     compares.
   -->
+  <!--
+    0.9.9.2 / beta.15: the package finally wears the icon 0.9.9.1 shipped. That release moved
+    <ApplicationIcon> and the window icon, but for an MSIX the taskbar button and the Start tile
+    come from the package's logo assets — and Build-Installer.ps1 rasterised those from a path
+    still naming toolbox_Y9B_icon.ico. So the most visible icon of the three did not move, and
+    nothing failed to say so; 0.9.9.1 installed looking exactly like 0.9.9.0.
+
+    The installer now reads that path out of <ApplicationIcon> instead of naming a file, on the
+    same rule that has it read the version back out of the published executable: the two must not
+    be able to drift. Build-Installer.ps1 lives outside this repo, so that half is a separate
+    check-in.
+
+    The fourth part again. This is the fix 0.9.9.1 needed, not a feature.
+  -->
   <PropertyGroup>
-    <VersionPrefix>0.9.9.1</VersionPrefix>
-    <VersionSuffix>beta.14</VersionSuffix>
+    <VersionPrefix>0.9.9.2</VersionPrefix>
+    <VersionSuffix>beta.15</VersionSuffix>
   </PropertyGroup>
 </Project>
