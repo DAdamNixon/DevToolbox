@@ -7,7 +7,7 @@
     <!-- The icon Windows shows for the file, the shortcut and the taskbar button. Without it the
          published executable carries the generic .NET icon, while the window and tray icons — set
          from the same file at runtime — looked right, so the mismatch only showed up on the desktop. -->
-    <ApplicationIcon>Resources\toolbox_Y9B_icon.ico</ApplicationIcon>
+    <ApplicationIcon>Resources\devtoolbox.ico</ApplicationIcon>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <PublishProfile>win-x64.pubxml</PublishProfile>
@@ -42,7 +42,7 @@
     registers it as a static web asset, but that target is gated on OutputType == 'Exe'
     and this project is WinExe, being a Windows app that happens to also serve itself.
     So the script never reached the manifest and /_framework/blazor.web.js 404'd, which
-    leaves the browser view rendered but inert � no circuit, no interactivity.
+    leaves the browser view rendered but inert � no circuit, no interactivity.
 
     Copied into wwwroot rather than fought over in MSBuild: from there it is an ordinary
     static web asset of this project. It is generated, so .gitignore covers it.

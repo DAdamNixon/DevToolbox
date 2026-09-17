@@ -119,8 +119,24 @@
     The patch digit again, on the rule 0.9.6 set: shipping an executable that was never in the
     package is a feature. 0.9.9.0 rises above 0.9.8.0, which is what App Installer compares.
   -->
+  <!--
+    0.9.9.1 / beta.14: a new app icon — a terminal with a carry handle over it — and a picker in
+    Settings for anyone who would rather have something else. Default and Classic ship with the
+    app; every .ico in Config\Icons appears beside them, and the picker imports one for you.
+
+    The window icon only. The one on DevToolbox.exe, on a shortcut and on a pinned-but-not-running
+    taskbar button is compiled in by <ApplicationIcon> and moves with a build rather than a
+    setting, which is why Settings says so rather than letting the two look like one control. The
+    notification-area icon is untouched: HostsTrayIcon draws its own mark in the colour of whichever
+    hosts option is live, and that colour is the point of it.
+
+    The fourth part rather than the patch digit, which is what 0.9.5.1 reserved it for. The artwork
+    changes and a picker appears, but nothing the app can do is new, and the patch digit is worth
+    keeping for the next thing that is. 0.9.9.1 rises above 0.9.9.0, which is what App Installer
+    compares.
+  -->
   <PropertyGroup>
-    <VersionPrefix>0.9.9.0</VersionPrefix>
-    <VersionSuffix>beta.13</VersionSuffix>
+    <VersionPrefix>0.9.9.1</VersionPrefix>
+    <VersionSuffix>beta.14</VersionSuffix>
   </PropertyGroup>
 </Project>

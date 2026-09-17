@@ -128,6 +128,10 @@ namespace DevToolbox.UI
             // The seam between the tray icon, which is Windows Forms, and the Blazor router.
             services.AddSingleton<AppShellService>();
 
+            // Holds the one window and the one icon cache, so the Settings page and MainWindow are
+            // talking to the same thing rather than each resolving the setting on their own.
+            services.AddSingleton<AppIconService>();
+
             return services;
         }
 
