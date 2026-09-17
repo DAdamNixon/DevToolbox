@@ -149,8 +149,22 @@
 
     The fourth part again. This is the fix 0.9.9.1 needed, not a feature.
   -->
+  <!--
+    0.9.9.3 / beta.16: the browser preview could not open Settings. AppIconService was added to
+    AddOwnedSingletons and not to AddBorrowedSingletons, which is a hand-written list of every
+    shared singleton — so the borrowing container had no registration for it and @inject threw,
+    taking the whole circuit down with the generic "An error has occurred" and no detail, because
+    DetailedErrors is off outside Development.
+
+    Only the browser surface: the Windows Forms host owns the container, so its own Settings page
+    resolved the service and worked. That is the shape of this bug and the reason it shipped —
+    the half that was tested was the half that could not fail.
+
+    The list is the hazard. Adding a singleton means editing two methods, and nothing fails at
+    build time if you edit one; every other owned singleton is borrowed, so this was the only gap.
+  -->
   <PropertyGroup>
-    <VersionPrefix>0.9.9.2</VersionPrefix>
-    <VersionSuffix>beta.15</VersionSuffix>
+    <VersionPrefix>0.9.9.3</VersionPrefix>
+    <VersionSuffix>beta.16</VersionSuffix>
   </PropertyGroup>
 </Project>

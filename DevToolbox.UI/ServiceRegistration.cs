@@ -156,6 +156,10 @@ namespace DevToolbox.UI
             services.Borrow<IHostsPermissionService>(owner);
             services.Borrow<IHostsFileService>(owner);
             services.Borrow<AppShellService>(owner);
+            // Borrowed rather than rebuilt, and not only for tidiness: this one holds the Form the
+            // icon is applied to. A second instance would have no window attached, so choosing an
+            // icon from the browser preview would save the setting and change nothing.
+            services.Borrow<AppIconService>(owner);
 
             return services;
         }
