@@ -10,7 +10,8 @@ namespace DevToolbox.Tests;
 /// </summary>
 internal sealed class DirectoryYamlStorage : IYamlStorageService
 {
-    private static readonly IDeserializer Yaml = new DeserializerBuilder()
+    // Built per load: test classes run in parallel, and one shared deserializer failed intermittently.
+    private static IDeserializer Yaml => new DeserializerBuilder()
         .WithNamingConvention(CamelCaseNamingConvention.Instance)
         .IgnoreUnmatchedProperties()
         .Build();

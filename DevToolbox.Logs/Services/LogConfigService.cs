@@ -128,7 +128,8 @@ public class LogConfigService : ILogConfigService
                 // Empty and null both mean "no discovery for this location", and null is what the
                 // rest of the code checks for; storing "" would put a `namePattern:` line in the
                 // YAML that says nothing.
-                NamePattern = string.IsNullOrWhiteSpace(l.NamePattern) ? null : l.NamePattern!.Trim()
+                NamePattern = string.IsNullOrWhiteSpace(l.NamePattern) ? null : l.NamePattern!.Trim(),
+                DefaultTemplate = string.IsNullOrWhiteSpace(l.DefaultTemplate) ? null : l.DefaultTemplate!.Trim()
             })
             .Where(l => l.Name.Length > 0 || l.Path.Length > 0)
             .ToList();

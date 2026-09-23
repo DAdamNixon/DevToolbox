@@ -75,6 +75,7 @@ internal sealed class LogEnvironment : IDisposable
             logLocations:
             - name: Local Logs
               path: {_logs.Path}
+              defaultTemplate: WebsiteBase
             - name: Archived Logs
               path: '\\fileserver01\LogFiles\WebServers\ElliottLogs'
             """;
@@ -151,6 +152,22 @@ public sealed class LogViewerServiceTests
 
         Assert.Equal(new[] { "Local Logs", "Archived Logs" }, result.Locations.Select(l => l.Name));
         Assert.Empty(result.Refused);
+    }
+
+    [Fact]
+    public async Task An_admitted_location_carries_its_configured_default_template()
+    {
+        // The field an agent can offer to prepare_table instead of guessing. Absent for a location
+        // that has none, not an empty string — same convention as the app's own config.
+        using var env = new LogEnvironment();
+
+        var result = await env.Service.GetLocationsAsync();
+
+        var local = result.Locations.Single(l => l.Name == "Local Logs");
+        var archived = result.Locations.Single(l => l.Name == "Archived Logs");
+
+        Assert.Equal("WebsiteBase", local.DefaultTemplate);
+        Assert.Null(archived.DefaultTemplate);
     }
 
     [Fact]

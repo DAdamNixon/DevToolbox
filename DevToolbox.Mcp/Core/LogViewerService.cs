@@ -74,7 +74,8 @@ public sealed class LogViewerService
         {
             var reason = LocationPolicy.Refuse(location);
             if (reason is null)
-                admitted.Add(new LocationInfo(location.Name, location.Path, !string.IsNullOrWhiteSpace(location.NamePattern)));
+                admitted.Add(new LocationInfo(
+                    location.Name, location.Path, !string.IsNullOrWhiteSpace(location.NamePattern), location.DefaultTemplate));
             else
                 refused.Add(new RefusedLocationInfo(location.Name, location.Path, reason));
         }
@@ -234,22 +235,35 @@ public sealed class LogViewerService
         // Its own table name: this is what stops a second prepare destroying this one's rows.
         var ingest = new DbLogService(_yaml, _writeStorage, handle);
 
+        // Always auto-skips a stalled file (D6, D8): nobody is at the keyboard to click Skip, so a
+        // hung share must not hang the session, and a partial answer beats none.
+        var settings = await LogIngestSettingsStore.LoadAsync(_yaml);
+        var control = new LogIngestControl(settings, alwaysAutoSkip: true);
+
         // progress is null deliberately. The UI passes an IProgress that drives a progress bar;
         // here there is nowhere for it to go, and anything that wrote it to the console would be
         // writing on the JSON-RPC wire.
-        var table = await ingest.PrepareLogTableAsync(
-            logFile, locations, start, end, templateName, progress: null, cancellationToken: cancellationToken);
+        var prepared = await ingest.PrepareLogTableAsync(
+            logFile, locations, start, end, templateName, progress: null, control: control, cancellationToken: cancellationToken);
+        var table = prepared.TableName;
 
         var rows = await _reader.CountLogEntriesAsync(table, criteria: null, split: null, cancellationToken: cancellationToken);
         var columns = await ActualColumnsAsync(table, cancellationToken);
 
         _prepared.Register(new PreparedTable(handle, logFile, templateName, columns, rows, DateTime.UtcNow));
 
-        var note = rows == 0
-            ? "No rows. Either no file matched the name prefix in that date range, or the files matched but were empty. " +
-              "Files are matched by LastWriteTime, not by the date in the file name."
-            : $"Query with query_entries using handle '{handle}'. In raw SQL, the table is named {handle}. " +
-              ResultDocs.UntrustedContentWarning;
+        var notIngested = prepared.NotIngested
+            .Select(f => new NotIngestedFileInfo(f.FileName, f.LocationName, f.State.ToString(), f.BytesRead, f.BytesTotal, f.Reason))
+            .ToList();
+
+        var note = !prepared.IsComplete
+            ? $"Partial: {notIngested.Count} file{(notIngested.Count == 1 ? "" : "s")} were not read. " +
+              "Their rows are absent — a missing row is not evidence it did not happen."
+            : rows == 0
+                ? "No rows. Either no file matched the name prefix in that date range, or the files matched but were empty. " +
+                  "Files are matched by LastWriteTime, not by the date in the file name."
+                : $"Query with query_entries using handle '{handle}'. In raw SQL, the table is named {handle}. " +
+                  ResultDocs.UntrustedContentWarning;
 
         return new PrepareResult(
             handle, logFile, detail.Name,
@@ -258,7 +272,7 @@ public sealed class LogViewerService
             // Echoed back because the caller now chooses the scope, and a result whose population
             // the caller cannot see is the thing this whole argument exists to prevent.
             locations.Select(l => l.Name).ToList(),
-            rows, columns, note);
+            rows, columns, prepared.IsComplete, notIngested, note);
     }
 
     /// <summary>The columns the table really has — template, overflow and provenance together.</summary>

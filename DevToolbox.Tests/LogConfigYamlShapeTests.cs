@@ -98,6 +98,51 @@ public class LogConfigYamlShapeTests
     }
 
     [Fact]
+    public void A_location_with_a_default_template_writes_the_defaultTemplate_key()
+    {
+        var yaml = Serializer.Serialize(new LogLocationConfig
+        {
+            LogLocations = new List<LogLocation>
+            {
+                new() { Name = "Live Web01", Path = @"\\web01\inetpub\LogFiles", DefaultTemplate = "WebsiteBase" }
+            }
+        });
+
+        Assert.Contains("defaultTemplate: WebsiteBase", yaml);
+    }
+
+    [Fact]
+    public void A_location_with_no_default_template_writes_no_defaultTemplate_key()
+    {
+        var yaml = Serializer.Serialize(new LogLocationConfig
+        {
+            LogLocations = new List<LogLocation> { new() { Name = "EOX Logs", Path = @"\\eox01\Logs" } }
+        });
+
+        Assert.DoesNotContain("defaultTemplate", yaml);
+    }
+
+    [Fact]
+    public void A_default_template_round_trips()
+    {
+        var yaml = Serializer.Serialize(new LogLocationConfig
+        {
+            LogLocations = new List<LogLocation>
+            {
+                new() { Name = "Live Web01", Path = @"\\web01\inetpub\LogFiles", DefaultTemplate = "WebsiteBase" }
+            }
+        });
+
+        var back = new DeserializerBuilder()
+            .WithNamingConvention(CamelCaseNamingConvention.Instance)
+            .IgnoreUnmatchedProperties()
+            .Build()
+            .Deserialize<LogLocationConfig>(yaml);
+
+        Assert.Equal("WebsiteBase", back.LogLocations.Single().DefaultTemplate);
+    }
+
+    [Fact]
     public void A_backslash_path_survives_the_round_trip_byte_for_byte()
     {
         const string path = @"\\fileserver01\LogFiles\WebServers\ElliottLogs";

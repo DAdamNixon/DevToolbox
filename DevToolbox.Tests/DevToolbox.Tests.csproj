@@ -7,6 +7,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <!-- Only for WindowIconGuardTests, which needs a real System.Windows.Forms.Form on a bare STA
+         thread — no MainWindow, no WebView. -->
+    <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
 
   <ItemGroup>

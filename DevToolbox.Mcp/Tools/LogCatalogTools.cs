@@ -34,6 +34,8 @@ public sealed class LogCatalogTools
         "Local and network locations are both readable. A location appears under 'refused' only when its " +
         "configured path is unusable (blank, or not fully qualified) — that is a broken config entry, not a " +
         "policy decision. " +
+        "Each admitted location carries defaultTemplate when the dev set one — the template its files " +
+        "normally parse with — so a caller may pass that to prepare_table instead of guessing. " +
         "COST: naming a network location means an SMB directory walk on another machine — one configured " +
         "archive share measures 17 seconds across 238,000 files, and some locations are web servers serving " +
         "live traffic. Name the locations the question actually needs, not all of them.")]

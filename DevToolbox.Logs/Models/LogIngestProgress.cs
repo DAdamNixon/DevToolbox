@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace DevToolbox.Services.Models
 {
@@ -75,6 +76,13 @@ namespace DevToolbox.Services.Models
         /// than show a zero.
         /// </summary>
         public TimeSpan? Eta { get; init; }
+
+        /// <summary>Files currently open — Opening, Reading or Stalled — for the per-file rows.</summary>
+        public IReadOnlyList<FileProgressSnapshot> InFlight { get; init; } = Array.Empty<FileProgressSnapshot>();
+
+        public int FilesStalled { get; init; }
+        public int FilesSkipped { get; init; }
+        public int FilesFailed { get; init; }
 
         /// <summary>0-100. Falls back to file count when byte totals are unavailable.</summary>
         public double PercentComplete

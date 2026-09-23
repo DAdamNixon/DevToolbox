@@ -28,15 +28,18 @@ namespace DevToolbox.Services.Interfaces
             string templateName,
             CancellationToken cancellationToken = default);
 
-        // Ingests the selected files into a fresh table (drop + recreate) and returns the table name.
-        // progress is optional; pass null for a silent ingest.
-        Task<string> PrepareLogTableAsync(
+        // Ingests the selected files into a fresh table (drop + recreate) and returns the table name
+        // plus every file it did not manage to read. progress is optional; pass null for a silent
+        // ingest. control is optional; pass null to accept the ingest's default settings and get no
+        // Skip capability.
+        Task<LogPrepareResult> PrepareLogTableAsync(
             string logFile,
             IReadOnlyList<LogLocation> locations,
             DateTime startDate,
             DateTime endDate,
             string templateName,
             IProgress<LogIngestProgress>? progress = null,
+            LogIngestControl? control = null,
             CancellationToken cancellationToken = default);
 
         // Queries an already-prepared table; no re-ingestion.

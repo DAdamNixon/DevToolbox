@@ -59,6 +59,14 @@ namespace DevToolbox.Services.Services
         }
 
         /// <summary>
+        /// Opens a log file for reading. Test seam: a fake can return a stream that blocks or
+        /// throws, to simulate a hung or failing share without one. Defaults to a real,
+        /// share-friendly, overlapped <see cref="FileStream"/>.
+        /// </summary>
+        internal Func<string, Stream> FileOpener { get; set; } = static path =>
+            new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, bufferSize: 4096, FileOptions.Asynchronous);
+
+        /// <summary>
         /// The columns a template actually produces once <c>inherits</c> has been applied — the
         /// base's columns followed by its own.
         /// <para>
@@ -241,51 +249,75 @@ namespace DevToolbox.Services.Services
         }
 
         private async Task<List<string>> GetAllColumnsFromFilesAsync(
-            IEnumerable<string> files,
+            List<(string LocationName, string FilePath, long Length)> taggedFiles,
             LogTemplate template,
             LogIngestProgressReporter reporter,
+            LogIngestControl control,
             CancellationToken cancellationToken = default)
         {
             var baseColumns = await ResolveColumnsAsync(template);
             int maxMessageColumns = 0;
 
-            foreach (var file in files)
+            foreach (var tf in taggedFiles)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                reporter.FileStarted(Path.GetFileName(file));
 
-                try
+                var fileKey = tf.FilePath;
+                var fileName = Path.GetFileName(tf.FilePath);
+
+                if (control.IsSkipped(fileKey))
                 {
-                    using var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                    using var reader = new StreamReader(fs);
-                    
-                    // Only sample first few lines to determine columns, not the entire file
-                    const int maxSampleLines = 1000;
-                    int lineCount = 0;
-                    
-                    string? line;
-                    while ((line = await reader.ReadLineAsync()) != null && lineCount < maxSampleLines)
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        
-                        var parts = SplitLine(line, template.Delimiter);
-                        int extra = parts.Length - baseColumns.Count;
-                        if (extra > maxMessageColumns)
-                            maxMessageColumns = extra;
-                        lineCount++;
-                    }
-                }
-                catch (Exception ex) when (!(ex is OperationCanceledException))
-                {
-                    // Log warning but continue with other files
+                    var reason = DescribeSkip(await control.WaitForAbandonAsync(fileKey), control);
+                    reporter.FileSkipped(fileKey, fileName, tf.LocationName, reason);
                     continue;
                 }
-                finally
+
+                reporter.FileOpening(fileKey, fileName, tf.LocationName, tf.Length);
+
+                var extra = await RunAbandonableAsync(fileKey, fileName, tf.LocationName, control, reporter, async token =>
                 {
-                    // In finally so a file that could not be opened still advances the
-                    // bar; otherwise one unreadable file makes progress appear stuck.
-                    reporter.FileCompleted();
-                }
+                    try
+                    {
+                        // Off the calling async chain: the open itself is a synchronous call and,
+                        // against a dead server, can block a thread for as long as the read would.
+                        // Running it on a pool thread is what lets this race against abandonment at
+                        // all — inline, a blocked open would never even reach the WhenAny below.
+                        using var fs = await Task.Run(() => FileOpener(tf.FilePath), token);
+                        using var reader = new StreamReader(fs);
+
+                        // Only sample first few lines to determine columns, not the entire file
+                        const int maxSampleLines = 1000;
+                        int lineCount = 0;
+                        int extraHere = 0;
+
+                        string? line;
+                        while (lineCount < maxSampleLines && (line = await reader.ReadLineAsync(token)) != null)
+                        {
+                            if (control.IsSkipped(fileKey)) return 0;
+                            reporter.FileBytesRead(fileKey, fs.Position);
+
+                            var parts = SplitLine(line, template.Delimiter);
+                            int extraCols = parts.Length - baseColumns.Count;
+                            if (extraCols > extraHere)
+                                extraHere = extraCols;
+                            lineCount++;
+                        }
+
+                        // An orphan that wakes after a skip must not flip the slot back to Done.
+                        if (control.IsSkipped(fileKey)) return 0;
+                        reporter.FileDone(fileKey);
+                        return extraHere;
+                    }
+                    catch (Exception ex)
+                    {
+                        if (!control.IsSkipped(fileKey))
+                            reporter.FileFailed(fileKey, fileName, tf.LocationName, $"failed: {ex.Message}");
+                        return 0;
+                    }
+                }, cancellationToken);
+
+                if (extra > maxMessageColumns)
+                    maxMessageColumns = extra;
             }
 
             var columns = new List<string>(baseColumns);
@@ -315,16 +347,18 @@ namespace DevToolbox.Services.Services
             return line.Split(delimiter);
         }
 
-        public async Task<string> PrepareLogTableAsync(
+        public async Task<LogPrepareResult> PrepareLogTableAsync(
             string logFile,
             IReadOnlyList<LogLocation> locations,
             DateTime startDate,
             DateTime endDate,
             string templateName,
             IProgress<LogIngestProgress>? progress = null,
+            LogIngestControl? control = null,
             CancellationToken cancellationToken = default)
         {
-            var reporter = new LogIngestProgressReporter(progress);
+            control ??= new LogIngestControl();
+            using var reporter = new LogIngestProgressReporter(progress, control);
             reporter.EnterPhase(LogIngestPhase.Listing);
 
             await _loadSemaphore.WaitAsync(cancellationToken);
@@ -349,8 +383,7 @@ namespace DevToolbox.Services.Services
                 reporter.SetTotals(taggedFiles.Count, bytesTotal: 0);
 
                 // Determine columns (works with an empty file set: template + provenance columns).
-                var columns = await GetAllColumnsFromFilesAsync(
-                    taggedFiles.Select(t => t.FilePath), template, reporter, cancellationToken);
+                var columns = await GetAllColumnsFromFilesAsync(taggedFiles, template, reporter, control, cancellationToken);
 
                 // Always recreate so each Search reflects the current selection.
                 if (await _logStorage.TableExistsAsync(TableName))
@@ -359,16 +392,66 @@ namespace DevToolbox.Services.Services
 
                 reporter.EnterPhase(LogIngestPhase.Ingesting);
                 reporter.SetTotals(taggedFiles.Count, taggedFiles.Sum(f => f.Length));
-                await IngestFilesAsync(taggedFiles, template, TableName, columns, reporter, cancellationToken);
+                await IngestFilesAsync(taggedFiles, template, TableName, columns, reporter, control, cancellationToken);
 
+                var notIngested = reporter.GetNotIngested();
                 reporter.Complete(LogIngestPhase.Querying);
-                return TableName;
+
+                return new LogPrepareResult { TableName = TableName, NotIngested = notIngested };
             }
             finally
             {
                 _loadSemaphore.Release();
             }
         }
+
+        /// <summary>
+        /// Runs one file's work racing against its own abandon signal, so a caller can stop waiting
+        /// on a blocked read without waiting on it. <paramref name="work"/> must not let an exception
+        /// escape — it owns reporting its own <see cref="LogIngestProgressReporter.FileFailed"/>, so
+        /// a bad file never faults the whole ingest (D5).
+        /// </summary>
+        private static async Task<T?> RunAbandonableAsync<T>(
+            string fileKey,
+            string fileName,
+            string locationName,
+            LogIngestControl control,
+            LogIngestProgressReporter reporter,
+            Func<CancellationToken, Task<T>> work,
+            CancellationToken cancellationToken)
+        {
+            var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var workTask = work(linkedCts.Token);
+            var abandonTask = control.WaitForAbandonAsync(fileKey);
+
+            var finished = await Task.WhenAny(workTask, abandonTask);
+
+            if (finished == abandonTask)
+            {
+                // Best-effort: the file was opened synchronously, so this may do nothing at all —
+                // the read that matters is the one we are choosing not to wait for any longer.
+                linkedCts.Cancel();
+
+                var reason = DescribeSkip(abandonTask.Result, control);
+                reporter.FileSkipped(fileKey, fileName, locationName, reason);
+
+                // The orphan keeps running; observe its eventual result so it never becomes an
+                // unobserved task exception, and dispose the CTS only once nothing references it.
+                _ = workTask.ContinueWith(_ => linkedCts.Dispose(), TaskScheduler.Default);
+                return default;
+            }
+
+            linkedCts.Dispose();
+            return await workTask;
+        }
+
+        private static string DescribeSkip(SkipReason reason, LogIngestControl control) => reason switch
+        {
+            SkipReason.Manual => "stalled — skipped by you",
+            SkipReason.Auto => $"stalled — auto-skipped after {control.AutoSkipTimeoutSeconds}s",
+            SkipReason.Cancelled => "not read — search cancelled",
+            _ => "not read"
+        };
 
         /// <summary>
         /// Finds the files to ingest, tagged with their location name and size.
@@ -460,6 +543,9 @@ namespace DevToolbox.Services.Services
             return taggedFiles;
         }
 
+        /// <summary>A parsed batch, carrying the file it came from — what lets the writer purge a skip (D4).</summary>
+        private readonly record struct LogBatch(string FileKey, List<Dictionary<string, string>> Rows);
+
         // Parses files in parallel and inserts on a single writer to respect SQLite's single-writer model.
         private async Task IngestFilesAsync(
             List<(string LocationName, string FilePath, long Length)> taggedFiles,
@@ -467,23 +553,38 @@ namespace DevToolbox.Services.Services
             string tableName,
             List<string> columns,
             LogIngestProgressReporter reporter,
+            LogIngestControl control,
             CancellationToken cancellationToken)
         {
             if (taggedFiles.Count == 0)
                 return;
 
-            var channel = Channel.CreateBounded<List<Dictionary<string, string>>>(
+            var channel = Channel.CreateBounded<LogBatch>(
                 new BoundedChannelOptions(8) { SingleReader = true, SingleWriter = false });
 
             var writerTask = Task.Run(async () =>
             {
-                await foreach (var batch in channel.Reader.ReadAllAsync(cancellationToken))
+                // Purged at most once per file: a skip decided mid-stream can leave several more
+                // batches from the same file already queued behind it in the channel.
+                var purged = new HashSet<string>(StringComparer.Ordinal);
+
+                await foreach (var item in channel.Reader.ReadAllAsync(cancellationToken))
                 {
-                    await _logStorage.InsertLogLinesAsync(tableName, batch, cancellationToken);
+                    if (control.IsSkipped(item.FileKey))
+                    {
+                        // The single writer is the second and final check in the row-leak guard: the
+                        // parser already stops adding to a skipped file's batch, but a batch built
+                        // just before the skip can already be in flight here.
+                        if (purged.Add(item.FileKey))
+                            await _logStorage.DeleteRowsForFileAsync(tableName, SourcePathColumn, item.FileKey, cancellationToken);
+                        continue;
+                    }
+
+                    await _logStorage.InsertLogLinesAsync(tableName, item.Rows, cancellationToken);
 
                     // Counted here rather than at parse time so the figure means rows
                     // actually committed, not rows queued.
-                    reporter.AddRows(batch.Count);
+                    reporter.AddRows(item.Rows.Count);
                 }
             }, cancellationToken);
 
@@ -492,13 +593,30 @@ namespace DevToolbox.Services.Services
 
             var parseTasks = taggedFiles.Select(async tf =>
             {
+                var fileKey = tf.FilePath;
+                var fileName = Path.GetFileName(tf.FilePath);
+
+                if (control.IsSkipped(fileKey))
+                {
+                    var reason = DescribeSkip(await control.WaitForAbandonAsync(fileKey), control);
+                    reporter.FileSkipped(fileKey, fileName, tf.LocationName, reason);
+                    return;
+                }
+
                 await throttler.WaitAsync(cancellationToken);
                 try
                 {
-                    await ParseFileToChannelAsync(tf.FilePath, tf.LocationName, template, columns, channel.Writer, reporter, cancellationToken);
+                    reporter.FileOpening(fileKey, fileName, tf.LocationName, tf.Length);
+                    await RunAbandonableAsync<object?>(fileKey, fileName, tf.LocationName, control, reporter, async token =>
+                    {
+                        await ParseFileToChannelAsync(fileKey, tf.LocationName, template, columns, channel.Writer, reporter, control, token);
+                        return null;
+                    }, cancellationToken);
                 }
                 finally
                 {
+                    // Released exactly once here, whether the file finished, failed, or was
+                    // abandoned — the orphan an abandonment leaves behind holds no worker slot.
                     throttler.Release();
                 }
             }).ToList();
@@ -520,44 +638,40 @@ namespace DevToolbox.Services.Services
             string locationName,
             LogTemplate template,
             List<string> allColumns,
-            ChannelWriter<List<Dictionary<string, string>>> writer,
+            ChannelWriter<LogBatch> writer,
             LogIngestProgressReporter reporter,
+            LogIngestControl control,
             CancellationToken cancellationToken)
         {
             const int baseBatchSize = 1000;
             var batch = new List<Dictionary<string, string>>(baseBatchSize);
+            var fileKey = filePath;
+            var fileName = Path.GetFileName(filePath);
 
             try
             {
-                using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                // See the matching comment in GetAllColumnsFromFilesAsync: the open must not run
+                // inline, or a blocked open could never be raced against abandonment at all.
+                using var fs = await Task.Run(() => FileOpener(filePath), cancellationToken);
                 using var reader = new StreamReader(fs);
 
                 var templateColumns = await ResolveColumnsAsync(template);
-                string sourceFileName = Path.GetFileName(filePath);
+                string sourceFileName = fileName;
                 long sequence = 0;
-                long reportedBytes = 0;
                 string? line;
 
-                reporter.FileStarted(sourceFileName);
-
-                while ((line = await reader.ReadLineAsync()) != null)
+                while ((line = await reader.ReadLineAsync(cancellationToken)) != null)
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
                     sequence++; // 1-based line number; advances even for skipped lines to preserve order.
 
                     // Progress comes from the underlying stream position rather than
                     // the characters handed back, so multi-byte encodings and line
                     // endings are accounted for without decoding them twice. It moves
                     // in reader-buffer steps, which is fine for a progress bar.
-                    if (reporter.IsActive)
-                    {
-                        var position = fs.Position;
-                        if (position > reportedBytes)
-                        {
-                            reporter.AddBytes(position - reportedBytes);
-                            reportedBytes = position;
-                        }
-                    }
+                    reporter.FileBytesRead(fileKey, fs.Position);
+
+                    if (control.IsSkipped(fileKey))
+                        break; // Cooperative stop, in case this read can observe it; the abandon path does not depend on it.
 
                     try
                     {
@@ -579,7 +693,7 @@ namespace DevToolbox.Services.Services
 
                         if (batch.Count >= baseBatchSize)
                         {
-                            await writer.WriteAsync(batch, cancellationToken);
+                            await writer.WriteAsync(new LogBatch(fileKey, batch), cancellationToken);
                             batch = new List<Dictionary<string, string>>(baseBatchSize);
                         }
                     }
@@ -590,14 +704,25 @@ namespace DevToolbox.Services.Services
                     }
                 }
 
-                if (batch.Count > 0)
-                    await writer.WriteAsync(batch, cancellationToken);
+                if (batch.Count > 0 && !control.IsSkipped(fileKey))
+                    await writer.WriteAsync(new LogBatch(fileKey, batch), cancellationToken);
 
-                reporter.FileCompleted();
+                if (control.IsSkipped(fileKey))
+                {
+                    var reason = DescribeSkip(await control.WaitForAbandonAsync(fileKey), control);
+                    reporter.FileSkipped(fileKey, fileName, locationName, reason);
+                }
+                else
+                {
+                    reporter.FileDone(fileKey);
+                }
             }
-            catch (Exception ex) when (!(ex is OperationCanceledException))
+            catch (Exception ex)
             {
-                throw new InvalidOperationException($"Failed to process log file '{filePath}'", ex);
+                // Real failure, or the exception our own abandonment left behind in the orphan —
+                // the latter already has its Skipped state recorded, so it is not overwritten (D5).
+                if (!control.IsSkipped(fileKey))
+                    reporter.FileFailed(fileKey, fileName, locationName, $"failed: {ex.Message}");
             }
         }
 

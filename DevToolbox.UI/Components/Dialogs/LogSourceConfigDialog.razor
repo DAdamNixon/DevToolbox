@@ -350,6 +350,22 @@
                                            placeholder="^(?&lt;name&gt;.+)\.(?&lt;date&gt;\d{8})\.txt$"
                                            @bind="location.NamePattern" @bind:event="oninput" @bind:after="MarkLocationsDirty" />
                                 </label>
+                                <label class="hosts-field log-config-narrow">
+                                    <span class="hosts-field-label">Default template</span>
+                                    <select class="input-modern" disabled="@_busy" value="@(location.DefaultTemplate ?? "")"
+                                            @onchange="e => OnDefaultTemplateChanged(location, e)">
+                                        <option value="">(none)</option>
+                                        @if (!string.IsNullOrWhiteSpace(location.DefaultTemplate) &&
+                                             !_templates.Any(t => string.Equals(t.Name, location.DefaultTemplate, StringComparison.OrdinalIgnoreCase)))
+                                        {
+                                            <option value="@location.DefaultTemplate">@location.DefaultTemplate (missing)</option>
+                                        }
+                                        @foreach (var template in _templates)
+                                        {
+                                            <option value="@template.Name">@template.Name</option>
+                                        }
+                                    </select>
+                                </label>
                                 <p class="log-config-hint">@DescribeLocation(location)</p>
                             </div>
                         }
@@ -958,6 +974,13 @@
         _locationProblems = ValidateLocations();
     }
 
+    private void OnDefaultTemplateChanged(LogLocation location, ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        location.DefaultTemplate = string.IsNullOrWhiteSpace(value) ? null : value;
+        MarkLocationsDirty();
+    }
+
     private List<string> ValidateLocations()
     {
         var problems = new List<string>();
@@ -1010,9 +1033,15 @@
             ? (found ? "Reachable now." : "Not reachable from this machine right now — kept anyway.")
             : "Checking whether it answers…";
 
-        return string.IsNullOrWhiteSpace(location.NamePattern)
-            ? $"{where} With no pattern, the Log File box falls back to its preset list."
-            : $"{where} The pattern's name capture fills the Log File box.";
+        var pattern = string.IsNullOrWhiteSpace(location.NamePattern)
+            ? "With no pattern, the Log File box falls back to its preset list."
+            : "The pattern's name capture fills the Log File box.";
+
+        var defaultTemplate = string.IsNullOrWhiteSpace(location.DefaultTemplate)
+            ? ""
+            : $" Selecting locations that all default to \"{location.DefaultTemplate}\" switches the Template to it.";
+
+        return $"{where} {pattern}{defaultTemplate}";
     }
 
     // --- reachability probe ---

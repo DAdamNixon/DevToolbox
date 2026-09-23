@@ -379,5 +379,17 @@ namespace DevToolbox.Services.Services
             cmd.CommandText = $"DROP TABLE IF EXISTS [{tableName}];";
             await cmd.ExecuteNonQueryAsync();
         }
+
+        public async Task DeleteRowsForFileAsync(string tableName, string column, string value, CancellationToken cancellationToken = default)
+        {
+            GuardWritable(nameof(DeleteRowsForFileAsync));
+
+            using var conn = GetConnection();
+            await conn.OpenAsync(cancellationToken);
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"DELETE FROM [{tableName}] WHERE [{column}] = @value;";
+            cmd.Parameters.AddWithValue("@value", value);
+            await cmd.ExecuteNonQueryAsync(cancellationToken);
+        }
     }
 }
