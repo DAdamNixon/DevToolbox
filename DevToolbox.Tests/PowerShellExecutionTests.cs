@@ -106,6 +106,36 @@ public class PowerShellExecutionTests
         Assert.Contains("be careful", output);
     }
 
+    [Fact]
+    public async Task A_script_can_call_another_ps1_file()
+    {
+        // Which is what `npm` is: PowerShell resolves it to npm.ps1 before npm.cmd, so npm-install
+        // failed in every folder with "running scripts is disabled on this system". The script text
+        // itself is handed over as a string and never checked, but a .ps1 it calls is, and a hosted
+        // runspace has no powershell.config.json beside it, so it falls back to Restricted.
+        //
+        // The variable is cleared because the shell running the tests may have passed Bypass down
+        // through it. DevToolbox started from the Start menu inherits nothing.
+        var inherited = Environment.GetEnvironmentVariable("PSExecutionPolicyPreference");
+        var helper = Path.Combine(Path.GetTempPath(), $"devtoolbox-helper-{Guid.NewGuid():N}.ps1");
+
+        try
+        {
+            Environment.SetEnvironmentVariable("PSExecutionPolicyPreference", null);
+            await File.WriteAllTextAsync(helper, "Write-Output 'helper ran'");
+
+            var (output, error) = await Service().ExecuteScriptWithParametersAsync($"& '{helper}'");
+
+            Assert.Empty(error);
+            Assert.Contains("helper ran", output);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PSExecutionPolicyPreference", inherited);
+            File.Delete(helper);
+        }
+    }
+
     [Theory]
     [InlineData("param([Parameter(Mandatory=$true)][string]$ProjectPath)", "ProjectPath")]
     [InlineData("param([Parameter(Mandatory)][string]$Path)", "Path")]

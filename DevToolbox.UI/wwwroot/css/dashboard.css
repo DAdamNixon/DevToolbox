@@ -2178,6 +2178,24 @@ tr.log-row-expanded td {
     min-height: 0;
 }
 
+/* The editor, the form and the result panes, which scroll together above the
+   buttons. Nothing in here shrinks: squeezed into a column that could not hold
+   them, the editor pane and the form collapsed to their labels while the
+   textarea's min-height still painted, straight through the error pane. Too
+   much to fit is a scrollbar now, not an overlap. */
+.ps-editor-scroll {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.ps-editor-scroll > * {
+    flex-shrink: 0;
+}
+
 .ps-actions {
     display: flex;
     flex-wrap: wrap;
@@ -2186,14 +2204,16 @@ tr.log-row-expanded td {
     border-top: 1px solid rgb(var(--c-border));
 }
 /* ── PowerShell tab: script editor ───────────────────────────────────────────
-   The editor pane holds a label and a textarea that fills what is left. Plain
-   CSS because Tailwind's min-h-0 is not in the committed output.css, and a
-   flex child without it refuses to shrink below its content — which is the
-   other half of why this section used to overflow. */
+   The editor pane holds a label and a textarea that fills what is left. It used
+   to be allowed to shrink to nothing so it would fit the column; now the column
+   scrolls instead (.ps-editor-scroll), because a pane smaller than its own
+   textarea does not hide the textarea, it lets it paint over what follows. */
 .ps-editor-pane {
     display: flex;
     flex-direction: column;
-    min-height: 0;
+    /* Takes whatever room the result panes leave, and never less than its own
+       label and textarea. */
+    flex: 1 0 auto;
 }
 
 .ps-editor-pane > textarea {
