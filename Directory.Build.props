@@ -183,8 +183,22 @@
     the classic_icon resource that only the picker used. An appIcon key left behind in someone's
     ui_settings.yaml costs nothing: the deserializer is built with IgnoreUnmatchedProperties.
   -->
+  <!--
+    0.9.10.0 / beta.18: a stalled log file can be seen and skipped.
+
+    A load across the shares could sit on "a few seconds left" forever: reads took no token,
+    the ingest waited on every parser, and progress only published when bytes moved. Each file
+    now shows Opening / Reading / Stalled (10s with no new bytes) and a stalled one can be
+    skipped. Skip means stop waiting, not kill: a blocked SMB read ignores cancellation. A
+    skipped or failed file contributes no rows and is listed at the end. prepare_table auto-skips
+    at 60s and says which files it did not read.
+
+    Also: a location can name a default template, an active saved query can be cleared with its
+    x, the window icon is guarded against being replaced by the stock error icon, and the
+    PowerShell tab's Run can call npm.
+  -->
   <PropertyGroup>
-    <VersionPrefix>0.9.9.4</VersionPrefix>
-    <VersionSuffix>beta.17</VersionSuffix>
+    <VersionPrefix>0.9.10.0</VersionPrefix>
+    <VersionSuffix>beta.18</VersionSuffix>
   </PropertyGroup>
 </Project>
