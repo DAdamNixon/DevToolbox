@@ -38,7 +38,12 @@ public sealed class LogQueryTools
         "a wide range over a busy log is millions of rows, and a network location is an SMB walk on another " +
         "machine (one configured archive share takes 17 seconds across 238,000 files). " +
         "Each call gets its own table, so preparing a second log does NOT destroy the first: earlier handles " +
-        "stay valid for the whole session and you can go back to them.")]
+        "stay valid for the whole session and you can go back to them. " +
+        "A file that stops responding is auto-skipped after 60 seconds rather than hanging this call — a file " +
+        "is opened synchronously, so a hung network read cannot be cancelled once started and cannot simply " +
+        "be waited out. Check 'complete': false means the rows returned are a PARTIAL answer, and " +
+        "'notIngested' names which files were skipped or failed and why. A missing row is not evidence " +
+        "something did not happen.")]
     public Task<PrepareResult> PrepareTable(
         [Description("Log file name or prefix, e.g. 'Checkout'. From list_log_files.")] string logFile,
         [Description("Template name, exactly as list_templates reported it.")] string templateName,

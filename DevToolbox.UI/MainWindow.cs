@@ -15,6 +15,15 @@ namespace DevToolbox.UI
         private HostsTrayIcon? _hostsTray;
 
         /// <summary>
+        /// Loaded once: <c>Properties.Resources.toolbox_icon</c> builds a new <see cref="Icon"/> on
+        /// every access, and <see cref="WindowIconGuard"/> needs one stable handle to compare
+        /// against and re-assert.
+        /// </summary>
+        private static readonly Icon AppIcon = Properties.Resources.toolbox_icon;
+
+        private readonly WindowIconGuard _iconGuard = new(AppIcon.Handle);
+
+        /// <summary>
         /// Set by the tray's Exit item so <see cref="MainWindow_FormClosing"/> lets the close through
         /// instead of hiding the window again.
         /// </summary>
@@ -39,7 +48,14 @@ namespace DevToolbox.UI
             blazorWebView1.Services = serviceProvider;
             blazorWebView1.RootComponents.Add<App>("#app");
 
-            this.Icon = Properties.Resources.toolbox_icon;
+            this.Icon = AppIcon;
+        }
+
+        /// <summary>Re-subclasses on every handle creation, including a recreation — see <see cref="WindowIconGuard"/>.</summary>
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            _iconGuard.Attach(Handle);
         }
 
         private void MainWindow_Load(object sender, EventArgs e)

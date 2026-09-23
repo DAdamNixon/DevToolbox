@@ -84,6 +84,10 @@
                         <option value="@template.Name">@template.Name</option>
                     }
                 </select>
+                @if (State.LocationTemplateHint is { } templateHint)
+                {
+                    <p class="text-xs text-dark-text-muted mt-1">@templateHint</p>
+                }
             </div>
             @* data-menu-anchor is what keeps a click in here from being treated as a click
                outside: MainLayout has a document-level pointerdown listener (see
@@ -307,6 +311,11 @@
                     <span class="saved-query-active" title="The saved query this box was loaded from">
                         <i class="bi bi-bookmark-fill"></i>
                         @loaded@(State.SavedQueryIsModified ? " · edited" : "")
+                        <button type="button" class="saved-query-active-clear" @onclick="ClearSavedQuery"
+                                aria-label="Stop using this saved query (clears the box, deletes nothing)"
+                                title="Stop using this saved query (clears the box, deletes nothing)">
+                            <i class="bi bi-x"></i>
+                        </button>
                     </span>
                 }
 
@@ -414,6 +423,23 @@
     }
 </div>
 
+@if (!State.IsLoading && State.LastPrepareResult is { IsComplete: false } partial)
+{
+    <div class="modern-card p-4 mb-4 border border-warning/40">
+        <p class="text-dark-text font-medium">
+            <i class="bi bi-exclamation-triangle text-warning"></i>
+            Partial results — @partial.NotIngested.Count file@(partial.NotIngested.Count == 1 ? "" : "s") not read.
+            A missing row is not evidence it did not happen.
+        </p>
+        <ul class="mt-2 text-sm text-dark-text-muted list-disc list-inside">
+            @foreach (var file in partial.NotIngested)
+            {
+                <li>@file.FileName (@file.LocationName) — @file.Reason</li>
+            }
+        </ul>
+    </div>
+}
+
 @if (State.IsLoading)
 {
     <div class="modern-card text-center py-16">
@@ -428,6 +454,29 @@
             <p class="mt-1 text-sm text-dark-text-muted">
                 @p.RowsIngested.ToString("N0") rows so far@(eta.Length == 0 ? "" : $" · {eta}")
             </p>
+
+            @if (p.InFlight.Count > 0)
+            {
+                <div class="mt-6 mx-auto max-w-xl text-left">
+                    @foreach (var file in p.InFlight)
+                    {
+                        var stalled = file.State == FileIngestState.Stalled;
+                        <div class="flex items-center justify-between py-1.5 px-3 rounded @(stalled ? "bg-warning/10" : "")">
+                            <span class="truncate @(stalled ? "text-warning" : "text-dark-text-muted")" title="@file.FileName">
+                                @(file.State == FileIngestState.Opening ? $"{file.FileName} — connecting…" : DescribeFileProgress(file))
+                            </span>
+                            @if (stalled)
+                            {
+                                <button class="btn-ghost text-xs text-warning ml-2 flex-none"
+                                        title="Stop waiting on this file — its rows will be absent from the results"
+                                        @onclick="() => State.SkipFile(file.FileKey)">
+                                    Skip
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+            }
         }
         <button class="btn-secondary mt-6" @onclick="CancelSearch" disabled="@State.IsCancelling">
             @(State.IsCancelling ? "Cancelling…" : "Cancel")
@@ -799,6 +848,8 @@ else
         Menu.Close();
         await State.ApplySavedQueryAsync(query);
     }
+
+    private async Task ClearSavedQuery() => await State.ClearSavedQueryAsync();
 
     private void OpenSaveQuery()
     {
@@ -1337,6 +1388,10 @@ else
         return text;
     }
 
+    /// <summary>
+    /// "~40s left · 1 stalled", or just "2 stalled" once nothing is moving — the reporter nulls
+    /// Eta itself once every in-flight file is stalled, so this only has to add the count.
+    /// </summary>
     private string ProgressEta()
     {
         if (State.Progress is not { } p) return "";
@@ -1346,7 +1401,30 @@ else
 
         // Null means the reporter does not yet have enough evidence. Saying so is
         // better than showing a number that is about to change by minutes.
-        return p.Eta is not { } eta ? "estimating…" : $"~{FormatDuration(eta)} left";
+        var eta = p.Eta is not { } remaining ? "estimating…" : $"~{FormatDuration(remaining)} left";
+        var stalled = p.FilesStalled > 0 ? $"{p.FilesStalled} stalled" : "";
+
+        return (eta, stalled) switch
+        {
+            ("estimating…", "") => "estimating…",
+            (_, "") => eta,
+            _ when p.Eta is null => stalled,
+            _ => $"{eta} · {stalled}"
+        };
+    }
+
+    /// <summary>"File.txt — 1.2 MB of 3.4 MB", or just the bytes read when the size is unknown.</summary>
+    private string DescribeFileProgress(FileProgressSnapshot file)
+    {
+        var bytes = file.BytesTotal > 0
+            ? $"{FormatBytes(file.BytesRead)} of {FormatBytes(file.BytesTotal)}"
+            : FormatBytes(file.BytesRead);
+
+        var stalled = file.State == FileIngestState.Stalled
+            ? $" — last progress {(int)file.SinceLastAdvance.TotalSeconds}s ago"
+            : "";
+
+        return $"{file.FileName} — {bytes}{stalled}";
     }
 
     private static string FormatBytes(long bytes)

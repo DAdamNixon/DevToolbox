@@ -29,5 +29,12 @@ namespace DevToolbox.Services.Interfaces
 
         Task<bool> TableExistsAsync(string tableName);
         Task DropTableAsync(string tableName);
+
+        /// <summary>
+        /// Deletes every row whose <paramref name="column"/> equals <paramref name="value"/> — the
+        /// row-leak guard's purge (D4): a skipped file must contribute zero rows, including ones it
+        /// already committed before the skip was noticed.
+        /// </summary>
+        Task DeleteRowsForFileAsync(string tableName, string column, string value, CancellationToken cancellationToken = default);
     }
 }

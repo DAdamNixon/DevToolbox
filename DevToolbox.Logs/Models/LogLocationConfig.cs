@@ -39,6 +39,14 @@ namespace DevToolbox.Services.Models
         /// </summary>
         [YamlMember(DefaultValuesHandling = DefaultValuesHandling.OmitNull)]
         public string? NamePattern { get; set; }
+
+        /// <summary>
+        /// The template this location's files normally use, offered to switch to when every
+        /// selected location agrees on one. Omitted from the YAML when unset, same reasoning as
+        /// <see cref="NamePattern"/>.
+        /// </summary>
+        [YamlMember(DefaultValuesHandling = DefaultValuesHandling.OmitNull)]
+        public string? DefaultTemplate { get; set; }
     }
 
     /// <summary>One distinct <c>name</c> capture, and how many files produced it.</summary>

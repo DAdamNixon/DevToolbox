@@ -1,0 +1,14 @@
+# How the Log Viewer decides a file has stalled, and what it does about it.
+#
+# This is the shipped default. It is copied into the config folder on first run only if
+# that folder does not already have a log_ingest_settings.yaml.
+#
+# stallThresholdSeconds     Seconds with no new bytes before a file is flagged Stalled.
+# uiAutoSkipEnabled         Off by default: a person is watching the progress bar and decides.
+# uiAutoSkipTimeoutSeconds  Seconds of stall before the UI auto-skips, once the toggle above is on.
+# mcpAutoSkipTimeoutSeconds Always applied for the MCP server — nobody is there to click Skip.
+
+stallThresholdSeconds: 10
+uiAutoSkipEnabled: false
+uiAutoSkipTimeoutSeconds: 60
+mcpAutoSkipTimeoutSeconds: 60

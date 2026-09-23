@@ -320,6 +320,68 @@
         }
     </div>
 
+    <!-- Log Viewer ingest -->
+    @* Its own YAML (log_ingest_settings), not UiSettings: UiSettings lives in DevToolbox.Services,
+       which the MCP server must not load (D7). *@
+    <div class="modern-card">
+        <div class="border-b border-dark-border pb-4 mb-6">
+            <h2 class="text-2xl font-semibold text-dark-text flex items-center space-x-2">
+                <i class="bi bi-hourglass-split text-accent-blue"></i>
+                <span>Log Viewer — stalled files</span>
+            </h2>
+            <p class="text-sm text-dark-text-muted mt-2">
+                How long a file can go without new bytes before the Log Viewer calls it stalled, and
+                whether it skips one for you.
+            </p>
+        </div>
+
+        <div class="space-y-4">
+            <div class="flex items-center justify-between p-4 bg-dark-surface rounded-lg">
+                <div>
+                    <label for="stall-threshold" class="text-sm font-medium text-dark-text cursor-pointer">Stall threshold (seconds)</label>
+                    <p class="text-xs text-dark-text-muted">
+                        No new bytes for this long, and a file is flagged Stalled with a Skip button.
+                        A file that keeps moving, however slowly, is never flagged.
+                    </p>
+                </div>
+                <input type="number" id="stall-threshold" class="input-modern w-20" min="1" max="600"
+                       @bind="stallThresholdSeconds" @bind:after="OnLogIngestSettingsChangedAsync" />
+            </div>
+
+            <div class="flex items-center justify-between p-4 bg-dark-surface rounded-lg">
+                <div>
+                    <label for="ui-auto-skip" class="text-sm font-medium text-dark-text cursor-pointer">Skip a stalled file automatically</label>
+                    <p class="text-xs text-dark-text-muted">
+                        Off by default — a person watching the progress bar decides. The MCP server
+                        always auto-skips after 60s regardless of this setting; nobody is there to click.
+                    </p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="ui-auto-skip" class="sr-only peer"
+                           checked="@uiAutoSkipEnabled" @onchange="OnUiAutoSkipChangedAsync" />
+                    <div class="w-11 h-6 bg-dark-border peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-accent-blue/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent-blue"></div>
+                </label>
+            </div>
+
+            @if (uiAutoSkipEnabled)
+            {
+                <div class="flex items-center justify-between p-4 bg-dark-surface rounded-lg">
+                    <div>
+                        <label for="ui-auto-skip-timeout" class="text-sm font-medium text-dark-text cursor-pointer">Auto-skip after (seconds)</label>
+                        <p class="text-xs text-dark-text-muted">How long a file may sit Stalled before the UI skips it for you.</p>
+                    </div>
+                    <input type="number" id="ui-auto-skip-timeout" class="input-modern w-20" min="1" max="3600"
+                           @bind="uiAutoSkipTimeoutSeconds" @bind:after="OnLogIngestSettingsChangedAsync" />
+                </div>
+            }
+
+            @if (logIngestStatusMessage is not null)
+            {
+                <p class="text-xs text-dark-text-muted">@logIngestStatusMessage</p>
+            }
+        </div>
+    </div>
+
     <!-- Browser view -->
     @* The same UI, served to a real browser while the app runs. Useful for a second
        monitor, for devtools the WebView does not give you, and for anyone who would
@@ -612,6 +674,15 @@
     private string? statusMessage;
     private bool statusIsError;
 
+    // --- Log Viewer ingest (log_ingest_settings.yaml, not UiSettings — D7) ---
+    // Loaded whole and saved back whole, so a field this card does not expose (the MCP timeout)
+    // is never overwritten with the type's default.
+    private LogIngestSettings logIngestSettings = new();
+    private int stallThresholdSeconds = 10;
+    private bool uiAutoSkipEnabled;
+    private int uiAutoSkipTimeoutSeconds = 60;
+    private string? logIngestStatusMessage;
+
     // The themes in the dropdown. A field rather than a property because the markup walks it three
     // times per render, and because it only ever changes on an event.
     private List<ThemeDefinition> offered = new();
@@ -683,6 +754,31 @@
         themeError = UiSettings.LoadError is null
             ? null
             : $"ui_settings.yaml could not be read, so defaults are shown: {UiSettings.LoadError}";
+
+        logIngestSettings = await LogIngestSettingsStore.LoadAsync(YamlStorage);
+        stallThresholdSeconds = logIngestSettings.StallThresholdSeconds;
+        uiAutoSkipEnabled = logIngestSettings.UiAutoSkipEnabled;
+        uiAutoSkipTimeoutSeconds = logIngestSettings.UiAutoSkipTimeoutSeconds;
+    }
+
+    private async Task OnUiAutoSkipChangedAsync(ChangeEventArgs e)
+    {
+        uiAutoSkipEnabled = e.Value is true;
+        await OnLogIngestSettingsChangedAsync();
+    }
+
+    private async Task OnLogIngestSettingsChangedAsync()
+    {
+        stallThresholdSeconds = Math.Clamp(stallThresholdSeconds, 1, 600);
+        uiAutoSkipTimeoutSeconds = Math.Clamp(uiAutoSkipTimeoutSeconds, 1, 3600);
+
+        logIngestSettings.StallThresholdSeconds = stallThresholdSeconds;
+        logIngestSettings.UiAutoSkipEnabled = uiAutoSkipEnabled;
+        logIngestSettings.UiAutoSkipTimeoutSeconds = uiAutoSkipTimeoutSeconds;
+        await LogIngestSettingsStore.SaveAsync(YamlStorage, logIngestSettings);
+
+        logIngestStatusMessage = "Saved.";
+        StateHasChanged();
     }
 
     // Applied and persisted on selection rather than on Save — the theme is the

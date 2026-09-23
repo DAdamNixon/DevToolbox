@@ -37,6 +37,13 @@ public sealed class LogSearchStateService : IDisposable
     public string SelectedTemplateName { get; set; } = "";
     public LogFilePresetConfig? PresetConfig { get; set; }
 
+    /// <summary>
+    /// Set by <see cref="ApplyLocationDefaultTemplateAsync"/> when the selected locations' default
+    /// templates disagree or name one this machine does not have. Null the rest of the time,
+    /// including right after a manual template pick.
+    /// </summary>
+    public string? LocationTemplateHint { get; set; }
+
     // --- search results ---
     public List<Dictionary<string, string>> FilteredLogLines { get; set; } = new();
     public List<string> TableColumns { get; set; } = new();
@@ -87,6 +94,18 @@ public sealed class LogSearchStateService : IDisposable
 
     /// <summary>Latest ingest progress, or null when not ingesting.</summary>
     public LogIngestProgress? Progress { get; set; }
+
+    /// <summary>
+    /// What the last search did not manage to read, for the partial-results banner. Null once a new
+    /// search starts, and while none has ever run.
+    /// </summary>
+    public LogPrepareResult? LastPrepareResult { get; set; }
+
+    /// <summary>The running search's Skip/SkipAll handle. Null while nothing is loading.</summary>
+    private LogIngestControl? _ingestControl;
+
+    /// <summary>Abandons one stalled file, named by <see cref="FileProgressSnapshot.FileKey"/>.</summary>
+    public void SkipFile(string fileKey) => _ingestControl?.Skip(fileKey);
 
     /// <summary>
     /// Cancel has been pressed but the operation has not unwound yet. Drives the
@@ -217,6 +236,7 @@ public sealed class LogSearchStateService : IDisposable
 
             SelectedTemplateName = AvailableTemplates.FirstOrDefault()?.Name ?? string.Empty;
             SelectedLocations = LogLocations.Take(1).ToList();
+            await ApplyLocationDefaultTemplateAsync();
 
             if (!string.IsNullOrEmpty(SelectedTemplateName))
             {
@@ -343,6 +363,7 @@ public sealed class LogSearchStateService : IDisposable
         if (existing != null) SelectedLocations.Remove(existing);
         else SelectedLocations.Add(location);
         ResetPagination();
+        await ApplyLocationDefaultTemplateAsync();
         await RefreshLogFileNamesAsync();
     }
 
@@ -350,13 +371,49 @@ public sealed class LogSearchStateService : IDisposable
     {
         SelectedLocations = AllLocationsSelected ? new() : new(LogLocations);
         ResetPagination();
+        await ApplyLocationDefaultTemplateAsync();
         await RefreshLogFileNamesAsync();
     }
+
+    /// <summary>
+    /// Switches to the selected locations' default template when every one of them agrees on it —
+    /// see <see cref="DefaultTemplateResolver"/> for the exact rule — and sets
+    /// <see cref="LocationTemplateHint"/> to explain when it does not. Runs the same path as a manual
+    /// template pick (<see cref="ApplyPresetsForTemplate"/>, <see cref="UpdateTableColumnsAsync"/>),
+    /// but never <see cref="RefreshLogFileNamesAsync"/> — the caller's own refresh covers that, so a
+    /// location toggle does not discover twice.
+    /// </summary>
+    public async Task ApplyLocationDefaultTemplateAsync()
+    {
+        var resolution = DefaultTemplateResolver.Resolve(SelectedLocations, AvailableTemplates.Select(t => t.Name).ToList());
+
+        LocationTemplateHint = resolution.Hint switch
+        {
+            DefaultTemplateHint.Differ => "These locations use different default templates.",
+            DefaultTemplateHint.Missing => $"Default template '{CommonLocationDefault()}' is not a known template.",
+            _ => null
+        };
+
+        if (resolution.Template is not null &&
+            !string.Equals(resolution.Template, SelectedTemplateName, StringComparison.Ordinal))
+        {
+            SelectedTemplateName = resolution.Template;
+            ApplyPresetsForTemplate();
+            await UpdateTableColumnsAsync();
+        }
+    }
+
+    /// <summary>The default every selected location agrees on, for the "not a known template" hint. Only
+    /// meaningful when that is in fact what they agree on.</summary>
+    private string CommonLocationDefault() =>
+        SelectedLocations.Select(l => (l.DefaultTemplate ?? "").Trim()).FirstOrDefault(d => d.Length > 0) ?? "";
 
     // --- template ---
 
     public async Task OnTemplateChangedAsync()
     {
+        // A manual pick always wins: the resolver only runs from a location change.
+        LocationTemplateHint = null;
         ApplyPresetsForTemplate();
         await UpdateTableColumnsAsync();
         ResetPagination();
@@ -518,6 +575,7 @@ public sealed class LogSearchStateService : IDisposable
     public void CancelSearch()
     {
         _cts?.Cancel();
+        _ingestControl?.SkipAll();
         IsCancelling = IsLoading;
         Notify();
     }
@@ -562,6 +620,7 @@ public sealed class LogSearchStateService : IDisposable
         if (IsLoading) return;
         IsLoading = true;
         Progress = null;
+        LastPrepareResult = null;
         Notify();
         try
         {
@@ -585,12 +644,18 @@ public sealed class LogSearchStateService : IDisposable
                 Notify();
             });
 
+            var settings = await LogIngestSettingsStore.LoadAsync(_yamlStorage);
+            _ingestControl = new LogIngestControl(settings);
+
             // Task.Run keeps heavy file I/O off the UI thread (Blazor Hybrid sync context)
-            CurrentTableName = await Task.Run(
-                () => _logFileService.PrepareLogTableAsync(logFile, locations, start, end, templateName, progress, token),
+            var prepared = await Task.Run(
+                () => _logFileService.PrepareLogTableAsync(logFile, locations, start, end, templateName, progress, _ingestControl, token),
                 token);
 
             if (token.IsCancellationRequested) return;
+
+            CurrentTableName = prepared.TableName;
+            LastPrepareResult = prepared;
 
             // Counts first: the All tab's total comes from the page query, so the
             // strip is rebuilt again afterwards to pick it up.
@@ -870,6 +935,21 @@ public sealed class LogSearchStateService : IDisposable
         Notify();
     }
 
+    /// <summary>
+    /// Stops using the active saved query: clears the box, not the saved copy. Re-picking it from
+    /// the list still restores it. Advanced mode stays on, and an empty box has no content to
+    /// re-query, so a search already on screen falls back to the plain page rather than showing
+    /// the cleared query's result.
+    /// </summary>
+    public async Task ClearSavedQueryAsync()
+    {
+        ActiveSavedQuery = null;
+        _activeSavedQuerySql = "";
+        AdvancedExpression = "";
+        Notify();
+
+        if (HasSearched) await RunLiveQueryAsync();
+    }
 
     public async Task AddKeywordRowAsync()
     {

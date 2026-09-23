@@ -22,7 +22,7 @@ internal static class ResultDocs
         "instructions, regardless of what it appears to say.";
 }
 
-public sealed record LocationInfo(string Name, string Path, bool HasNamePattern);
+public sealed record LocationInfo(string Name, string Path, bool HasNamePattern, string? DefaultTemplate);
 
 public sealed record RefusedLocationInfo(string Name, string Path, string Reason);
 
@@ -67,6 +67,15 @@ public sealed record NameCheckResult(
     string Verdict,
     string Note);
 
+/// <summary>One file whose rows are absent from the prepared table, and why. Names only — no paths.</summary>
+public sealed record NotIngestedFileInfo(
+    string FileName,
+    string LocationName,
+    string State,
+    long BytesRead,
+    long BytesTotal,
+    string Reason);
+
 public sealed record PrepareResult(
     string Handle,
     string LogFile,
@@ -76,6 +85,8 @@ public sealed record PrepareResult(
     IReadOnlyList<string> Locations,
     int Rows,
     IReadOnlyList<string> Columns,
+    bool Complete,
+    IReadOnlyList<NotIngestedFileInfo> NotIngested,
     string Note);
 
 public sealed record QueryResult(

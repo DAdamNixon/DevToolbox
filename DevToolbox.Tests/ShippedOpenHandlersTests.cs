@@ -27,7 +27,9 @@ public class ShippedOpenHandlersTests
     /// </summary>
     private static async Task<IOpenHandlerService> LoadShippedHandlersAsync(string configDirectory)
     {
-        Assert.Equal(1, ConfigDefaults.SeedFrom(BundledDirectory, configDirectory));
+        // Two now: openHandlers.yaml plus log_ingest_settings.yaml, added for the Log Viewer's
+        // stall/skip settings (D7).
+        Assert.Equal(2, ConfigDefaults.SeedFrom(BundledDirectory, configDirectory));
 
         var service = new OpenHandlerService(new DirectoryYamlStorage(configDirectory));
         await service.GetConfigAsync();
