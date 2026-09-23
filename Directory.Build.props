@@ -197,8 +197,13 @@
     x, the window icon is guarded against being replaced by the stock error icon, and the
     PowerShell tab's Run can call npm.
   -->
+  <!--
+    0.9.10.1 / beta.19: configuration only, no code. The bundled defaults now carry the Event Logs
+    query and the Free Shipping queries, and the Checkout template is no longer bundled. The seed
+    never overwrites, so an existing install sees these as "changed" and takes them via Restore.
+  -->
   <PropertyGroup>
-    <VersionPrefix>0.9.10.0</VersionPrefix>
-    <VersionSuffix>beta.18</VersionSuffix>
+    <VersionPrefix>0.9.10.1</VersionPrefix>
+    <VersionSuffix>beta.19</VersionSuffix>
   </PropertyGroup>
 </Project>
