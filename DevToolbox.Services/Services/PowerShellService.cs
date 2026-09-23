@@ -254,7 +254,15 @@ public class PowerShellService
         var errorBuilder = new StringBuilder();
 
         // An explicit runspace, so SessionStateProxy exists before the first invoke.
-        using var runspace = RunspaceFactory.CreateRunspace();
+        //
+        // Bypass, as the terminal window already gets with -ExecutionPolicy Bypass. The script text
+        // is handed over as a string and never checked, but any .ps1 it calls is - and `npm` resolves
+        // to npm.ps1. A hosted runspace has no powershell.config.json beside it, so the machine
+        // setting it falls back to is Restricted, and npm-install failed in every folder it found.
+        var session = InitialSessionState.CreateDefault();
+        session.ExecutionPolicy = Microsoft.PowerShell.ExecutionPolicy.Bypass;
+
+        using var runspace = RunspaceFactory.CreateRunspace(session);
         runspace.Open();
 
         using var ps = PowerShell.Create();
