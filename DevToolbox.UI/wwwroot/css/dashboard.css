@@ -2345,6 +2345,11 @@ tr.log-row-expanded td {
 .ps-code {
     position: relative;
     overflow: auto;
+    /* The scrollbar's lane held open whether or not a script is long enough to
+       need it, so the editor is the same width either way. Otherwise typing the
+       line that first overflows narrowed the box, rewrapped every line, and set
+       psEditor.js's ResizeObserver chasing its own tail. */
+    scrollbar-gutter: stable;
     border: 1px solid rgb(var(--c-border));
     border-radius: 0.5rem;
     background-color: rgb(var(--c-surface));

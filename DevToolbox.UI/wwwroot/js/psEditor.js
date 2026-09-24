@@ -64,8 +64,8 @@ window.psEditor = (function () {
         op: 'sql-t-op'
     };
 
-    function isIdentStart(ch) { return /[A-Za-z_\u0080-￿]/.test(ch || ''); }
-    function isIdentPart(ch) { return /[A-Za-z0-9_\u0080-￿]/.test(ch || ''); }
+    function isIdentStart(ch) { return /[A-Za-z_\u0080-\uFFFF]/.test(ch || ''); }
+    function isIdentPart(ch) { return /[A-Za-z0-9_\u0080-\uFFFF]/.test(ch || ''); }
     function isSpace(ch) { return ch === ' ' || ch === '\t' || ch === '\r' || ch === '\f' || ch === '\v'; }
 
     // Characters after which a `#` starts a comment and a `-word` is a parameter or operator.
@@ -588,7 +588,21 @@ window.psEditor = (function () {
             entry.onBlur = function () {
                 if (entry.told) input.dispatchEvent(new Event('change', { bubbles: true }));
             };
-            entry.resize = new ResizeObserver(function () { fit(entry); });
+            // Refit when the editor itself changes size — the console opening, the window resizing
+            // — and only then, and on the next frame rather than inside the callback. Fitting
+            // changes the textarea's height inside the box; done in the callback, the box's own
+            // size moving with it (its scrollbar coming or going) is a second notification in the
+            // same frame, which the browser reports as "ResizeObserver loop completed with
+            // undelivered notifications" and index.html's error handler put up as a banner.
+            entry.size = null;
+            entry.resize = new ResizeObserver(function (records) {
+                var rect = records[records.length - 1].contentRect;
+                if (entry.size && entry.size.width === rect.width && entry.size.height === rect.height) return;
+                entry.size = { width: rect.width, height: rect.height };
+
+                cancelAnimationFrame(entry.frame);
+                entry.frame = requestAnimationFrame(function () { fit(entry); });
+            });
 
             input.addEventListener('input', entry.onInput);
             input.addEventListener('change', entry.onChange);
@@ -618,6 +632,7 @@ window.psEditor = (function () {
             entry.input.removeEventListener('change', entry.onChange);
             entry.input.removeEventListener('blur', entry.onBlur);
             entry.resize.disconnect();
+            cancelAnimationFrame(entry.frame);
             entry.box.classList.remove('is-painted');
             attached.delete(inputId);
         },

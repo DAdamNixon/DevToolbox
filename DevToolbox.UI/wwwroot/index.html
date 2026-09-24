@@ -84,6 +84,12 @@
 
     <script>
         window.onerror = function(message, source, lineno, colno, error) {
+            // Not an error, whatever the browser calls it: the notifications it mentions are
+            // delivered on the next frame, and nothing is lost. It reaches onerror only because the
+            // spec gave it nowhere else to go, and as a banner that never goes away it read as the
+            // app having broken. psEditor.js no longer causes it; this keeps anything else from.
+            if (typeof message === 'string' && message.indexOf('ResizeObserver loop') !== -1) return true;
+
             console.error('Error:', message, 'at', source, lineno, colno);
             document.getElementById('blazor-error-ui').style.display = 'block';
             document.getElementById('blazor-error-ui').textContent = 'JavaScript error: ' + message;
