@@ -213,12 +213,66 @@ public class PowerShellService
         ?? string.Empty;
 
     /// <summary>
-    /// Executes a PowerShell script with parameters and returns the results as a string.
+    /// Executes a PowerShell script with parameters and returns the results as a string, once it
+    /// has finished. <see cref="RunScriptAsync"/> is the same run delivered line by line.
     /// </summary>
     /// <param name="scriptText">The PowerShell script to execute</param>
     /// <param name="parameters">Optional parameters to pass to the script</param>
     /// <returns>The script output and any errors</returns>
     public async Task<(string Output, string Error)> ExecuteScriptWithParametersAsync(string scriptText, Dictionary<string, object>? parameters = null)
+    {
+        var outputBuilder = new StringBuilder();
+        var errorBuilder = new StringBuilder();
+        var gate = new object();
+
+        await RunScriptAsync(scriptText, parameters, line =>
+        {
+            lock (gate)
+            {
+                switch (line.Kind)
+                {
+                    case ScriptOutputKind.Error:
+                    case ScriptOutputKind.NativeStderr:
+                        errorBuilder.AppendLine(line.Text);
+                        break;
+                    case ScriptOutputKind.Warning:
+                        outputBuilder.AppendLine("WARNING: " + line.Text);
+                        break;
+                    case ScriptOutputKind.Host when line.Text.Length == 0:
+                    case ScriptOutputKind.Verbose:
+                        break;
+                    default:
+                        outputBuilder.AppendLine(line.Text);
+                        break;
+                }
+            }
+        });
+
+        return (outputBuilder.ToString(), errorBuilder.ToString());
+    }
+
+    /// <summary>
+    /// Runs a script and hands over each line the moment it is written, rather than all of it once
+    /// the script ends.
+    /// <para>
+    /// The buffered version made a long run indistinguishable from a hung one: npm-install over nine
+    /// folders sat on "Running..." with an empty pane for minutes and then printed everything at
+    /// once. The pipeline, the error stream and Write-Host all fire as they happen, so nothing here
+    /// waits for the end except the outcome.
+    /// </para>
+    /// </summary>
+    /// <param name="scriptText">The script.</param>
+    /// <param name="parameters">Values for its param() block; anything it does not declare is set as a variable.</param>
+    /// <param name="onLine">
+    /// Called for every line, on PowerShell's pipeline thread rather than the caller's, so it has to
+    /// be safe to call from there and quick.
+    /// </param>
+    /// <param name="cancellationToken">Stops the pipeline, and any native program it is waiting on.</param>
+    public async Task<ScriptRunOutcome> RunScriptAsync(
+        string scriptText,
+        Dictionary<string, object>? parameters,
+        Action<ScriptOutputLine> onLine,
+        CancellationToken cancellationToken = default)
     {
         // Parsed before it is run, for two reasons: a syntax error becomes a message here instead of a
         // silent nothing, and the parameters a script declares are the only ones that can be bound to
@@ -226,7 +280,8 @@ public class PowerShellService
         var ast = Parser.ParseInput(scriptText, out _, out var parseErrors);
         if (parseErrors.Length > 0)
         {
-            return (string.Empty, string.Join(Environment.NewLine, parseErrors.Select(e => e.ToString())));
+            foreach (var parseError in parseErrors) onLine(new ScriptOutputLine(ScriptOutputKind.Error, parseError.ToString()));
+            return ScriptRunOutcome.Failed;
         }
 
         var declared = ast.ParamBlock?.Parameters ?? (IReadOnlyList<ParameterAst>)Array.Empty<ParameterAst>();
@@ -245,13 +300,11 @@ public class PowerShellService
 
         if (missing.Count > 0)
         {
-            return (string.Empty,
+            onLine(new ScriptOutputLine(ScriptOutputKind.Error,
                 $"This script needs a value for {string.Join(", ", missing)}. " +
-                "Enter one in the path box and run it again.");
+                "Enter one in the path box and run it again."));
+            return ScriptRunOutcome.Failed;
         }
-
-        var outputBuilder = new StringBuilder();
-        var errorBuilder = new StringBuilder();
 
         // An explicit runspace, so SessionStateProxy exists before the first invoke.
         //
@@ -263,7 +316,11 @@ public class PowerShellService
         session.ExecutionPolicy = Microsoft.PowerShell.ExecutionPolicy.Bypass;
 
         using var runspace = RunspaceFactory.CreateRunspace(session);
-        runspace.Open();
+
+        // Off the caller's thread: opening loads the default modules, long enough to freeze the
+        // window for a moment when the caller is the UI, which it is.
+        await Task.Run(runspace.Open, CancellationToken.None);
+        if (cancellationToken.IsCancellationRequested) return ScriptRunOutcome.Stopped;
 
         using var ps = PowerShell.Create();
         ps.Runspace = runspace;
@@ -290,36 +347,109 @@ public class PowerShellService
         }
 
         ps.Streams.Error.DataAdded += (sender, e) =>
-            errorBuilder.AppendLine(((PSDataCollection<ErrorRecord>)sender!)[e.Index].ToString());
+        {
+            var record = ((PSDataCollection<ErrorRecord>)sender!)[e.Index];
+            onLine(new ScriptOutputLine(IsNativeStderr(record) ? ScriptOutputKind.NativeStderr : ScriptOutputKind.Error, record.ToString()));
+        };
 
         ps.Streams.Warning.DataAdded += (sender, e) =>
-            outputBuilder.AppendLine("WARNING: " + ((PSDataCollection<WarningRecord>)sender!)[e.Index].Message);
+            onLine(new ScriptOutputLine(ScriptOutputKind.Warning, ((PSDataCollection<WarningRecord>)sender!)[e.Index].Message));
+
+        ps.Streams.Verbose.DataAdded += (sender, e) =>
+            onLine(new ScriptOutputLine(ScriptOutputKind.Verbose, ((PSDataCollection<VerboseRecord>)sender!)[e.Index].Message));
+
+        ps.Streams.Debug.DataAdded += (sender, e) =>
+            onLine(new ScriptOutputLine(ScriptOutputKind.Verbose, ((PSDataCollection<DebugRecord>)sender!)[e.Index].Message));
 
         // Write-Host goes to the information stream, not the pipeline. Every bundled script reports
         // its progress with Write-Host, so without this one a script could do its entire job and
         // still show an empty output pane.
+        //
+        // -NoNewline is honoured by holding the text until the Write-Host that finishes the line,
+        // which is how `Write-Host "Status: " -NoNewline; Write-Host "OK" -ForegroundColor Green`
+        // comes out as one line rather than two. The line takes the first colour it was given.
+        var pendingHost = new StringBuilder();
+        ConsoleColor? pendingColor = null;
+        var hostGate = new object();
+
         ps.Streams.Information.DataAdded += (sender, e) =>
         {
-            var message = ((PSDataCollection<InformationRecord>)sender!)[e.Index].MessageData?.ToString();
-            if (!string.IsNullOrEmpty(message)) outputBuilder.AppendLine(message);
+            var data = ((PSDataCollection<InformationRecord>)sender!)[e.Index].MessageData;
+            var (text, color, noNewLine) = data is HostInformationMessage host
+                ? (host.Message ?? string.Empty, host.ForegroundColor, host.NoNewLine == true)
+                : (data?.ToString() ?? string.Empty, (ConsoleColor?)null, false);
+
+            lock (hostGate)
+            {
+                if (pendingHost.Length == 0) pendingColor = color;
+                pendingHost.Append(text);
+                if (noNewLine) return;
+
+                EmitHostLines(pendingHost.ToString(), pendingColor, onLine);
+                pendingHost.Clear();
+                pendingColor = null;
+            }
         };
 
+        // Pipeline output through a collection rather than InvokeAsync's return value, because the
+        // collection raises an event per object as it arrives and the return value only exists at
+        // the end. A native program's stdout arrives here too, a line at a time.
+        var output = new PSDataCollection<PSObject>();
+        output.DataAdded += (sender, e) =>
+            onLine(new ScriptOutputLine(ScriptOutputKind.Output, TrimTrailingNewLine(output[e.Index]?.ToString() ?? string.Empty)));
+
+        // BeginStop rather than Stop: Stop blocks until the pipeline has unwound, and the thread that
+        // cancels is the UI's. PowerShell stops a native program it is waiting on as part of stopping.
+        using var registration = cancellationToken.Register(() => ps.BeginStop(null, null));
+
+        var outcome = ScriptRunOutcome.Completed;
         try
         {
-            foreach (var item in await ps.InvokeAsync())
-            {
-                outputBuilder.AppendLine(item?.ToString());
-            }
+            await ps.InvokeAsync<PSObject, PSObject>(null, output);
+        }
+        catch (PipelineStoppedException)
+        {
+            outcome = ScriptRunOutcome.Stopped;
         }
         catch (RuntimeException ex)
         {
             // A terminating error never reaches the error stream, so without this the run ends with
             // empty output and no explanation at all.
-            errorBuilder.AppendLine(ex.Message);
+            onLine(new ScriptOutputLine(ScriptOutputKind.Error, ex.Message));
+            outcome = cancellationToken.IsCancellationRequested ? ScriptRunOutcome.Stopped : ScriptRunOutcome.Failed;
         }
 
-        return (outputBuilder.ToString(), errorBuilder.ToString());
+        lock (hostGate)
+        {
+            // A -NoNewline with nothing after it is still something the script wrote.
+            if (pendingHost.Length > 0) EmitHostLines(pendingHost.ToString(), pendingColor, onLine);
+        }
+
+        return cancellationToken.IsCancellationRequested ? ScriptRunOutcome.Stopped : outcome;
     }
+
+    /// <summary>
+    /// Write-Host "`nFound 9 directories" is two lines, and the first is the blank one the script
+    /// asked for as spacing. Split here so the console does not have to know.
+    /// </summary>
+    private static void EmitHostLines(string text, ConsoleColor? color, Action<ScriptOutputLine> onLine)
+    {
+        foreach (var line in text.Replace("\r\n", "\n").Split('\n'))
+        {
+            onLine(new ScriptOutputLine(ScriptOutputKind.Host, line, color));
+        }
+    }
+
+    private static string TrimTrailingNewLine(string text) => text.TrimEnd('\r', '\n');
+
+    /// <summary>
+    /// Whether an error record is really just a line a native program wrote to stderr. PowerShell
+    /// wraps each such line in an ErrorRecord with a RemoteException and one of these two ids, and
+    /// that wrapping is the only thing telling "npm warn" apart from a script's own Write-Error.
+    /// </summary>
+    private static bool IsNativeStderr(ErrorRecord record) =>
+        record.Exception is RemoteException &&
+        record.FullyQualifiedErrorId is "NativeCommandError" or "NativeCommandErrorMessage";
 
     /// <summary>
     /// Whether a declared parameter has to be supplied: <c>[Parameter(Mandatory=$true)]</c>, or the

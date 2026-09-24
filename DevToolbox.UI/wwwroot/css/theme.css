@@ -53,6 +53,18 @@
      * light while --c-danger stays put for borders and backgrounds. */
     --c-danger-text: 252 165 165;
 
+    /* The Scripts tab console's Write-Host -ForegroundColor palette. A script's
+     * own colours rather than the theme's accents: under the Christmas theme
+     * the blue accent is red, and a Cyan heading coming out red would read as
+     * an error. Every seasonal palette declares them too, as it must every
+     * token here; they are all dark-grounded, so for now they repeat these. */
+    --c-console-cyan: 34 211 238;
+    --c-console-green: 74 222 128;
+    --c-console-yellow: 250 204 21;
+    --c-console-red: 248 113 113;
+    --c-console-blue: 96 165 250;
+    --c-console-magenta: 232 121 249;
+
     /* Shadows read as depth on a dark ground and as dirt on a light one, so
      * their opacity is a token rather than a constant in tailwind.config.js. */
     --shadow-strength: 1;
@@ -82,6 +94,15 @@
     --c-danger: 220 38 38;
 
     --c-danger-text: 185 28 28;
+
+    /* The 700 shades, each at least 4.5:1 on the light ground. The dark
+     * palette's would be 1.5:1 to 3:1 here — yellow worst of all. */
+    --c-console-cyan: 14 116 144;
+    --c-console-green: 21 128 61;
+    --c-console-yellow: 161 98 7;
+    --c-console-red: 185 28 28;
+    --c-console-blue: 29 78 216;
+    --c-console-magenta: 162 28 175;
 
     --shadow-strength: 0.35;
 }

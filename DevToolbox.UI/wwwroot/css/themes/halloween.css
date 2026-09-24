@@ -21,6 +21,13 @@
     --c-danger: 224 69 58;
 
     --c-danger-text: 247 167 159;
+    /* Write-Host's colours in the Scripts console. Not the accents: theme.css says why. */
+    --c-console-cyan: 34 211 238;
+    --c-console-green: 74 222 128;
+    --c-console-yellow: 250 204 21;
+    --c-console-red: 248 113 113;
+    --c-console-blue: 96 165 250;
+    --c-console-magenta: 232 121 249;
 
     --shadow-strength: 1;
 }

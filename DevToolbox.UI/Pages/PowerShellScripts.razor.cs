@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Components;
+using Microsoft.JSInterop;
 using DevToolbox.Services.Interfaces;
 using DevToolbox.Services.Services;
 using DevToolbox.Services.Models;
+using DevToolbox.UI.Services;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -10,14 +12,52 @@ using System.Threading.Tasks;
 
 namespace DevToolbox.UI.Pages
 {
-    public partial class PowerShellScripts : ComponentBase
+    public partial class PowerShellScripts : ComponentBase, IDisposable
     {
         private List<ScriptInfo> availableScripts = new();
         private string selectedScript = "";
         private string scriptText = "";
-        private string output = "";
-        private string error = "";
-        private bool isExecuting = false;
+
+        /// <summary>
+        /// A one-line result beside the buttons: saved, deleted, validated, or why not.
+        /// <para>
+        /// These used to be written into the script output pane, so "Script saved successfully"
+        /// sat in the same green box a run's output did, and a failed save in the same red one as a
+        /// script's errors. The console is for what the script says now; this is for what the tab did.
+        /// </para>
+        /// </summary>
+        private string statusMessage = "";
+        private bool statusIsError;
+
+        private void ShowStatus(string message, bool isError = false)
+        {
+            statusMessage = message;
+            statusIsError = isError;
+        }
+
+        // --- the console ---
+
+        /// <summary>The body of the console, for the scroll-follow script.</summary>
+        private ElementReference consoleBody;
+
+        /// <summary>
+        /// scriptConsole.attach has run on the console currently in the DOM. Reset whenever the
+        /// console is not rendered, because the next one is a new element.
+        /// </summary>
+        private bool consoleAttached;
+
+        /// <summary>Run was just pressed: bring the console on screen after the next render.</summary>
+        private bool revealConsole;
+
+        /// <summary>The console is showing only the error stream.</summary>
+        private bool errorsOnly;
+
+        /// <summary>
+        /// Lines drawn at once. A run that writes more still keeps all of it, and Copy takes all of
+        /// it; only the oldest stop being drawn, because a few hundred thousand divs re-diffed ten
+        /// times a second would make the tab unusable in the middle of the run you are watching.
+        /// </summary>
+        private const int MaxRenderedLines = 2000;
 
         /// <summary>
         /// Only used by a script that declares no parameters at all, where it is set as the variable
@@ -39,13 +79,46 @@ namespace DevToolbox.UI.Pages
 
         [Inject] PowerShellService powerShellService { get; set; } = null!;
         [Inject] IUiSettingsService uiSettings { get; set; } = null!;
+        [Inject] ScriptRunSession Run { get; set; } = null!;
+        [Inject] IJSRuntime JS { get; set; } = null!;
         private string searchText = "";
 
         protected override async Task OnInitializedAsync()
         {
+            Run.OnChanged += HandleRunChanged;
+
+            // Coming back to the tab mid-run: the run is what you came back for, so it is brought
+            // into view as if Run had just been pressed. A finished one is left where it is.
+            revealConsole = Run.IsRunning;
+
             defaultWorkspaceLocation = (await uiSettings.GetAsync()).DefaultWorkspaceLocation;
             await LoadScripts();
         }
+
+        private async void HandleRunChanged() => await InvokeAsync(StateHasChanged);
+
+        protected override async Task OnAfterRenderAsync(bool firstRender)
+        {
+            if (!Run.HasRun)
+            {
+                consoleAttached = false;
+                return;
+            }
+
+            if (!consoleAttached)
+            {
+                await JS.InvokeVoidAsync("scriptConsole.attach", consoleBody);
+                consoleAttached = true;
+            }
+
+            if (revealConsole)
+            {
+                revealConsole = false;
+                await JS.InvokeVoidAsync("scriptConsole.reveal", consoleBody);
+            }
+        }
+
+        public void Dispose() => Run.OnChanged -= HandleRunChanged;
         
         private async Task LoadScripts()
         {
@@ -70,7 +143,7 @@ namespace DevToolbox.UI.Pages
             else
             {
                 scriptText = "";
-                error = $"Could not load script '{name}'.";
+                ShowStatus($"Could not load script '{name}'.", isError: true);
             }
 
             // A different script asks for different things, so nothing typed for the last one
@@ -104,9 +177,8 @@ namespace DevToolbox.UI.Pages
             if (result.Success)
             {
                 await LoadScripts();
-                output = $"Script '{selectedScript}' saved successfully.";
-                error = "";
-                
+                ShowStatus($"Saved {selectedScript}.");
+
                 // Show validation warnings if any
                 if (result.ValidationResult != null)
                 {
@@ -117,8 +189,8 @@ namespace DevToolbox.UI.Pages
             }
             else
             {
-                error = $"Failed to save script '{selectedScript}'. {result.ErrorMessage}";
-                
+                ShowStatus($"Could not save {selectedScript}. {result.ErrorMessage}", isError: true);
+
                 // Show validation errors if any
                 if (result.ValidationResult != null)
                 {
@@ -149,12 +221,11 @@ namespace DevToolbox.UI.Pages
                 selectedScript = "";
                 scriptText = "";
                 await LoadScripts();
-                output = $"Script '{deleted}' deleted successfully.";
-                error = "";
+                ShowStatus($"Deleted {deleted}.");
             }
             else
             {
-                error = $"Failed to delete script '{selectedScript}'.";
+                ShowStatus($"Could not delete {selectedScript}.", isError: true);
             }
         }
         
@@ -190,7 +261,7 @@ namespace DevToolbox.UI.Pages
 
             if (!result.Success)
             {
-                error = $"Failed to create script: {result.ErrorMessage}";
+                ShowStatus($"Could not create the script. {result.ErrorMessage}", isError: true);
                 return;
             }
 
@@ -200,8 +271,7 @@ namespace DevToolbox.UI.Pages
             ClearValidation();
 
             await LoadScripts();
-            output = $"Created '{name}'.";
-            error = "";
+            ShowStatus($"Created {name}.");
         }
 
         /// <summary>
@@ -336,7 +406,7 @@ namespace DevToolbox.UI.Pages
             }
             catch (Exception ex) when (ex is InvalidOperationException or IOException)
             {
-                error = $"Could not open the folder picker: {ex.Message}";
+                ShowStatus($"Could not open the folder picker: {ex.Message}", isError: true);
                 return null;
             }
         }
@@ -358,7 +428,7 @@ namespace DevToolbox.UI.Pages
             }
             catch (Exception ex) when (ex is InvalidOperationException or IOException)
             {
-                error = $"Could not open the file picker: {ex.Message}";
+                ShowStatus($"Could not open the file picker: {ex.Message}", isError: true);
                 return null;
             }
         }
@@ -396,34 +466,96 @@ namespace DevToolbox.UI.Pages
             showMissingRequired = MissingRequired.Count > 0;
             if (showMissingRequired) return;
 
-            isExecuting = true;
-            output = "";
-            error = "";
-
-            try
+            if (!TryBuildArguments(out var arguments, out var problem))
             {
-                if (!TryBuildArguments(out var arguments, out var problem))
-                {
-                    error = problem;
-                    return;
-                }
+                ShowStatus(problem, isError: true);
+                return;
+            }
 
-                (output, error) = await powerShellService.ExecuteScriptWithParametersAsync(scriptText, arguments);
+            ShowStatus("");
+            errorsOnly = false;
+            revealConsole = true;
 
-                if (string.IsNullOrWhiteSpace(output) && string.IsNullOrWhiteSpace(error))
-                {
-                    output = "Finished. The script produced no output.";
-                }
-            }
-            catch (Exception ex)
-            {
-                error = ex.ToString();
-            }
-            finally
-            {
-                isExecuting = false;
-            }
+            // Returns when the script ends. The console redraws throughout, from Run.OnChanged.
+            await Run.RunAsync(selectedScript, scriptText, arguments);
         }
+
+        private void StopScript() => Run.Stop();
+
+        private void ClearOutput()
+        {
+            errorsOnly = false;
+            Run.Clear();
+        }
+
+        private async Task CopyOutput()
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", Run.ToPlainText());
+            ShowStatus($"Copied {Run.Lines.Count:N0} line{(Run.Lines.Count == 1 ? "" : "s")} of output.");
+        }
+
+        private void ToggleErrorsOnly() => errorsOnly = !errorsOnly;
+
+        /// <summary>What the console draws: the error stream alone, or the newest lines of everything.</summary>
+        private IEnumerable<ScriptOutputLine> VisibleLines =>
+            errorsOnly
+                ? Run.Lines.Where(l => l.Kind == ScriptOutputKind.Error)
+                : Run.Lines.Skip(Math.Max(0, Run.Lines.Count - MaxRenderedLines));
+
+        private int HiddenLineCount => errorsOnly ? 0 : Math.Max(0, Run.Lines.Count - MaxRenderedLines);
+
+        /// <summary>
+        /// The stream decides the marker and tint, so an error is recognisable by more than its
+        /// colour; Write-Host's own colour, where the script chose one, decides the text.
+        /// </summary>
+        private static string LineClass(ScriptOutputLine line)
+        {
+            var kind = line.Kind switch
+            {
+                ScriptOutputKind.Error => "is-error",
+                ScriptOutputKind.Warning => "is-warning",
+                ScriptOutputKind.NativeStderr => "is-stderr",
+                ScriptOutputKind.Verbose => "is-verbose",
+                _ => ""
+            };
+
+            var color = line.Color switch
+            {
+                ConsoleColor.Cyan or ConsoleColor.DarkCyan => "c-cyan",
+                ConsoleColor.Green or ConsoleColor.DarkGreen => "c-green",
+                ConsoleColor.Yellow or ConsoleColor.DarkYellow => "c-yellow",
+                ConsoleColor.Red or ConsoleColor.DarkRed => "c-red",
+                ConsoleColor.Blue or ConsoleColor.DarkBlue => "c-blue",
+                ConsoleColor.Magenta or ConsoleColor.DarkMagenta => "c-magenta",
+                ConsoleColor.DarkGray => "c-muted",
+                // Gray and White are what a console prints by default, and Black on this ground
+                // would be invisible, so all three are the ordinary text colour.
+                _ => ""
+            };
+
+            return $"ps-line {kind} {color}".TrimEnd();
+        }
+
+        private (string Icon, string Text, string Tone) ConsoleStatus()
+        {
+            if (Run.IsRunning)
+            {
+                return Run.IsStopping
+                    ? ("bi-hourglass-split", "Stopping", "is-stopped")
+                    : ("bi-arrow-repeat ws-spin", "Running", "is-running");
+            }
+
+            return Run.Outcome switch
+            {
+                ScriptRunOutcome.Failed => ("bi-x-circle", "Failed", "is-failed"),
+                ScriptRunOutcome.Stopped => ("bi-stop-circle", "Stopped", "is-stopped"),
+                _ when Run.ErrorCount > 0 => ("bi-exclamation-circle", $"Finished with {Run.ErrorCount:N0} error{(Run.ErrorCount == 1 ? "" : "s")}", "is-failed"),
+                _ => ("bi-check-circle", "Finished", "is-ok")
+            };
+        }
+
+        private static string FormatElapsed(TimeSpan elapsed) =>
+            elapsed.TotalHours >= 1 ? elapsed.ToString(@"h\:mm\:ss") : elapsed.ToString(@"m\:ss");
 
         /// <summary>
         /// Turns the form into arguments for PowerShell, converting each value to the type its
@@ -484,13 +616,7 @@ namespace DevToolbox.UI.Pages
             return true;
         }
 
-        
-        private void ClearOutput()
-        {
-            output = "";
-            error = "";
-        }
-        
+
         private void ToggleValidation()
         {
             enableScriptValidation = !enableScriptValidation;
@@ -512,8 +638,7 @@ namespace DevToolbox.UI.Pages
             
             if (result.IsValid && !result.HasWarnings)
             {
-                output = "Script validation passed successfully!";
-                error = "";
+                ShowStatus("Validation passed.");
             }
             
             return Task.CompletedTask;

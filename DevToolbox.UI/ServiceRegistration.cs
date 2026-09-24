@@ -61,6 +61,9 @@ namespace DevToolbox.UI
             // it can only do if every card is looking at the same instance.
             services.AddScoped<MenuStateService>();
             services.AddScoped<LogSearchStateService>();
+            // The Scripts tab's running script, for the same reason: it has to outlive the page, or
+            // leaving the tab mid-run loses the output of a run that carries on regardless.
+            services.AddScoped<ScriptRunSession>();
 
             // The same three again, as the interface ConfigRestore looks them up by. Forwarding
             // factories, not new registrations: these resolve the instances registered above, so
