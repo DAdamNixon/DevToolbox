@@ -1,0 +1,111 @@
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@*
+    A textarea with PowerShell syntax colouring behind it, for the Scripts tab.
+
+    The same pair as SqlEditor — a painted <pre> under a transparent <textarea> — and the same
+    division of labour: wwwroot/js/psEditor.js paints on every keystroke, and this component owns
+    the pair and says when the value changed from C# rather than from typing.
+
+    One difference, on purpose. The value comes back on change (when the editor loses focus), not
+    on every keystroke. That is what the plain textarea did, and it matters here in a way it does
+    not for a three-line query: a keystroke that reached .NET would re-render the whole Scripts
+    tab, console and all, and during a run that is two thousand lines being diffed per character.
+    The colours do not wait for it — they are painted in the browser as you type.
+
+        <PowerShellEditor Id="psScript" @bind-Value="scriptText" @bind-Value:after="SyncParameters" />
+*@
+
+<div class="ps-code @Class">
+    @* A picture of the textarea's contents: hidden from screen readers, which would otherwise
+       read the script twice, and from the tab order. *@
+    <pre class="ps-code-ink" aria-hidden="true"><code id="@InkId"></code></pre>
+    <textarea id="@Id"
+              class="ps-code-input"
+              spellcheck="false"
+              autocomplete="off"
+              autocapitalize="off"
+              autocorrect="off"
+              placeholder="@Placeholder"
+              aria-label="@AriaLabel"
+              value="@Value"
+              @onchange="OnChange"></textarea>
+</div>
+
+@code {
+    /// <summary>The textarea's DOM id. Must be unique on the page — the script keys off it.</summary>
+    [Parameter, EditorRequired] public string Id { get; set; } = "";
+
+    [Parameter] public string? Value { get; set; }
+
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    [Parameter] public string? Placeholder { get; set; }
+
+    [Parameter] public string? AriaLabel { get; set; }
+
+    /// <summary>Extra classes on the wrapper, for sizing it where it is used.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    private string InkId => $"{Id}-ink";
+
+    // What the paint layer was last painted from. Only a value set from C# — another script
+    // loaded — needs a repaint asked for; typing repaints itself.
+    private string? _painted;
+
+    private bool _attached;
+
+    private async Task OnChange(ChangeEventArgs e)
+    {
+        var text = e.Value?.ToString() ?? "";
+        Value = text;
+        _painted = text;
+        await ValueChanged.InvokeAsync(text);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            if (!_attached)
+            {
+                await JS.InvokeVoidAsync("psEditor.attach", Id, InkId);
+                _attached = true;
+                _painted = Value;
+                return;
+            }
+
+            if (_painted != Value)
+            {
+                await JS.InvokeVoidAsync("psEditor.refresh", Id);
+                _painted = Value;
+            }
+        }
+        catch (JSException)
+        {
+            // Non-fatal by design, as in SqlEditor: without the colours this is still the plain
+            // editor it replaced, and a script that failed to load must not take the tab down.
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_attached) return;
+
+        try
+        {
+            await JS.InvokeVoidAsync("psEditor.detach", Id);
+        }
+        catch (JSException)
+        {
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+}

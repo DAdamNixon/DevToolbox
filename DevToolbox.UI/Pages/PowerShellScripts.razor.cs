@@ -19,6 +19,40 @@ namespace DevToolbox.UI.Pages
         private string scriptText = "";
 
         /// <summary>
+        /// The text as it is on disk, for "Unsaved changes" on the folded editor — which is the one
+        /// place an edit could otherwise go unnoticed, since the editor showing it is out of sight.
+        /// </summary>
+        private string savedScriptText = "";
+
+        private bool IsDirty => scriptText != savedScriptText;
+
+        /// <summary>The folded editor's one line: how big the script is and what it asks for.</summary>
+        private string EditorSummary
+        {
+            get
+            {
+                if (string.IsNullOrWhiteSpace(scriptText)) return "Empty script";
+
+                var lines = scriptText.TrimEnd('\r', '\n').Split('\n').Length;
+                var text = $"{lines:N0} line{(lines == 1 ? "" : "s")}";
+                if (parameters.Count > 0) text += $" · {parameters.Count} parameter{(parameters.Count == 1 ? "" : "s")}";
+                return text;
+            }
+        }
+
+        private void ToggleEditor() => Run.EditorCollapsed = !Run.EditorCollapsed;
+
+        /// <summary>
+        /// A script picked from the list. Unfolds the editor, because picking a script is asking to
+        /// see it — unlike the load that happens on arriving at the tab, which leaves it folded.
+        /// </summary>
+        private async Task SelectScript(string name)
+        {
+            Run.EditorCollapsed = false;
+            await LoadScript(name);
+        }
+
+        /// <summary>
         /// A one-line result beside the buttons: saved, deleted, validated, or why not.
         /// <para>
         /// These used to be written into the script output pane, so "Script saved successfully"
@@ -145,6 +179,7 @@ namespace DevToolbox.UI.Pages
                 scriptText = "";
                 ShowStatus($"Could not load script '{name}'.", isError: true);
             }
+            savedScriptText = scriptText;
 
             // A different script asks for different things, so nothing typed for the last one
             // carries over. Cleared before the rebuild rather than merged: two scripts sharing a
@@ -176,6 +211,7 @@ namespace DevToolbox.UI.Pages
             
             if (result.Success)
             {
+                savedScriptText = scriptText;
                 await LoadScripts();
                 ShowStatus($"Saved {selectedScript}.");
 
@@ -267,6 +303,8 @@ namespace DevToolbox.UI.Pages
 
             selectedScript = name;
             scriptText = templateContent;
+            savedScriptText = templateContent;
+            Run.EditorCollapsed = false;
             SyncParameters();
             ClearValidation();
 
@@ -475,6 +513,11 @@ namespace DevToolbox.UI.Pages
             ShowStatus("");
             errorsOnly = false;
             revealConsole = true;
+
+            // Folds the editor so the console gets the column, as the Log Viewer folds its source
+            // card once a search starts: you have finished writing and started watching. The lip
+            // brings it straight back.
+            Run.EditorCollapsed = true;
 
             // Returns when the script ends. The console redraws throughout, from Run.OnChanged.
             await Run.RunAsync(selectedScript, scriptText, arguments);

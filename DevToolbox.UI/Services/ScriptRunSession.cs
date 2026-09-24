@@ -61,6 +61,13 @@ public sealed class ScriptRunSession : IDisposable
     public TimeSpan Elapsed => _clock.Elapsed;
 
     /// <summary>
+    /// The script editor is folded to one line so the console has the column. Kept here with the
+    /// run rather than in the page, the way the Log Viewer keeps its folded source card: Run folds
+    /// it, and coming back to the tab mid-run must not unfold it over the output you came back for.
+    /// </summary>
+    public bool EditorCollapsed { get; set; }
+
+    /// <summary>
     /// Runs <paramref name="scriptText"/>, replacing whatever the console held. Returns when the
     /// script ends; the console updates throughout.
     /// </summary>

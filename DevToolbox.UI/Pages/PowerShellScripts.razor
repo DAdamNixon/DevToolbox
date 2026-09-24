@@ -37,7 +37,7 @@
             {
                 <button type="button" class="ps-script @(script.Name == selectedScript ? "is-active" : null)"
                         title="@script.Name"
-                        @onclick="() => LoadScript(script.Name)">
+                        @onclick="() => SelectScript(script.Name)">
                     <i class="bi bi-file-earmark-code"></i>
                     <span>@script.Name</span>
                 </button>
@@ -118,24 +118,44 @@
                    squeezed to nothing while the textarea's own minimum height still drew —
                    underneath the error pane. The buttons stay outside so Run never scrolls
                    away. *@
-                <div class="ps-editor-scroll">
-                @* The pane is a flex column and the textarea flexes inside it.
-                   It used to be h-full, which is 100% of the pane on top of the
-                   label above it — so the editor overflowed its own section by
-                   the label's height and ran over the Path field below. *@
-                <div class="ps-editor-pane">
-                    <label class="block text-sm font-medium text-dark-text mb-2">Script Editor</label>
-                    @* No whitespace before the closing tag: a textarea's content is
-                       its initial value, so a newline and indentation here is a
-                       blank first line in every script. *@
-                    @* bind:after rebuilds the parameter form from the text. The default bind
-                       event is onchange, so this happens when the editor loses focus rather
-                       than on every keystroke — a form that reshuffled itself mid-word would
-                       be unusable. *@
-                    <textarea @bind="scriptText" @bind:after="SyncParameters"
-                        rows="15"
-                        class="input-modern w-full font-mono text-sm resize-none"
-                        placeholder="Enter your PowerShell script here..."></textarea>
+                <div class="ps-editor-scroll @(Run.EditorCollapsed ? "is-editor-collapsed" : "")">
+                @* The pane is a flex column and the editor flexes inside it.
+
+                   It folds the way the Log Viewer's source card does: Run folds it to one line
+                   so the console gets the column, and the lip along its bottom edge brings it
+                   back. Hidden rather than removed while folded, because a textarea taken out of
+                   the page takes its undo history with it. *@
+                <div class="ps-editor-pane @(Run.EditorCollapsed ? "is-collapsed" : "")">
+                    <label for="psScriptEditor" class="block text-sm font-medium text-dark-text mb-2">Script Editor</label>
+                    @* bind:after rebuilds the parameter form from the text. The value comes back
+                       on change, so this happens when the editor loses focus rather than on every
+                       keystroke — a form that reshuffled itself mid-word would be unusable. *@
+                    <PowerShellEditor Id="psScriptEditor" Class="ps-editor-code"
+                                      @bind-Value="scriptText" @bind-Value:after="SyncParameters"
+                                      Placeholder="Enter your PowerShell script here..." />
+
+                    @if (Run.EditorCollapsed)
+                    {
+                        @* Clickable for the mouse; the lip below is the control a keyboard reaches,
+                           so there is one tab stop for the one action. *@
+                        <div class="ps-editor-summary" @onclick="ToggleEditor">
+                            <i class="bi bi-file-earmark-code" aria-hidden="true"></i>
+                            <span class="ps-editor-summary-text">@EditorSummary</span>
+                            @if (IsDirty)
+                            {
+                                <span class="ps-editor-dirty">Unsaved changes</span>
+                            }
+                        </div>
+                    }
+
+                    <button type="button" class="ps-editor-lip"
+                            aria-expanded="@(Run.EditorCollapsed ? "false" : "true")"
+                            aria-controls="psScriptEditor"
+                            title="@(Run.EditorCollapsed ? "Show the script" : "Collapse the script")"
+                            @onclick="ToggleEditor">
+                        <i class="bi @(Run.EditorCollapsed ? "bi-chevron-down" : "bi-chevron-up")" aria-hidden="true"></i>
+                        <span>@(Run.EditorCollapsed ? "Show script" : "Collapse")</span>
+                    </button>
                 </div>
 
                 @* Parameters, read off the script's own param() block.
