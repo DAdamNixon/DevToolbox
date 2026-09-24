@@ -202,8 +202,21 @@
     query and the Free Shipping queries, and the Checkout template is no longer bundled. The seed
     never overwrites, so an existing install sees these as "changed" and takes them via Restore.
   -->
+  <!--
+    0.9.10.2 / beta.20: no code. The taskbar button and Start tile wear the new icon again.
+
+    beta.18 and beta.19 put the old toolbox back on both. Nothing in the repo moved: those two
+    come from the package's logo assets, which the installer builds, and the installer lives
+    outside the repo in two copies. Juan's still named toolbox_Y9B_icon.ico; Tyler's took the
+    icon from <ApplicationIcon> (beta.15) but had never had the MCP server added (beta.13), so
+    0.9.9.1 to 0.9.9.4 shipped without devtoolbox-mcp.exe. This is the first build from a copy
+    with both, and it refuses a manifest naming an executable the package does not contain.
+
+    Configuration is beta.19's exactly, except openHandlers.yaml, which now comes from the repo
+    instead of an installer copy of it: the same vswhere query, with the comments that say why.
+  -->
   <PropertyGroup>
-    <VersionPrefix>0.9.10.1</VersionPrefix>
-    <VersionSuffix>beta.19</VersionSuffix>
+    <VersionPrefix>0.9.10.2</VersionPrefix>
+    <VersionSuffix>beta.20</VersionSuffix>
   </PropertyGroup>
 </Project>
