@@ -302,7 +302,7 @@ public class PowerShellService
         {
             onLine(new ScriptOutputLine(ScriptOutputKind.Error,
                 $"This script needs a value for {string.Join(", ", missing)}. " +
-                "Enter one in the path box and run it again."));
+                "Fill it in under Parameters and run it again."));
             return ScriptRunOutcome.Failed;
         }
 

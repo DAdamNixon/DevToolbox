@@ -55,7 +55,7 @@ public class PowerShellExecutionTests
 
         Assert.Empty(output);
         Assert.Contains("ProjectPath", error);
-        Assert.Contains("path box", error);
+        Assert.Contains("Parameters", error);
     }
 
     [Fact]

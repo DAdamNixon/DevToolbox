@@ -143,12 +143,6 @@ namespace DevToolbox.UI.Pages
         /// </summary>
         private const int MaxRenderedLines = 2000;
 
-        /// <summary>
-        /// Only used by a script that declares no parameters at all, where it is set as the variable
-        /// <c>$ProjectPath</c>. Everything with a param block is driven by the form instead.
-        /// </summary>
-        private string projectPath = "";
-
         /// <summary>The naming dialog, shown instead of inventing a timestamped file name.</summary>
         private bool newScriptVisible;
 
@@ -374,21 +368,25 @@ namespace DevToolbox.UI.Pages
         }
 
         /// <summary>
-        /// The fallback body, for a build with no bundled ScriptTemplate.ps1. ProjectPath is
-        /// mandatory and named as the rest of the library names it, so the new script is runnable
-        /// from the workspace card's Run Script menu without being edited first.
+        /// The fallback body, for a build with no bundled ScriptTemplate.ps1.
+        /// <para>
+        /// It used to open with a mandatory $ProjectPath, so every new script demanded a folder
+        /// before it would run, whether or not it had any use for one. Now it asks for nothing,
+        /// and says how to ask: each parameter becomes a field, and one called $ProjectPath is
+        /// filled in by a workspace card's Run Script menu.
+        /// </para>
         /// </summary>
         private static string DefaultTemplate() =>
             """
-            param(
-                [Parameter(Mandatory = $true, HelpMessage = 'The folder this script works on')]
-                [string]$ProjectPath
-            )
+            # What this script does, in a line or two.
+            #
+            # Parameters go in param() below, and each one becomes a field on the Scripts tab. None is
+            # required unless it is marked [Parameter(Mandatory)]. One named $ProjectPath is filled in
+            # with the card's folder when this is run from a workspace card's Run Script menu.
+            param()
 
-            # Report progress with Write-Host; the Scripts tab and the terminal window both show it.
-            Write-Host "Working on $ProjectPath"
-
-            Write-Host "Done."
+            # Write-Host shows in the Scripts tab's console as the script runs.
+            Write-Host "Hello from DevToolbox."
             """;
 
         // --- parameters ---
@@ -476,11 +474,6 @@ namespace DevToolbox.UI.Pages
                 : PickFolder(Value(parameter.Name));
 
             if (picked is not null) SetValue(parameter.Name, picked);
-        }
-
-        private void BrowseLegacyPath()
-        {
-            if (PickFolder(projectPath) is { } picked) projectPath = picked;
         }
 
         /// <summary>
@@ -675,14 +668,6 @@ namespace DevToolbox.UI.Pages
         {
             arguments = new Dictionary<string, object>();
             problem = string.Empty;
-
-            if (parameters.Count == 0)
-            {
-                // No param block. The service sets unbindable names as variables, so this still
-                // reaches a script that reads $ProjectPath directly.
-                if (!string.IsNullOrWhiteSpace(projectPath)) arguments["ProjectPath"] = projectPath.Trim();
-                return true;
-            }
 
             foreach (var parameter in parameters)
             {

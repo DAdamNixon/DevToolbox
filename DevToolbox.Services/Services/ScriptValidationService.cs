@@ -7,22 +7,16 @@ namespace DevToolbox.Services.Services;
 
 public class ScriptValidationService
 {
-    // Required parameter names that must be declared in scripts
-    private readonly string[] _requiredParameters = new[] 
-    { 
-        "ProjectPath"
-    };
-
-    // Optional parameter names
-    private readonly string[] _optionalParameters = new[]
-    {
-        "LocationPath",
-        "filePath",
-        "RootDirectory"
-    };
-
     /// <summary>
-    /// Validates a PowerShell script's structure to ensure it meets DevToolbox standards
+    /// Validates a PowerShell script: an error for anything that stops it parsing, and warnings
+    /// for style.
+    /// <para>
+    /// It also used to require a param() block with a $ProjectPath in it, and with Validate on
+    /// save — the default — refused to save any script without one. That was the four bundled
+    /// scripts' convention (each works on a folder) made into a rule for every script, including
+    /// the ones with no folder to work on. What a script takes is the script's business; the
+    /// Scripts tab builds its form from whatever the param() block declares, or from none.
+    /// </para>
     /// </summary>
     /// <param name="scriptContent">The content of the script to validate</param>
     /// <returns>Validation result with details of any issues found</returns>
@@ -49,40 +43,11 @@ public class ScriptValidationService
                 }
                 return result;
             }
-            
-            // Check for param block
-            var paramBlock = scriptAst.FindAll(ast => ast is ParamBlockAst, true)
-                .OfType<ParamBlockAst>()
-                .FirstOrDefault();
-            
-            if (paramBlock == null)
-            {
-                result.IsValid = false;
-                result.ValidationErrors.Add("Script must have a param() block at the beginning.");
-                return result;
-            }
-            
-            // Check for required parameters
-            var parameters = paramBlock.Parameters;
-            var declaredParams = parameters.Select(p => p.Name.VariablePath.UserPath).ToList();
-            
-            foreach (var requiredParam in _requiredParameters)
-            {
-                if (!declaredParams.Contains(requiredParam, StringComparer.OrdinalIgnoreCase))
-                {
-                    result.IsValid = false;
-                    result.ValidationErrors.Add($"Script is missing required parameter: {requiredParam}");
-                }
-            }
-            
-            // Check for wait logic at the end (ReadKey or similar)
-            bool hasWaitLogic = HasWaitLogic(scriptContent);
-            if (!hasWaitLogic)
-            {
-                result.HasWarnings = true;
-                result.ValidationWarnings.Add("Script should include wait logic at the end (e.g., $Host.UI.RawUI.ReadKey()) to keep the window open for user interaction.");
-            }
-            
+
+            // No "wait logic" warning any more. It told every script to end with ReadKey so a
+            // terminal run's window stayed open; terminal runs are started with -NoExit now, and in
+            // the Scripts tab there is no console at all, so ReadKey there is an error, not a pause.
+
             // Check for proper comments/documentation
             bool hasComments = HasProperComments(scriptContent);
             if (!hasComments)
@@ -106,15 +71,6 @@ public class ScriptValidationService
         }
         
         return result;
-    }
-    
-    private bool HasWaitLogic(string scriptContent)
-    {
-        // Check for common wait patterns
-        return scriptContent.Contains("$Host.UI.RawUI.ReadKey") || 
-               scriptContent.Contains("Read-Host") ||
-               scriptContent.Contains("pause") ||
-               scriptContent.Contains("Wait-Event");
     }
     
     private bool HasProperComments(string scriptContent)

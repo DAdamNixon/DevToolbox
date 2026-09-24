@@ -217,28 +217,14 @@
 
                     @if (parameters.Count == 0)
                     {
-                        @* A script with no param block can still read $ProjectPath — the service
-                           sets a variable for anything it cannot bind — so the old single box
-                           stays for that case rather than leaving nothing to type into. *@
-                        <div class="ps-param-row">
-                            <label for="legacy-path" class="ps-param-label">Project path</label>
-                            <div class="ps-param-control">
-                                <div class="ps-param-input-group">
-                                    <input id="legacy-path" type="text" class="input-modern w-full"
-                                           placeholder="C:\TFS\Tools\DevToolbox"
-                                           value="@projectPath" @oninput="e => projectPath = e.Value?.ToString() ?? string.Empty" />
-                                    <button type="button" class="btn-secondary px-3" title="Browse for a folder"
-                                            @onclick="BrowseLegacyPath">
-                                        <i class="bi bi-folder2"></i>
-                                    </button>
-                                </div>
-                                <p class="ps-param-hint">
-                                    This script declares no parameters, so this is set as the variable
-                                    <span class="font-mono">$ProjectPath</span> before it runs. Leave it empty if the
-                                    script does not use one.
-                                </p>
-                            </div>
-                        </div>
+                        @* Nothing to fill in, and saying so. This used to be a "Project path" box,
+                           kept for scripts that read $ProjectPath without declaring it — which put a
+                           folder field on every script, including the ones that have no use for a
+                           folder. A script that wants a value declares it, and gets a field for it. *@
+                        <p class="ps-param-hint">
+                            This script takes no parameters. Declare some in a
+                            <span class="font-mono">param()</span> block and they appear here.
+                        </p>
                     }
                     else
                     {

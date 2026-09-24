@@ -259,7 +259,16 @@ namespace DevToolbox.Services.Services
                 return OpenResult.Fail($"{location.Path} no longer exists, so '{script.Name}' was not run.");
             }
 
-            var parameters = new Dictionary<string, object> { { "ProjectPath", target } };
+            // The folder goes to a script that asks for it, as $ProjectPath, and to no other. It used
+            // to be passed to every script, and any with a [Parameter()] in its param block rejects
+            // a name it does not declare — "A parameter cannot be found that matches parameter name
+            // 'ProjectPath'" — so the menu could only run scripts written to that one convention.
+            var scriptText = File.Exists(script.FullPath) ? await File.ReadAllTextAsync(script.FullPath) : null;
+            var takesProjectPath = PowerShellService.DeclaredParameters(scriptText)
+                .Any(p => p.Name.Equals("ProjectPath", StringComparison.OrdinalIgnoreCase));
+
+            var parameters = new Dictionary<string, object>();
+            if (takesProjectPath) parameters["ProjectPath"] = target;
 
             return await _systemService.ExecuteScriptAsync(script.Name, parameters);
         }
