@@ -372,8 +372,8 @@ namespace DevToolbox.UI.Pages
         /// <para>
         /// It used to open with a mandatory $ProjectPath, so every new script demanded a folder
         /// before it would run, whether or not it had any use for one. Now it asks for nothing,
-        /// and says how to ask: each parameter becomes a field, and one called $ProjectPath is
-        /// filled in by a workspace card's Run Script menu.
+        /// and says how to ask: each parameter becomes a field, and declaring $ProjectPath is what
+        /// puts a script on the workspace cards' Run Script menu.
         /// </para>
         /// </summary>
         private static string DefaultTemplate() =>
@@ -381,8 +381,8 @@ namespace DevToolbox.UI.Pages
             # What this script does, in a line or two.
             #
             # Parameters go in param() below, and each one becomes a field on the Scripts tab. None is
-            # required unless it is marked [Parameter(Mandatory)]. One named $ProjectPath is filled in
-            # with the card's folder when this is run from a workspace card's Run Script menu.
+            # required unless it is marked [Parameter(Mandatory)]. Declare one named $ProjectPath and
+            # this script also appears in every project card's Run Script menu, run on that card's folder.
             param()
 
             # Write-Host shows in the Scripts tab's console as the script runs.

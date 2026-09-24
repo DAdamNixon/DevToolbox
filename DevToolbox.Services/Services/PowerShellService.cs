@@ -52,6 +52,48 @@ public class PowerShellService
     }
     
     /// <summary>
+    /// The parameter a workspace card fills in: its own folder, as <c>-ProjectPath</c>.
+    /// </summary>
+    public const string ProjectPathParameter = "ProjectPath";
+
+    /// <summary>
+    /// Whether a script's own param() block declares $ProjectPath, matched the way PowerShell
+    /// matches names — without regard to case. A $ProjectPath read in the body, or declared by a
+    /// function inside the script, does not count: neither can be handed a value from outside.
+    /// Nor does one in a script that does not parse, which could not be run to receive it.
+    /// </summary>
+    public static bool TakesProjectPath(string? scriptText) =>
+        DeclaredParameters(scriptText)
+            .Any(p => p.Name.Equals(ProjectPathParameter, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// The scripts a workspace card offers in its Run Script menu: the ones that take $ProjectPath.
+    /// <para>
+    /// It offered every script, and a script with no use for a folder, run from a card, simply
+    /// ignored the card it was run from. Declaring $ProjectPath is now what puts a script on the
+    /// cards, so the menu only holds scripts that act on the project you opened it from.
+    /// </para>
+    /// </summary>
+    public IEnumerable<DevToolbox.Services.Models.ScriptInfo> GetProjectScripts() =>
+        GetAvailableScripts().Where(script => TakesProjectPath(TryReadScript(script.FullPath)));
+
+    /// <summary>
+    /// A script's text, or null if it cannot be read right now — an editor holding it open, say.
+    /// Leaving one script off a menu is better than the Dashboard failing to open.
+    /// </summary>
+    private static string? TryReadScript(string path)
+    {
+        try
+        {
+            return File.ReadAllText(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Executes a script file from the Scripts directory
     /// </summary>
     /// <param name="scriptName">The name of the script file (without extension)</param>

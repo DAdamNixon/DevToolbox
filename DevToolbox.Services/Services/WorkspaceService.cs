@@ -263,12 +263,12 @@ namespace DevToolbox.Services.Services
             // to be passed to every script, and any with a [Parameter()] in its param block rejects
             // a name it does not declare — "A parameter cannot be found that matches parameter name
             // 'ProjectPath'" — so the menu could only run scripts written to that one convention.
+            // The menu only lists scripts that declare it (GetProjectScripts), but the file can have
+            // been edited since the menu was built, so it is checked again at the moment of running.
             var scriptText = File.Exists(script.FullPath) ? await File.ReadAllTextAsync(script.FullPath) : null;
-            var takesProjectPath = PowerShellService.DeclaredParameters(scriptText)
-                .Any(p => p.Name.Equals("ProjectPath", StringComparison.OrdinalIgnoreCase));
 
             var parameters = new Dictionary<string, object>();
-            if (takesProjectPath) parameters["ProjectPath"] = target;
+            if (PowerShellService.TakesProjectPath(scriptText)) parameters[PowerShellService.ProjectPathParameter] = target;
 
             return await _systemService.ExecuteScriptAsync(script.Name, parameters);
         }

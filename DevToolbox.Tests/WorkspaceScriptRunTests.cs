@@ -104,4 +104,53 @@ public sealed class WorkspaceScriptRunTests : IDisposable
 
         Assert.Empty(parameters!);
     }
+
+    // ---- which scripts a card offers at all ----------------------------------------------------
+    //
+    // Only those that take $ProjectPath: it is the one thing a card can give a script, and a script
+    // without it, run from a card, would ignore the card it was run from.
+
+    [Theory]
+    [InlineData("param([Parameter(Mandatory = $true)][string]$ProjectPath)")]
+    [InlineData("param([string]$ProjectPath = '.')")]
+    [InlineData("param([string]$projectpath)")]
+    [InlineData("[CmdletBinding()]\nparam(\n    [string]$OutputFile,\n    [string]$ProjectPath\n)")]
+    public void A_script_that_declares_ProjectPath_is_offered_on_the_cards(string script)
+    {
+        Assert.True(PowerShellService.TakesProjectPath(script));
+    }
+
+    [Theory]
+    [InlineData("Write-Host 'no parameters'")]
+    [InlineData("param([string]$OutputFile)")]
+    [InlineData("param()")]
+    [InlineData("")]
+    public void A_script_that_does_not_is_not(string script)
+    {
+        Assert.False(PowerShellService.TakesProjectPath(script));
+    }
+
+    [Fact]
+    public void Reading_ProjectPath_without_declaring_it_does_not_count()
+    {
+        // It could only ever be $null: nothing outside the script can give it a value.
+        Assert.False(PowerShellService.TakesProjectPath("Write-Host \"Working on $ProjectPath\""));
+    }
+
+    [Fact]
+    public void A_function_inside_the_script_declaring_it_does_not_count()
+    {
+        // That param block belongs to the function; the card talks to the script.
+        Assert.False(PowerShellService.TakesProjectPath("""
+            function Clean([string]$ProjectPath) { Remove-Item "$ProjectPath\bin" -Recurse }
+            Clean 'C:\somewhere'
+            """));
+    }
+
+    [Fact]
+    public void A_script_that_does_not_parse_is_not_offered()
+    {
+        // It could not run to receive the folder; it comes back once it is fixed.
+        Assert.False(PowerShellService.TakesProjectPath("param([string]$ProjectPath)\nif ( {"));
+    }
 }

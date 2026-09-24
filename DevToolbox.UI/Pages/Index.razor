@@ -406,9 +406,15 @@
         StartScan();
     }
 
+    /// <summary>
+    /// The cards' Run Script menu: only scripts that take $ProjectPath, since that is how a card
+    /// hands a script the folder it was opened from. Read on every visit to the tab, so a script
+    /// saved on the PowerShell tab — or one that has just gained or lost the parameter — is on the
+    /// menu, or off it, the next time you come here.
+    /// </summary>
     private void LoadScripts()
     {
-        AvailableScripts = PowerShellService.GetAvailableScripts().ToList();
+        AvailableScripts = PowerShellService.GetProjectScripts().ToList();
     }
 
     /// <summary>

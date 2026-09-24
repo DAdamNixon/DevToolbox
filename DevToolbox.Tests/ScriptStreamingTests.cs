@@ -17,6 +17,10 @@ namespace DevToolbox.Tests;
 /// </summary>
 public sealed class ScriptStreamingTests : IDisposable
 {
+    // Generous on purpose, including for Stop. PowerShell hands a stop request to the thread pool,
+    // and with the rest of the suite opening runspaces and native processes in parallel that pool
+    // can be starved for seconds: a 10s limit on Stop failed once that way, right after a build.
+    // Against a script that would otherwise loop forever, 30s still proves the point.
     private static readonly TimeSpan Patience = TimeSpan.FromSeconds(30);
 
     /// <summary>A file the script waits for, so a test can hold it mid-run without sleeping.</summary>
@@ -165,7 +169,7 @@ public sealed class ScriptStreamingTests : IDisposable
         await recorder.Seen("started").WaitAsync(Patience);
         cts.Cancel();
 
-        Assert.Equal(ScriptRunOutcome.Stopped, await run.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal(ScriptRunOutcome.Stopped, await run.WaitAsync(Patience));
     }
 
     [Fact]
@@ -181,7 +185,7 @@ public sealed class ScriptStreamingTests : IDisposable
         Assert.NotEmpty(before);
 
         cts.Cancel();
-        Assert.Equal(ScriptRunOutcome.Stopped, await run.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal(ScriptRunOutcome.Stopped, await run.WaitAsync(Patience));
 
         await Task.Delay(500);
         Assert.DoesNotContain(before, IsRunning);
