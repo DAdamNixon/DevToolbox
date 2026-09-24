@@ -1437,11 +1437,27 @@ select:not([multiple]) {
     }
 
     /* Each column scrolls on its own. Which is the point — the fields and the matches are being
-       compared, so neither one may drag the other off the screen. */
+       compared, so neither one may drag the other off the screen.
+
+       Each also keeps a little room inside its own edge. A scroll container clips at that edge,
+       and a button's focus ring is drawn 4px outside the button (ring-2 plus ring-offset-2), so
+       Remove — flush against the editor's right side — had its ring cut off and the scrollbar
+       drawn straight through it. The negative margin takes that room from the grid gap, so
+       nothing in the columns moves. */
     .modal-content.is-tall .ws-source-list,
     .modal-content.is-tall .ws-source-editor {
         min-height: 0;
         overflow-y: auto;
+        margin: -0.25rem;
+        padding: 0.25rem;
+    }
+
+    /* The editor is the column that actually overflows. Its scrollbar gets a lane of its own,
+       held open whether or not it is showing, so the fields do not jump sideways the moment a
+       section expands far enough to need one — and a gap between the fields and the bar. */
+    .modal-content.is-tall .ws-source-editor {
+        padding-right: 0.625rem;
+        scrollbar-gutter: stable;
     }
 
     .modal-content.is-tall .ws-matches {
