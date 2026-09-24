@@ -24,7 +24,57 @@ namespace DevToolbox.UI.Pages
         /// </summary>
         private string savedScriptText = "";
 
-        private bool IsDirty => scriptText != savedScriptText;
+        /// <summary>
+        /// Typed into since the editor last handed its text back. The text itself only arrives when
+        /// the editor loses focus, so without this Save would not appear until you had clicked away
+        /// from the thing you just changed.
+        /// </summary>
+        private bool editedSinceSync;
+
+        /// <summary>
+        /// There is something to save — what drives the Save button and the folded editor's
+        /// "Unsaved changes". Compared with the file rather than remembered as a flag once the text
+        /// is in, so undoing an edit back to what is on disk takes Save away again.
+        /// </summary>
+        private bool IsDirty => editedSinceSync || Lf(scriptText) != Lf(savedScriptText);
+
+        /// <summary>
+        /// Line endings out of the comparison. A textarea hands back \n whatever it was given, and
+        /// every script on disk here is \r\n, so compared as-is a script was "changed" the first
+        /// time the editor gave its text back — Save up, and staying up, with nothing to save.
+        /// </summary>
+        private static string Lf(string text) => text.Replace("\r\n", "\n");
+
+        private void OnScriptEdited() => editedSinceSync = true;
+
+        private void OnScriptChanged()
+        {
+            editedSinceSync = false;
+            SyncParameters();
+        }
+
+        // --- deleting ---
+
+        /// <summary>
+        /// The first click on Delete has happened. The second deletes; clicking anywhere else
+        /// (the button losing focus) stands it down. Two steps because the file goes now, unlike
+        /// the Smart Folders Remove whose look this borrows, which is undone by closing the dialog.
+        /// </summary>
+        private bool confirmingDelete;
+
+        private async Task DeleteClicked()
+        {
+            if (!confirmingDelete)
+            {
+                confirmingDelete = true;
+                return;
+            }
+
+            confirmingDelete = false;
+            await DeleteScript();
+        }
+
+        private void DisarmDelete() => confirmingDelete = false;
 
         /// <summary>The folded editor's one line: how big the script is and what it asks for.</summary>
         private string EditorSummary
@@ -180,6 +230,8 @@ namespace DevToolbox.UI.Pages
                 ShowStatus($"Could not load script '{name}'.", isError: true);
             }
             savedScriptText = scriptText;
+            editedSinceSync = false;
+            confirmingDelete = false;
 
             // A different script asks for different things, so nothing typed for the last one
             // carries over. Cleared before the rebuild rather than merged: two scripts sharing a
@@ -206,12 +258,20 @@ namespace DevToolbox.UI.Pages
             }
             
             ClearValidation();
-            
-            var result = await powerShellService.SaveScriptAsync(selectedScript, scriptText, enableScriptValidation);
-            
+
+            // The file's own line endings, not the textarea's. It hands back \n regardless, so
+            // saving used to turn every \r\n script into a \n one and a one-word fix into a
+            // whole-file change.
+            var content = savedScriptText.Contains("\r\n")
+                ? Lf(scriptText).Replace("\n", "\r\n")
+                : scriptText;
+
+            var result = await powerShellService.SaveScriptAsync(selectedScript, content, enableScriptValidation);
+
             if (result.Success)
             {
-                savedScriptText = scriptText;
+                savedScriptText = content;
+                editedSinceSync = false;
                 await LoadScripts();
                 ShowStatus($"Saved {selectedScript}.");
 
@@ -304,6 +364,7 @@ namespace DevToolbox.UI.Pages
             selectedScript = name;
             scriptText = templateContent;
             savedScriptText = templateContent;
+            editedSinceSync = false;
             Run.EditorCollapsed = false;
             SyncParameters();
             ClearValidation();

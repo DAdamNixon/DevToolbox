@@ -60,14 +60,51 @@
                     <span>@selectedScript</span>
                 </h2>
 
-                <div class="flex items-center space-x-3">
+                @* Everything that acts on the file, together: save it, check it, delete it. Save
+                   and Delete sat in the bottom bar beside Run, which made the one button you press
+                   most share a row with the one you press least and can least afford to hit.
+
+                   Save is first so that appearing does not move anything: the group is aligned
+                   to the right, so a button added at its start grows it leftwards. *@
+                <div class="ps-editor-tools">
+                    @if (!string.IsNullOrEmpty(statusMessage))
+                    {
+                        <span class="ps-status @(statusIsError ? "is-error" : "")" role="status">
+                            <i class="bi @(statusIsError ? "bi-exclamation-circle" : "bi-check2")" aria-hidden="true"></i>
+                            @statusMessage
+                        </span>
+                    }
+
+                    @* Only when there is something to save. The editor says so on the first
+                       keystroke (OnEdited) rather than when it loses focus, or the button would
+                       not exist until you had clicked somewhere else to go and look for it. *@
+                    @if (IsDirty)
+                    {
+                        <button type="button" class="btn-primary btn-sm flex items-center space-x-2"
+                                title="Save @(selectedScript).ps1" disabled="@Run.IsRunning" @onclick="SaveScript">
+                            <i class="bi bi-save"></i>
+                            <span>Save</span>
+                        </button>
+                    }
+
                     <label class="flex items-center space-x-2 cursor-pointer">
                         <input type="checkbox" id="enableValidation" @bind="enableScriptValidation" class="checkbox-modern">
                         <span class="text-xs text-dark-text-muted">Validate on save</span>
                     </label>
-                    <button class="btn-secondary btn-sm flex items-center space-x-2" @onclick="ValidateCurrentScript">
+                    <button type="button" class="btn-secondary btn-sm flex items-center space-x-2" @onclick="ValidateCurrentScript">
                         <i class="bi bi-shield-check"></i>
                         <span>Validate</span>
+                    </button>
+
+                    @* The Smart Folders dialog's Remove: quiet, and on the far right. One
+                       difference, because the two are not the same act — Remove there is undone by
+                       closing the dialog, and this deletes the file now. So the first click only
+                       arms it, and clicking anywhere else disarms it. *@
+                    <button type="button" class="btn-ghost btn-sm @(confirmingDelete ? "ps-delete-armed" : "")"
+                            title="@(confirmingDelete ? $"Click again to delete {selectedScript}.ps1 from disk" : "Delete this script")"
+                            disabled="@Run.IsRunning"
+                            @onclick="DeleteClicked" @onblur="DisarmDelete">
+                        <i class="bi bi-trash"></i> @(confirmingDelete ? "Confirm delete" : "Delete")
                     </button>
                 </div>
             </div>
@@ -131,7 +168,8 @@
                        on change, so this happens when the editor loses focus rather than on every
                        keystroke — a form that reshuffled itself mid-word would be unusable. *@
                     <PowerShellEditor Id="psScriptEditor" Class="ps-editor-code"
-                                      @bind-Value="scriptText" @bind-Value:after="SyncParameters"
+                                      @bind-Value="scriptText" @bind-Value:after="OnScriptChanged"
+                                      OnEdited="OnScriptEdited"
                                       Placeholder="Enter your PowerShell script here..." />
 
                     @if (Run.EditorCollapsed)
@@ -372,11 +410,10 @@
                 }
                 </div>
 
+                @* Run, alone. Save and Delete moved up beside Validate with the other things that
+                   act on the file, which leaves this bar for the one thing that acts on the
+                   machine — so Run is the primary button now rather than a secondary one. *@
                 <div class="ps-actions">
-                    <button class="btn-primary flex items-center space-x-2" @onclick="SaveScript" disabled="@Run.IsRunning">
-                        <i class="bi bi-save"></i>
-                        <span>Save</span>
-                    </button>
                     @* One Run button, not two. "Run Script" and "Run With Parameters" differed only in
                        whether the path was passed, and the one that did not pass it could never work:
                        every bundled script declares ProjectPath as mandatory. *@
@@ -397,23 +434,11 @@
                     }
                     else
                     {
-                        <button class="btn-secondary flex items-center space-x-2" @onclick="ExecuteScript"
+                        <button class="btn-primary flex items-center space-x-2" @onclick="ExecuteScript"
                                 title="@(MissingRequired.Count > 0 ? $"Needs a value for {string.Join(", ", MissingRequired)}" : "Run this script with the parameters above")">
                             <i class="bi bi-play-fill"></i>
                             <span>Run Script</span>
                         </button>
-                    }
-                    <button class="btn-danger flex items-center space-x-2" @onclick="DeleteScript" disabled="@Run.IsRunning">
-                        <i class="bi bi-trash"></i>
-                        <span>Delete</span>
-                    </button>
-
-                    @if (!string.IsNullOrEmpty(statusMessage))
-                    {
-                        <span class="ps-status @(statusIsError ? "is-error" : "")" role="status">
-                            <i class="bi @(statusIsError ? "bi-exclamation-circle" : "bi-check2")" aria-hidden="true"></i>
-                            @statusMessage
-                        </span>
                     }
                 </div>
             </div>

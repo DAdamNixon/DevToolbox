@@ -42,6 +42,15 @@
 
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
 
+    /// <summary>
+    /// The text has been typed into since <see cref="Value"/> was last set or handed back. Raised
+    /// once per stretch of typing, not per keystroke — the first one, and again only after the
+    /// editor has lost focus and <see cref="ValueChanged"/> has fired. It is what lets a page show
+    /// a Save button the moment there is something to save, while the value itself still arrives
+    /// only on change.
+    /// </summary>
+    [Parameter] public EventCallback OnEdited { get; set; }
+
     [Parameter] public string? Placeholder { get; set; }
 
     [Parameter] public string? AriaLabel { get; set; }
@@ -57,6 +66,11 @@
 
     private bool _attached;
 
+    private DotNetObjectReference<PowerShellEditor>? _self;
+
+    [JSInvokable]
+    public Task NotifyEdited() => OnEdited.InvokeAsync();
+
     private async Task OnChange(ChangeEventArgs e)
     {
         var text = e.Value?.ToString() ?? "";
@@ -71,7 +85,8 @@
         {
             if (!_attached)
             {
-                await JS.InvokeVoidAsync("psEditor.attach", Id, InkId);
+                _self ??= DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("psEditor.attach", Id, InkId, _self);
                 _attached = true;
                 _painted = Value;
                 return;
@@ -95,17 +110,19 @@
 
     public async ValueTask DisposeAsync()
     {
-        if (!_attached) return;
-
         try
         {
-            await JS.InvokeVoidAsync("psEditor.detach", Id);
+            if (_attached) await JS.InvokeVoidAsync("psEditor.detach", Id);
         }
         catch (JSException)
         {
         }
         catch (JSDisconnectedException)
         {
+        }
+        finally
+        {
+            _self?.Dispose();
         }
     }
 }

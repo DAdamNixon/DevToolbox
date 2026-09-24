@@ -546,24 +546,53 @@ window.psEditor = (function () {
     }
 
     return {
-        /// Wires the pair up and paints once. Safe to call again for the same id.
-        attach: function (inputId, inkId) {
+        /// Wires the pair up and paints once. Safe to call again for the same id. `dotnet`, when
+        /// given, is told once per stretch of typing that the text has changed (NotifyEdited).
+        attach: function (inputId, inkId, dotnet) {
             var input = document.getElementById(inputId);
             var ink = document.getElementById(inkId);
             if (!input || !ink) return;
 
             var existing = attached.get(inputId);
             if (existing) {
-                if (existing.input === input && existing.ink === ink) { paint(existing); return; }
+                if (existing.input === input && existing.ink === ink) {
+                    existing.dotnet = dotnet || null;
+                    paint(existing);
+                    return;
+                }
                 this.detach(inputId);
             }
 
-            var entry = { input: input, ink: ink, box: input.parentElement };
+            var entry = { input: input, ink: ink, box: input.parentElement, dotnet: dotnet || null, told: false };
+
             // Only typing moves the view. A repaint from C# or a resize must leave it where it is.
-            entry.onInput = function () { paint(entry); revealCaret(entry); };
+            //
+            // And only the first keystroke of a stretch reaches .NET. The page wants to know that
+            // the script has changed — to show Save — not what it now says, which it is handed on
+            // change; one call per character would re-render the whole tab per character.
+            entry.onInput = function () {
+                paint(entry);
+                revealCaret(entry);
+                if (!entry.told && entry.dotnet) {
+                    entry.told = true;
+                    entry.dotnet.invokeMethodAsync('NotifyEdited').catch(function () { });
+                }
+            };
+            // The value has just gone to .NET, so the next keystroke is a new stretch.
+            entry.onChange = function () { entry.told = false; };
+
+            // A browser only fires change on blur if the text differs from when the editor took
+            // focus — so type a character and delete it, and .NET, told there was an edit, never
+            // hears that there is not one any more. Save stayed up with nothing to save. Blur
+            // follows change, so if change has not run by now it is not coming: send it.
+            entry.onBlur = function () {
+                if (entry.told) input.dispatchEvent(new Event('change', { bubbles: true }));
+            };
             entry.resize = new ResizeObserver(function () { fit(entry); });
 
             input.addEventListener('input', entry.onInput);
+            input.addEventListener('change', entry.onChange);
+            input.addEventListener('blur', entry.onBlur);
             entry.resize.observe(entry.box);
             attached.set(inputId, entry);
             paint(entry);
@@ -577,13 +606,17 @@ window.psEditor = (function () {
         /// Repaint after the value changed from C# — loading another script fires no input event.
         refresh: function (inputId) {
             var entry = attached.get(inputId);
-            if (entry && document.body.contains(entry.input)) paint(entry);
+            if (!entry || !document.body.contains(entry.input)) return;
+            entry.told = false;
+            paint(entry);
         },
 
         detach: function (inputId) {
             var entry = attached.get(inputId);
             if (!entry) return;
             entry.input.removeEventListener('input', entry.onInput);
+            entry.input.removeEventListener('change', entry.onChange);
+            entry.input.removeEventListener('blur', entry.onBlur);
             entry.resize.disconnect();
             entry.box.classList.remove('is-painted');
             attached.delete(inputId);
