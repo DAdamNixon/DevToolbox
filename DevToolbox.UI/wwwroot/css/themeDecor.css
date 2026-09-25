@@ -831,20 +831,282 @@
    background-image paints above the shell's own colour and below every descendant, which
    is exactly where a background pumpkin belongs.
 
-   THE EYES GLOW BUT DO NOT FLICKER, and that is a consequence of the same choice. A
-   background image cannot animate part of itself: no selector reaches inside it, and the
-   ways round that are all worse than the problem — swapping the whole data URI on a
-   steps() keyframe, or driving a registered custom property through a gradient and
-   repainting the layer every frame. So the light is baked in, as three radial gradients
-   behind the face, and the theme's moving fire is the candles on the footer instead. A
-   carved pumpkin sitting still in the corner of a room is not a compromise; it is a
-   carved pumpkin. */
+   LIT FROM INSIDE, NOT FROM OUTSIDE. The first pumpkin was a bright orange cartoon with
+   triangle eyes — a pumpkin in daylight. This one is drawn after the 1978 Halloween
+   pumpkin: the skin almost black and in shadow, with only three things lit. The carved
+   face, from within; a warm rim down the right-hand edge where the glow wraps round; and
+   a little warmth bled through the thin skin around the mouth, which is the one radial
+   gradient the whole body is filled with.
+
+   THE TEETH ARE A MASK, NOT SHAPES. Drawing dark tooth rectangles on top of a lit mouth
+   was the obvious version and read as blocks pasted over the glow, because the bloom had
+   lit the skin round the mouth and the pasted teeth were not lit with it. A tooth is where
+   the pumpkin was not cut, so the mouth is drawn once with seven rectangles masked *out*
+   of it, and the bloom is taken from the masked shape too. The light now wraps round the
+   teeth the way it does round the real thing.
+
+   The ribs are three pairs of meridians drawn as ellipse outlines, and the face is traced
+   from the reference rather than invented: an eye tilted into an oval, an eye like a
+   rounded D, a tall narrow nose, and a grin that turns up at both ends with three teeth
+   hanging from the upper lip and four standing on the lower.
+
+   THE EYES GLOW BUT DO NOT FLICKER, and that is a consequence of living in a background
+   image. A background image cannot animate part of itself: no selector reaches inside it,
+   and the ways round that are all worse than the problem — swapping the whole data URI on
+   a steps() keyframe, or driving a registered custom property through a gradient and
+   repainting the layer every frame. So the light is baked in, and the theme's moving fire
+   is the candles on the footer instead. A carved pumpkin sitting still in the corner of a
+   room is not a compromise; it is a carved pumpkin. */
 :root[data-theme="halloween"] .app-shell {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='170' viewBox='0 0 200 170'%3E%3Cdefs%3E%3CradialGradient id='eg'%3E%3Cstop offset='0' stop-color='%23fff2a8' stop-opacity='.95'/%3E%3Cstop offset='.5' stop-color='%23ffb020' stop-opacity='.4'/%3E%3Cstop offset='1' stop-color='%23ff8a00' stop-opacity='0'/%3E%3C/radialGradient%3E%3C/defs%3E%3Cg opacity='.72'%3E%3Cpath fill='%233f6b2a' d='M100 40 q-16 -14 -32 -13 q19 -7 32 7 q9 -13 24 -11 q-16 6 -24 21z'/%3E%3Crect x='94' y='34' width='13' height='18' rx='5' fill='%234a5f28'/%3E%3Cellipse cx='100' cy='104' rx='72' ry='58' fill='%23a84c17'/%3E%3Cellipse cx='100' cy='104' rx='58' ry='58' fill='%23c95d1c'/%3E%3Cellipse cx='100' cy='104' rx='34' ry='58' fill='%23dd6c24'/%3E%3Cellipse cx='100' cy='104' rx='12' ry='58' fill='%23ea7a2e'/%3E%3Cg fill='url(%23eg)'%3E%3Ccircle cx='74' cy='92' r='32'/%3E%3Ccircle cx='126' cy='92' r='32'/%3E%3Ccircle cx='100' cy='124' r='38'/%3E%3C/g%3E%3Cg fill='%23ffd24a'%3E%3Cpath d='M62 98 L82 84 L86 101z'/%3E%3Cpath d='M138 98 L118 84 L114 101z'/%3E%3Cpath d='M72 116 L128 116 L124 130 L114 122 L106 132 L98 122 L88 130 L76 122z'/%3E%3C/g%3E%3Cg fill='%23fff4c0' opacity='.75'%3E%3Cpath d='M66 97 L80 87 L82 97z'/%3E%3Cpath d='M134 97 L120 87 L118 97z'/%3E%3Cpath d='M78 118 L122 118 L119 124 L112 119 L106 126 L100 119 L92 125 L82 120z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='214' viewBox='0 0 240 214'%3E%3Cdefs%3E%3CradialGradient id='skin' gradientUnits='userSpaceOnUse' cx='120' cy='130' r='112'%3E%3Cstop offset='0' stop-color='%238a3a0f'/%3E%3Cstop offset='.4' stop-color='%235a220a'/%3E%3Cstop offset='.76' stop-color='%232c0f05'/%3E%3Cstop offset='1' stop-color='%23120501'/%3E%3C/radialGradient%3E%3CradialGradient id='rim' cx='.34' cy='.52' r='.72'%3E%3Cstop offset='0' stop-color='%23f0842a' stop-opacity='0'/%3E%3Cstop offset='.8' stop-color='%23f0842a' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='%23f59032' stop-opacity='.8'/%3E%3C/radialGradient%3E%3ClinearGradient id='top' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23000' stop-opacity='.55'/%3E%3Cstop offset='.3' stop-color='%23000' stop-opacity='0'/%3E%3C/linearGradient%3E%3CradialGradient id='fire' cx='.5' cy='.62' r='.66'%3E%3Cstop offset='0' stop-color='%23fff7c6'/%3E%3Cstop offset='.35' stop-color='%23ffd362'/%3E%3Cstop offset='.72' stop-color='%23f5982c'/%3E%3Cstop offset='1' stop-color='%23c9551a'/%3E%3C/radialGradient%3E%3Cfilter id='bloom' x='-40%25' y='-40%25' width='180%25' height='180%25'%3E%3CfeGaussianBlur stdDeviation='6'/%3E%3C/filter%3E%3Cmask id='cut' maskUnits='userSpaceOnUse' x='0' y='0' width='240' height='214'%3E%3Crect width='240' height='214' fill='%23fff'/%3E%3Cg fill='%23000'%3E%3Crect x='72' y='128' width='14' height='27' rx='2.5'/%3E%3Crect x='98' y='132' width='14' height='27' rx='2.5'/%3E%3Crect x='139' y='132' width='13' height='26' rx='2.5'/%3E%3Crect x='79' y='163' width='14' height='24' rx='2.5'/%3E%3Crect x='100' y='168' width='14' height='24' rx='2.5'/%3E%3Crect x='120' y='168' width='14' height='24' rx='2.5'/%3E%3Crect x='142' y='161' width='14' height='24' rx='2.5'/%3E%3C/g%3E%3C/mask%3E%3Cg id='face'%3E%3Cellipse cx='66.5' cy='64.7' rx='15.5' ry='18.5' transform='rotate(22 66.5 64.7)'/%3E%3Cpath d='M155.8 55.1 Q171 57 175.6 64.6 Q179 72 176.8 80 Q174 87 168.2 89.5 Q159 91 150.9 88.3 L146 84.5 Q141.5 80 141 74.1 Q140.5 64 145.9 59.9 Q150 56 155.8 55.1Z'/%3E%3Cpath d='M113.8 94.2 L124.2 123.6 Q114 126.5 103.6 125.2Z'/%3E%3Cpath d='M45.9 128.6 Q50 133.5 54.5 135.7 Q66 138.8 76.8 140.2 Q95 144 111.4 147.6 Q121 149.2 131.1 149 Q147 148.2 160.8 146.2 Q173 143.8 183 140.4 Q187.5 138 190.4 134.5 Q190.5 140 188 145.2 Q180 152.5 170.6 159.4 Q161 166.5 150.9 171.3 Q138 177 126.2 180.7 Q116 182.5 106.4 180.7 Q94 178 84.2 173.6 Q73 167 64.4 159.4 Q57 150.5 52.1 140.4 Q48.5 134.5 45.9 128.6Z'/%3E%3C/g%3E%3C/defs%3E%3Cellipse cx='120' cy='116' rx='101' ry='91' fill='url(%23skin)'/%3E%3Cg fill='none' stroke='%23120501' stroke-opacity='.42' stroke-width='3'%3E%3Cellipse cx='120' cy='116' rx='74' ry='90'/%3E%3Cellipse cx='120' cy='116' rx='44' ry='90.5'/%3E%3Cellipse cx='120' cy='116' rx='15' ry='91'/%3E%3C/g%3E%3Cellipse cx='120' cy='116' rx='101' ry='91' fill='url(%23rim)'/%3E%3Cellipse cx='120' cy='116' rx='101' ry='91' fill='url(%23top)'/%3E%3Cpath d='M112 30 Q113 20 118 16 Q124 13 127 17 Q124 21 124 30 Z' fill='%231b0d06'/%3E%3Cellipse cx='119' cy='30' rx='22' ry='6' fill='%230e0502' fill-opacity='.6'/%3E%3Cg filter='url(%23bloom)'%3E%3Cg mask='url(%23cut)'%3E%3Cuse href='%23face' fill='%23ff8a1e' fill-opacity='.8'/%3E%3C/g%3E%3C/g%3E%3Cg mask='url(%23cut)'%3E%3Cuse href='%23face' fill='url(%23fire)'/%3E%3C/g%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 2.5rem bottom 2rem;
     background-size: auto min(40vh, 320px);
 }
+
+
+/* ── the hauntings: something happens when you rest on a card ────────────────────
+   Four small scenes, one picked at random each time, played over whichever card the
+   pointer has settled on:
+
+     ghost    rises out of the card near the pointer and swoops away
+     spider   spins a web in the card's far corner and drops down on its silk
+     witch    crosses the card on her broom
+     zombie   hauls himself up over the card's top edge, looks both ways, sinks back
+
+   js/themeDecor.js decides when and which, and positions each scene from the card's
+   bounding box; everything here is what they look like and how they move. The scenes
+   live in #theme-decor rather than inside the card because Blazor owns the card's DOM,
+   and foreign children in a Blazor-managed subtree are the kind of thing its diffing
+   removes or misplaces on the next render.
+
+   RESTRAINT IS THE FEATURE. A dashboard is thirty cards and the pointer crosses a dozen
+   of them on the way anywhere, so a haunting per card entered would be a haunted house on
+   every mouse movement. The script waits for the pointer to *rest* on a card, plays one
+   scene at a time, and rests before the next — see HAUNT_INTENT and HAUNT_REST there.
+
+   BEHIND THE CARD IS A CLIP, NOT A Z-INDEX. The prop layer paints above every card, so
+   nothing in it can literally be behind one. The zombie and the spider both need to be,
+   and both use the same trick: a wrapper with overflow: hidden whose edge sits exactly on
+   the card's edge, and an inner element that slides across that edge. Whatever has not
+   crossed yet is clipped, which reads as still being behind the card. The zombie's hands
+   are the deliberate exception — they are outside the wrapper and straddle the edge,
+   because hands gripping a wall have to be in front of it.
+
+   Every motion is on the individual transform properties — translate for travel, rotate
+   for sway, scale for size — so that each can be its own animation at its own period on
+   one element, composing as translate · rotate · scale. The two clip-path reveals on the
+   web are the only repaints, on a 56px box, for under a second.
+
+   No CSS motion gate: themeDecor.js does not start a scene at all when motion is off,
+   because a haunting that cannot move is a sticker on the card. */
+
+/* ── ghost ── */
+#theme-decor[data-decor="halloween"] .decor-ghost {
+    width: 44px;
+    height: 50px;
+    /* Positioned by its centre, so the script can place it on a point. */
+    margin: -25px 0 0 -22px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='44' height='50' viewBox='0 0 44 50'%3E%3Cdefs%3E%3CradialGradient id='g' cx='.42' cy='.32' r='.8'%3E%3Cstop offset='0' stop-color='%23ffffff'/%3E%3Cstop offset='.65' stop-color='%23ebe5fa'/%3E%3Cstop offset='1' stop-color='%23bfb3e0'/%3E%3C/radialGradient%3E%3C/defs%3E%3Cpath fill='url(%23g)' d='M6 26 q-5 2 -5 8 q4 -1 5 -4z M38 26 q5 2 5 8 q-4 -1 -5 -4z'/%3E%3Cpath fill='url(%23g)' d='M22 2 C11 2 6 11 6 22 V44 q4 -4 8 0 q4 4 8 0 q4 -4 8 0 q4 4 8 0 V22 C38 11 33 2 22 2Z'/%3E%3Cellipse cx='16' cy='19' rx='3.2' ry='4.4' fill='%231d1430'/%3E%3Cellipse cx='28' cy='19' rx='3.2' ry='4.4' fill='%231d1430'/%3E%3Cellipse cx='22' cy='30' rx='3' ry='4.2' fill='%231d1430'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    filter: drop-shadow(0 0 9px rgb(220 210 255 / 0.55));
+    animation:
+        hw-ghost-fly 1.9s ease-out forwards,
+        hw-ghost-sway 0.48s ease-in-out 4 alternate;
+}
+
+/* Up out of the card first and sideways second — the mid stop is what turns a straight
+   diagonal into a swoop. --hd is the side it leaves by, 1 or -1. */
+@keyframes hw-ghost-fly {
+    0%   { translate: 0 12px; scale: 0.25; opacity: 0; }
+    18%  { opacity: 0.95; }
+    50%  { translate: calc(var(--hd) * 34px) -64px; scale: 0.95; }
+    70%  { opacity: 0.85; }
+    100% { translate: calc(var(--hd) * 140px) -124px; scale: 1.15; opacity: 0; }
+}
+
+@keyframes hw-ghost-sway {
+    from { rotate: -10deg; }
+    to   { rotate: 10deg; }
+}
+
+/* ── spider ── */
+
+/* The web, grown outward from the card's corner. Drawn once for the top-left corner and
+   flipped for the top-right, like the cobwebs on the window; the clip-path circle is in
+   the element's own coordinates, so the flip moves the origin of the reveal with it. */
+#theme-decor[data-decor="halloween"] .decor-haunt-web {
+    width: var(--hw);
+    height: var(--hw);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120' fill='none' stroke='%23e6ddf5' stroke-width='1.1' stroke-linecap='round'%3E%3Cdefs%3E%3Cpath id='a' d='M25.9 1.6 Q21.6 5.6 23.5 11.2 Q17.7 13.6 16.9 19.8 Q11 19.5 8.4 24.6 Q4.3 21.9 1.6 25.9'/%3E%3C/defs%3E%3Cpath d='M0 0 L117.8 7.3'/%3E%3Cpath d='M0 0 L106.6 50.7'/%3E%3Cpath d='M0 0 L76.6 89.8'/%3E%3Cpath d='M0 0 L38 111.7'/%3E%3Cpath d='M0 0 L7.3 117.8'/%3E%3Cuse href='%23a' vector-effect='non-scaling-stroke'/%3E%3Cuse href='%23a' vector-effect='non-scaling-stroke' transform='scale(1.92)'/%3E%3Cuse href='%23a' vector-effect='non-scaling-stroke' transform='scale(2.92)'/%3E%3Cuse href='%23a' vector-effect='non-scaling-stroke' transform='scale(4)'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    opacity: 0.55;
+    animation: hw-web-spin 3.2s ease-out forwards;
+}
+
+#theme-decor[data-decor="halloween"] .decor-haunt-web.is-tr {
+    scale: -1 1;
+}
+
+@keyframes hw-web-spin {
+    0%   { clip-path: circle(0 at 0 0); opacity: 0.55; }
+    38%  { clip-path: circle(145% at 0 0); }
+    80%  { opacity: 0.55; }
+    100% { clip-path: circle(145% at 0 0); opacity: 0; }
+}
+
+/* The silk: a strip hanging from the corner, clipped at its own top edge. The spider
+   slides down inside it, trailing a thread that is really 400px long and pointing up —
+   the wrapper's overflow cuts it at the corner, so it looks exactly as long as the drop. */
+#theme-decor[data-decor="halloween"] .decor-silk {
+    width: 26px;
+    overflow: hidden;
+}
+
+#theme-decor[data-decor="halloween"] .decor-silk > b {
+    position: absolute;
+    left: 0;
+    top: 0;
+    /* Drawn at 22×20 and shown a fifth larger: at 1:1 the red eyes were a pixel each. */
+    width: 26px;
+    height: 24px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='20' viewBox='0 0 22 20'%3E%3Cg fill='none' stroke='%23cdbfe0' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 9 L4 4 L1 6'/%3E%3Cpath d='M8 10.5 L3 9 L0.5 11'/%3E%3Cpath d='M8 12 L3.5 14 L1.5 18'/%3E%3Cpath d='M8.5 13 L5.5 17 L5 19.5'/%3E%3Cpath d='M14 9 L18 4 L21 6'/%3E%3Cpath d='M14 10.5 L19 9 L21.5 11'/%3E%3Cpath d='M14 12 L18.5 14 L20.5 18'/%3E%3Cpath d='M13.5 13 L16.5 17 L17 19.5'/%3E%3C/g%3E%3Cellipse cx='11' cy='12' rx='4.4' ry='5' fill='%23241a30' stroke='%23cdbfe0' stroke-width='.9'/%3E%3Ccircle cx='11' cy='6.6' r='2.8' fill='%23241a30' stroke='%23cdbfe0' stroke-width='.9'/%3E%3Ccircle cx='10' cy='6.2' r='.75' fill='%23ff5a3c'/%3E%3Ccircle cx='12' cy='6.2' r='.75' fill='%23ff5a3c'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    /* Twists on its thread, which is attached to the top of its head. */
+    transform-origin: 50% 20%;
+    animation:
+        hw-spider-drop 3.2s ease-in-out forwards,
+        hw-spider-twist 0.55s ease-in-out 6 alternate;
+}
+
+#theme-decor[data-decor="halloween"] .decor-silk > b::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    /* The top of the head is 5px down the sprite at this size; the thread ends there. */
+    bottom: calc(100% - 5px);
+    width: 1px;
+    height: 400px;
+    margin-left: -0.5px;
+    background-color: rgb(222 212 240 / 0.7);
+}
+
+/* Waits for the web to start, lets itself down, bounces once on the silk, hangs, and
+   climbs back up before the web fades. --drop is how far, set per card so a short card
+   does not have its spider hanging off the bottom of it. */
+@keyframes hw-spider-drop {
+    0%, 12%   { translate: 0 -24px; }
+    40%       { translate: 0 var(--drop); }
+    48%       { translate: 0 calc(var(--drop) - 6px); }
+    56%, 74%  { translate: 0 var(--drop); }
+    94%, 100% { translate: 0 -24px; }
+}
+
+@keyframes hw-spider-twist {
+    from { rotate: -9deg; }
+    to   { rotate: 9deg; }
+}
+
+/* ── witch ── */
+
+/* --hs is the signed span she covers, --hd the side she faces. The flip is a static
+   scale rather than part of the flight, so the bob below rotates her the right way up in
+   either direction. The arc is sampled across five stops under linear timing, which keeps
+   her ground speed constant while she climbs and descends — easing the whole translate
+   would slow her to a hover at the top of the arc. */
+#theme-decor[data-decor="halloween"] .decor-witch {
+    width: 76px;
+    height: 46px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='76' height='46' viewBox='0 0 76 46'%3E%3Cdefs%3E%3Cg id='w'%3E%3Cpath d='M37 15 Q27 15 17 27 Q25 24 31 27 Q34 23 39 22Z'/%3E%3Cpath d='M35 13 Q43 10 47 16 L45 29 Q39 31 34 29 Q32 21 35 13Z'/%3E%3Cpath d='M43 27 L52 31 L57 30 L58 33 L51 35 L41 31Z'/%3E%3Cpath d='M44 17 Q51 20 56 27 L54 29 Q49 23 43 21Z'/%3E%3Ccircle cx='42' cy='10.5' r='4.2'/%3E%3Cpath d='M45.5 10 L49.5 11.8 L45.5 12.6Z'/%3E%3Cpath d='M32 8.8 Q41 6.4 51 7.6 Q46 6.2 45 3.8 Q42.5 -0.8 35 0.6 Q40.5 2.4 40.2 5.6 Q36.6 6.6 32 8.8Z'/%3E%3C/g%3E%3C/defs%3E%3Cg stroke-linecap='round' fill='none'%3E%3Cpath d='M14 33 L73 26' stroke='%239a7550' stroke-width='2.4'/%3E%3Cg stroke='%23d4a45c' stroke-width='1.4'%3E%3Cpath d='M15 32 L2 26'/%3E%3Cpath d='M15 33 L1 31'/%3E%3Cpath d='M15 34 L2 37'/%3E%3Cpath d='M16 34 L5 41'/%3E%3Cpath d='M16 32 L6 22'/%3E%3C/g%3E%3Cpath d='M15 31 Q17 33 15.5 35.5' stroke='%237a5a3a' stroke-width='2.2'/%3E%3C/g%3E%3Cuse href='%23w' fill='%23cdbfe0' stroke='%23cdbfe0' stroke-width='2.2' stroke-linejoin='round' opacity='.6'/%3E%3Cuse href='%23w' fill='%23160e20'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    scale: var(--hd) 1;
+    filter: drop-shadow(0 0 6px rgb(205 191 224 / 0.35));
+    animation:
+        hw-witch-fly 2.1s linear forwards,
+        hw-witch-bob 0.7s ease-in-out 3 alternate;
+}
+
+@keyframes hw-witch-fly {
+    0%   { translate: 0 0; opacity: 0; }
+    10%  { opacity: 1; }
+    25%  { translate: calc(var(--hs) * 0.25) -10px; }
+    50%  { translate: calc(var(--hs) * 0.5) -16px; }
+    75%  { translate: calc(var(--hs) * 0.75) -10px; }
+    90%  { opacity: 1; }
+    100% { translate: var(--hs) 0; opacity: 0; }
+}
+
+@keyframes hw-witch-bob {
+    from { rotate: -4deg; }
+    to   { rotate: 5deg; }
+}
+
+/* ── zombie ── */
+
+/* The head, in a wrapper whose bottom edge is the card's top edge: it rises out from
+   behind the card, looks one way and then the other, and sinks back. The look is a
+   rotation about the neck, so the chin stays behind the card while the head turns. */
+#theme-decor[data-decor="halloween"] .decor-zombie {
+    width: 40px;
+    height: 46px;
+    overflow: hidden;
+}
+
+#theme-decor[data-decor="halloween"] .decor-zombie > b {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 40px;
+    height: 40px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Cpath fill='%2386a870' stroke='%234d6b3f' stroke-width='.9' d='M8 40 Q4 22 10 12 Q16 4 22 4.5 Q31 5 34 14 Q38 24 33 40Z'/%3E%3Cpath fill='%232b3a24' d='M9 14 Q12 3 21 3.5 Q31 3 34 12 Q30 8 26 10 Q23 5.5 19 9 Q15 7 13 11 Q11 10 9 14Z'/%3E%3Cellipse cx='16' cy='20' rx='4' ry='3.6' fill='%2326301f'/%3E%3Cellipse cx='27' cy='20.5' rx='3.6' ry='3.2' fill='%2326301f'/%3E%3Ccircle cx='16.6' cy='20' r='1.3' fill='%23f3f0a0'/%3E%3Ccircle cx='26.4' cy='20.5' r='1.1' fill='%23f3f0a0'/%3E%3Cpath d='M14 29.5 L29 29' stroke='%2326301f' stroke-width='1.6' fill='none'/%3E%3Cpath d='M17.5 27.5 v4 M21.5 27.3 v4 M25.5 27.2 v4' stroke='%2326301f' stroke-width='1' fill='none'/%3E%3Cpath d='M30 14 l2.5 2 M31.5 12.8 l-1 3.4' stroke='%235a7a48' stroke-width='.8' fill='none'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    transform-origin: 50% 100%;
+    animation:
+        hw-zombie-rise 2.8s ease-in-out forwards,
+        hw-zombie-look 2.8s ease-in-out forwards;
+}
+
+@keyframes hw-zombie-rise {
+    0%, 12%   { translate: 0 48px; }
+    30%, 76%  { translate: 0 6px; }
+    94%, 100% { translate: 0 48px; }
+}
+
+@keyframes hw-zombie-look {
+    0%, 34%   { rotate: 0deg; }
+    44%, 54%  { rotate: -9deg; }
+    64%, 72%  { rotate: 8deg; }
+    80%, 100% { rotate: 0deg; }
+}
+
+/* The hands grab the edge first and let go last, which is what sells the head as
+   pulling itself up rather than floating. Palm above the edge, fingers curled over the
+   front of the card. The right one is the same drawing mirrored. */
+#theme-decor[data-decor="halloween"] .decor-zombie-hand {
+    width: 18px;
+    height: 16px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='16' viewBox='0 0 18 16'%3E%3Cg fill='%2386a870' stroke='%234d6b3f' stroke-width='.8' stroke-linejoin='round'%3E%3Cpath d='M1 3 Q1 0 5 0 L14 0 Q17 0 17 3 L17 6 Q17 8 15 8 L3 8 Q1 8 1 6Z'/%3E%3Cpath d='M2.5 7 L2.5 13 Q2.5 15 4 15 Q5.5 15 5.5 13 L5.5 7Z'/%3E%3Cpath d='M6.3 7 L6.3 14.5 Q6.3 16 7.8 16 Q9.3 16 9.3 14.5 L9.3 7Z'/%3E%3Cpath d='M10.1 7 L10.1 14 Q10.1 15.5 11.6 15.5 Q13.1 15.5 13.1 14 L13.1 7Z'/%3E%3Cpath d='M13.9 7 L13.9 12 Q13.9 13.5 15.2 13.5 Q16.5 13.5 16.5 12 L16.5 6Z'/%3E%3C/g%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    animation: hw-zombie-grip 2.8s ease-out forwards;
+}
+
+#theme-decor[data-decor="halloween"] .decor-zombie-hand.is-right {
+    scale: -1 1;
+}
+
+@keyframes hw-zombie-grip {
+    0%        { translate: 0 -8px; opacity: 0; }
+    10%, 86%  { translate: 0 0; opacity: 1; }
+    100%      { translate: 0 -6px; opacity: 0; }
+}
+
+
 
 
 /* ── the cauldron, at the bottom of Settings ──────────────────────────────────────

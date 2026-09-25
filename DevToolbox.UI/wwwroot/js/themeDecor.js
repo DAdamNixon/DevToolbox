@@ -5,7 +5,8 @@
 // nothing. This one builds *props* — things that sit in a particular place, and in four
 // cases things you can poke:
 //
-//   halloween        cobwebs in the corners of the content, and the cauldron on Settings
+//   halloween        cobwebs in the corners of the content, the cauldron on Settings,
+//                    and a haunting when the pointer rests on a card
 //   thanksgiving     the cornucopia, and the turkey it fires
 //   easter           the grass along the footer, and the eggs hidden in it
 //   fourth-of-july   the flag on its pole, and the fireworks a click sets off
@@ -357,6 +358,190 @@
         stir = null;
     }
 
+    /* ── halloween: the hauntings ──────────────────────────────────────────────────
+       Rest the pointer on a card and something happens to it: a ghost rises out of it, a
+       spider spins a web in its corner, a witch crosses it on her broom, or a zombie
+       hauls himself up over its top edge. One at random, never the same one twice running.
+
+       This section is WHEN and WHERE; css/themeDecor.css is what each scene looks like and
+       how it moves. A scene is a few elements in this layer, positioned from the card's
+       bounding box at the moment it starts. They are not appended to the card itself,
+       because Blazor owns the card's DOM and its diffing removes or misplaces foreign
+       children on the next render.
+
+       THE RESTRAINT IS THE POINT. A dashboard is thirty cards and the pointer crosses a
+       dozen of them on the way to anything. A scene per card entered would be a haunted
+       house on every mouse movement, so three rules keep it an occasional surprise:
+
+         HAUNT_INTENT   the pointer has to rest on one card this long before anything starts
+         one at a time  a scene in progress blocks every other card
+         HAUNT_REST     after one ends, nothing new for this long
+
+       And a card haunts once per visit: the pointer has to leave it and come back. */
+    var HAUNT_CARDS = '.modern-card, .workspace-card, .glow-card';
+    var HAUNT_INTENT = 450;
+    var HAUNT_REST = 1600;
+    var HAUNTS = ['ghost', 'spider', 'witch', 'zombie'];
+
+    var hauntTimer = null;   // the pending start, while the pointer rests
+    var hauntCard = null;    // the card the pointer is on now
+    var haunting = null;     // { nodes, timer } for the scene in progress
+    var lastHaunt = null;
+    var hauntFreeAt = 0;
+    var pointer = { x: 0, y: 0 };
+
+    function clamp(value, lo, hi) { return Math.max(lo, Math.min(hi, value)); }
+
+    function place(node, left, top, extra) {
+        node.style.cssText = 'left:' + Math.round(left) + 'px;top:' + Math.round(top) + 'px'
+            + (extra ? ';' + extra : '');
+        return node;
+    }
+
+    // Each takes the card's rect and returns the nodes to add and how long they live.
+    // Positions follow the pointer where that makes sense, so the scene happens where
+    // you are looking rather than at whichever end of a 1900px card it happens to be.
+    var SCENES = {
+        ghost: function (r) {
+            var x = clamp(pointer.x, r.left + 30, r.right - 30);
+            var y = r.top + Math.min(r.height * 0.5, 40);
+            var ghost = place(el('i', 'decor-haunt decor-ghost'), x, y,
+                '--hd:' + (Math.random() < 0.5 ? -1 : 1));
+            return { ms: 1950, nodes: [ghost] };
+        },
+
+        // In the top corner *away* from the pointer. The corner near it is where you are
+        // about to click, and a web over it for three seconds is a web in the way.
+        spider: function (r) {
+            var right = pointer.x < r.left + r.width / 2;
+            var inset = 3;
+            // Sized to the card, so a 36px group card gets a small web and a spider that
+            // does not hang off the bottom of it over the card below.
+            var size = Math.round(clamp(r.height - 6, 24, 56));
+            var drop = Math.round(clamp(r.height - 20, 12, 58));
+
+            var web = place(el('i', 'decor-haunt decor-haunt-web' + (right ? ' is-tr' : '')),
+                right ? r.right - size - inset : r.left + inset, r.top + inset,
+                '--hw:' + size + 'px');
+
+            // Hung from inside the web rather than from the very corner.
+            var silk = place(el('i', 'decor-haunt decor-silk'),
+                right ? r.right - inset - 28 : r.left + inset + 2, r.top + inset,
+                'height:' + (drop + 26) + 'px');
+            var spider = el('b');
+            spider.style.setProperty('--drop', drop + 'px');
+            silk.appendChild(spider);
+
+            return { ms: 3250, nodes: [web, silk] };
+        },
+
+        // Across the card, centred on the pointer, over a span wide enough to read as a
+        // flight and short enough to keep her pace: a 1900px group card crossed in two
+        // seconds is a streak, not a witch.
+        witch: function (r) {
+            var dir = Math.random() < 0.5 ? -1 : 1;
+            var span = Math.min(r.width + 120, 520);
+            var mid = clamp(pointer.x, r.left + span / 2 - 60, r.right - span / 2 + 60);
+            var startX = (dir > 0 ? mid - span / 2 : mid + span / 2) - 38;
+            var witch = place(el('i', 'decor-haunt decor-witch'), startX, r.top + r.height / 2 - 23,
+                '--hd:' + dir + ';--hs:' + (dir * span) + 'px');
+            return { ms: 2150, nodes: [witch] };
+        },
+
+        // Up over the top edge near the pointer. The head's wrapper ends 2px below the
+        // card's top edge, so the rest of him is still behind the card; the hands are
+        // outside it and straddle the edge, because hands gripping a wall are in front of it.
+        zombie: function (r) {
+            var x = clamp(pointer.x, r.left + 40, r.right - 40);
+            var head = place(el('i', 'decor-haunt decor-zombie'), x - 20, r.top - 44);
+            head.appendChild(el('b'));
+            var left = place(el('i', 'decor-haunt decor-zombie-hand'), x - 31, r.top - 8);
+            var right = place(el('i', 'decor-haunt decor-zombie-hand is-right'), x + 13, r.top - 8);
+            return { ms: 2850, nodes: [head, left, right] };
+        }
+    };
+
+    function pickHaunt() {
+        var pool = HAUNTS.filter(function (kind) { return kind !== lastHaunt; });
+        return pool[Math.floor(Math.random() * pool.length)];
+    }
+
+    // Cards a scene would be wrong on. The fullscreen log results cover the window, and a
+    // card inside a dialog sits under the modal, which is above this layer — the scene
+    // would play, invisibly, behind the dialog you are reading.
+    function hauntable(card) {
+        if (card.classList.contains('is-fullscreen')) { return false; }
+        return !card.closest('.modal-container');
+    }
+
+    function haunt(card) {
+        var host = layer();
+        if (!host || haunting || Date.now() < hauntFreeAt || !mayMove()) { return; }
+        if (!card.isConnected || !hauntable(card)) { return; }
+
+        var r = card.getBoundingClientRect();
+        // Too small to stage anything on, or scrolled nearly out of view.
+        if (r.width < 80 || r.height < 24 || r.bottom < 40 || r.top > window.innerHeight - 40) { return; }
+
+        var kind = pickHaunt();
+        lastHaunt = kind;
+
+        var scene = SCENES[kind](r);
+        for (var i = 0; i < scene.nodes.length; i++) { host.appendChild(scene.nodes[i]); }
+
+        haunting = { nodes: scene.nodes, timer: window.setTimeout(endHaunt, scene.ms) };
+    }
+
+    // Removed on a timer rather than on animationend, for reap()'s reason: animationend
+    // does not fire for an animation that never started, and each of those would leak.
+    function endHaunt() {
+        if (!haunting) { return; }
+        window.clearTimeout(haunting.timer);
+        for (var i = 0; i < haunting.nodes.length; i++) {
+            var node = haunting.nodes[i];
+            if (node.parentNode) { node.parentNode.removeChild(node); }
+        }
+        haunting = null;
+        hauntFreeAt = Date.now() + HAUNT_REST;
+    }
+
+    // For a theme change, when the layer and every node in it are about to go anyway.
+    function forgetHaunt() {
+        if (hauntTimer) { window.clearTimeout(hauntTimer); hauntTimer = null; }
+        if (haunting) { window.clearTimeout(haunting.timer); haunting = null; }
+        hauntCard = null;
+    }
+
+    // The pointer settling on a card. pointerover rather than pointerenter because it
+    // bubbles, so one listener on the document sees every card present and future; moving
+    // between a card's own children re-fires it, which the hauntCard comparison absorbs.
+    function onHauntOver(event) {
+        if (current !== 'halloween') { return; }
+
+        var target = event.target;
+        var card = target && target.closest ? target.closest(HAUNT_CARDS) : null;
+        if (card === hauntCard) { return; }
+
+        hauntCard = card;
+        if (hauntTimer) { window.clearTimeout(hauntTimer); hauntTimer = null; }
+        if (!card) { return; }
+
+        hauntTimer = window.setTimeout(function () {
+            hauntTimer = null;
+            if (hauntCard === card) { haunt(card); }
+        }, HAUNT_INTENT);
+    }
+
+    // A scene is placed in window coordinates from where its card *was*, so a scroll
+    // strands it over whatever has moved underneath. End it, and forget the card under the
+    // pointer, which has changed too — the next pointerover re-arms from scratch.
+    function onHauntScroll() {
+        if (current !== 'halloween') { return; }
+        if (hauntTimer) { window.clearTimeout(hauntTimer); hauntTimer = null; }
+        hauntCard = null;
+        if (haunting) { endHaunt(); }
+    }
+
     /* ── building and tearing down ──────────────────────────────────────────────── */
 
     var BUILD = {
@@ -375,6 +560,9 @@
             // theme after a save.
             if (existing.getAttribute('data-decor') === theme) { return; }
             existing.parentNode.removeChild(existing);
+            // Its nodes went with the layer; the timers that would have removed them must
+            // not go on to fire against the next theme's.
+            forgetHaunt();
         }
 
         current = theme;
@@ -462,6 +650,17 @@
 
             firework(event.clientX, event.clientY);
         });
+
+        // The hauntings. The pointer position is kept current so a scene can start
+        // where the pointer is when the rest period ends, not where it entered the card.
+        document.addEventListener('pointerover', onHauntOver);
+        document.addEventListener('pointermove', function (event) {
+            pointer.x = event.clientX;
+            pointer.y = event.clientY;
+        }, { passive: true });
+        // Capture, because scroll does not bubble and the thing that scrolls is main, not
+        // the document.
+        document.addEventListener('scroll', onHauntScroll, { capture: true, passive: true });
 
         // A resize while a turkey is in flight would leave it aimed at the old window, and
         // the flag and the tufts are positioned in vw so they follow on their own. Nothing
