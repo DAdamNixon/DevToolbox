@@ -1,4 +1,5 @@
 using DevToolbox.Mcp.Core;
+using DevToolbox.Services.Models;
 using DevToolbox.Services.Services;
 
 namespace DevToolbox.Tests.Mcp;
@@ -585,5 +586,36 @@ public sealed class LogViewerServiceTests
 
         await Assert.ThrowsAsync<ArgumentException>(() => env.Service.SaveQueryAsync("", "SELECT 1", null, null, null));
         await Assert.ThrowsAsync<ArgumentException>(() => env.Service.SaveQueryAsync("n", "  ", null, null, null));
+    }
+
+    /// <summary>B4: a query written for the app's own `results` table is not this server's business
+    /// — it can never prepare that table, so listing the query would be a dangling suggestion.</summary>
+    [Fact]
+    public async Task Results_target_queries_and_their_groups_are_not_listed()
+    {
+        using var env = new LogEnvironment();
+
+        // Seeded directly, the way the UI would write one — the MCP tool surface has no way to
+        // save a results query itself (see the next test).
+        var savedQueries = new SavedQueryService(new McpYamlStorage(env.ConfigFolder));
+        await savedQueries.SaveAsync(new SavedQuery { Name = "Top rows", Group = "Scratch", Sql = "SELECT 1", Target = SavedQueryTargets.Results });
+        await env.Service.SaveQueryAsync("Credit hold checks", "SELECT 1", "Checkout", null, null);
+
+        var all = await env.Service.ListSavedQueriesAsync();
+
+        Assert.Equal("Credit hold checks", Assert.Single(all.Queries).Name);
+        Assert.Equal("Checkout", Assert.Single(all.Groups));
+    }
+
+    [Fact]
+    public async Task Save_query_always_writes_a_logs_query()
+    {
+        using var env = new LogEnvironment();
+
+        await env.Service.SaveQueryAsync("Credit hold checks", "SELECT 1", "Checkout", null, null);
+
+        var savedQueries = new SavedQueryService(new McpYamlStorage(env.ConfigFolder));
+        var stored = Assert.Single(await savedQueries.GetAllAsync());
+        Assert.True(SavedQueryTargets.IsFor(stored, SavedQueryTargets.Logs));
     }
 }

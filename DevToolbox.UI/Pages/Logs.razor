@@ -270,158 +270,55 @@
     }
 </div>
 
-<!-- Filter bar. Always visible: keyword groups re-query the ingested table
+<!-- Filter bar(s). Always visible: keyword groups re-query the ingested table
      live, so they belong next to the results, not folded away with the source.
 
-     Full screen covers this card with the results, and Ctrl+F lifts this very
+     While `results` exists the logs filter is locked to one line and a second
+     card searches `results` instead — never both unlocked at once. Full screen
+     covers whichever one is showing with the results, and Ctrl+F lifts that same
      element back over them rather than rendering a second copy of it: one set of
      inputs means no duplicate ids, no second set of handlers, and the caret is
      still where it was when the panel was last closed. -->
-<div id="logFilterCard" class="modern-card log-card-compact mb-4 log-filter-card @(FilterPanelFloating ? "is-floating" : null)">
-    @if (FilterPanelFloating)
-    {
-        <div class="log-filter-floating-head">
-            <i class="bi bi-funnel text-accent-blue"></i>
-            <span class="text-sm font-medium text-dark-text">Filters</span>
-            <span class="log-filter-floating-hint">Enter applies · Esc closes</span>
-            <button type="button" class="btn-ghost p-1" title="Close the filters (Esc)" @onclick="HideFilterPanel">
-                <i class="bi bi-x-lg text-dark-text-muted"></i>
+@if (State.Results is null)
+{
+    <LogFilterCard Filter="State.Logs" CardId="logFilterCard" EditorId="advExpr"
+                   SavedQueryMenuId="logSavedQueries"
+                   Floating="@FilterPanelFloating"
+                   OnOpenSaveQuery="ShowSaveQueryDialog" OnOpenManageQueries="ShowManageQueriesDialog"
+                   OnCriteriaInput="OnCriteriaInput" OnCriteriaKeyPress="OnCriteriaKeyPress">
+        @* The bottom-edge lip that copies the filter's current result into `results`. An action,
+           not a toggle, so no aria-expanded; never on the results card, which is one level only. *@
+        @if (State.CanCollapseToResults)
+        {
+            <div class="log-source-lip" role="button" tabindex="0"
+                 title="Copy these rows into a table named results and search that"
+                 @onclick="CollapseToResults"
+                 @onkeypress="@(e => { if (e.Key == "Enter" || e.Key == " ") _ = CollapseToResults(); })">
+                <i class="bi bi-collection"></i>
+                <span>Collapse into results</span>
+            </div>
+        }
+    </LogFilterCard>
+}
+else
+{
+    <div class="modern-card log-card-compact mb-4">
+        <div class="log-source-summary">
+            <span class="log-source-summary-text"><strong>Filter:</strong> @LockedLogsFilterSummary()</span>
+            <button type="button" class="btn-secondary flex items-center space-x-2" @onclick="DiscardResults"
+                    title="Drop the results table and search logs again — your logs filter comes back as it was">
+                <i class="bi bi-x-circle"></i>
+                <span>Discard results</span>
             </button>
         </div>
-    }
-    <div class="flex items-center justify-between mb-3">
-        <label class="flex items-center space-x-2 cursor-pointer">
-            <input type="checkbox" @bind="State.AdvancedRawMode" @bind:after="OnAdvancedToggled" />
-            <span class="text-sm font-medium text-dark-text">Advanced query mode (SQL)</span>
-        </label>
-        <span class="text-xs text-dark-text-muted">@(State.AdvancedRawMode ? "Full SQL against the table named logs." : "Filters the loaded rows as you type (Enter or 500ms). Rows combine with AND / OR / NOT.")</span>
     </div>
 
-    @if (State.AdvancedRawMode)
-    {
-        <div>
-            @* data-menu-anchor for the same reason the Location picker carries one: MainLayout
-               closes the open menu on any pointerdown that lands outside one, and a click inside
-               this panel would otherwise count as outside. *@
-            <div class="log-field-head saved-query-bar relative" data-menu-anchor>
-                <label for="advExpr" class="text-sm font-medium text-dark-text">Custom SQL query</label>
-
-                @if (State.ActiveSavedQueryLabel is { } loaded)
-                {
-                    <span class="saved-query-active" title="The saved query this box was loaded from">
-                        <i class="bi bi-bookmark-fill"></i>
-                        @loaded@(State.SavedQueryIsModified ? " · edited" : "")
-                        <button type="button" class="saved-query-active-clear" @onclick="ClearSavedQuery"
-                                aria-label="Stop using this saved query (clears the box, deletes nothing)"
-                                title="Stop using this saved query (clears the box, deletes nothing)">
-                            <i class="bi bi-x"></i>
-                        </button>
-                    </span>
-                }
-
-                <div class="flex-1"></div>
-
-                <button type="button" class="saved-query-btn" @onclick="ToggleSavedQueryMenu"
-                        aria-expanded="@(SavedQueryMenuOpen ? "true" : "false")"
-                        title="Load a saved query">
-                    <i class="bi bi-bookmarks"></i>
-                    <span>Saved</span>
-                    <span class="dropdown-chevron @(SavedQueryMenuOpen ? "is-open" : null)"></span>
-                </button>
-                <button type="button" class="saved-query-btn" @onclick="OpenSaveQuery"
-                        disabled="@string.IsNullOrWhiteSpace(State.AdvancedExpression)"
-                        title="Save what is in the box">
-                    <i class="bi bi-bookmark-plus"></i>
-                    <span>Save</span>
-                </button>
-                <button type="button" class="saved-query-btn" @onclick="OpenManageQueries"
-                        title="Edit, regroup or delete saved queries">
-                    <i class="bi bi-sliders"></i>
-                    <span>Manage</span>
-                </button>
-
-                @if (SavedQueryMenuOpen)
-                {
-                    <div class="saved-query-menu">
-                        @if (State.SavedQueries.Count == 0)
-                        {
-                            <p class="saved-query-empty">
-                                Nothing saved yet. Write a query and press <strong>Save</strong>.
-                            </p>
-                        }
-                        else
-                        {
-                            @foreach (var group in State.SavedQueries.GroupBy(q => q.Group ?? "")
-                                                        .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
-                            {
-                                <div class="saved-query-menu-group">
-                                    @(string.IsNullOrWhiteSpace(group.Key) ? "Ungrouped" : group.Key)
-                                </div>
-                                @foreach (var query in group)
-                                {
-                                    <button type="button" class="saved-query-menu-item" @onclick="() => ApplySavedQuery(query)">
-                                        <span class="saved-query-menu-name">@query.Name</span>
-                                        @if (!string.IsNullOrWhiteSpace(query.Description))
-                                        {
-                                            <span class="saved-query-menu-note">@query.Description</span>
-                                        }
-                                    </button>
-                                }
-                            }
-                        }
-                    </div>
-                }
-            </div>
-
-            <SqlEditor Id="advExpr" Rows="3"
-                       Placeholder="SELECT LEFT(DateTime,4) AS Year, COUNT(*) AS Hits FROM logs GROUP BY Year"
-                       AriaLabel="Custom SQL query"
-                       Value="@State.AdvancedExpression"
-                       ValueChanged="OnAdvancedExpressionChanged"
-                       OnValueInput="OnCriteriaInput" />
-
-            <div class="text-xs text-dark-text-muted mt-1">Full SQL against the table <code>logs</code>, which holds whatever was last loaded. Sorting and keyword groups are ignored in this mode. Runs as you type (500ms) or on Enter.</div>
-        </div>
-    }
-    else
-    {
-        <div class="space-y-2">
-            @for (int i = 0; i < State.KeywordRows.Count; i++)
-            {
-                var index = i;
-                var row = State.KeywordRows[index];
-                <div class="flex items-center space-x-2">
-                    @if (index == 0)
-                    {
-                        <span class="w-20 text-xs text-dark-text-muted text-center">where</span>
-                    }
-                    else
-                    {
-                        <select class="input-modern w-20" @bind="row.Gate" @bind:after="RunLiveQueryAsync">
-                            <option value="AND">AND</option>
-                            <option value="OR">OR</option>
-                            <option value="NOT">NOT</option>
-                        </select>
-                    }
-                    <input class="input-modern flex-1" placeholder="Interchangeable terms (any match), comma-separated"
-                           @bind="row.Text" @bind:event="oninput" @bind:after="OnCriteriaInput" @onkeypress="OnCriteriaKeyPress" />
-                    <button type="button" class="btn-ghost p-2"
-                            title="@(State.KeywordRows.Count == 1 ? "Clear" : "Remove group")"
-                            @onclick="() => RemoveKeywordRow(index)"
-                            disabled="@(State.KeywordRows.Count == 1 && string.IsNullOrEmpty(row.Text))">
-                        <i class="bi bi-x-lg text-dark-text-muted"></i>
-                    </button>
-                    @if (index == State.KeywordRows.Count - 1)
-                    {
-                        <button type="button" class="btn-ghost p-2" title="Add group" @onclick="AddKeywordRow">
-                            <i class="bi bi-plus-lg text-dark-text-muted"></i>
-                        </button>
-                    }
-                </div>
-            }
-        </div>
-    }
-</div>
+    <LogFilterCard Filter="State.Results" CardId="resultsFilterCard" EditorId="resultsAdvExpr"
+                   SavedQueryMenuId="resultsSavedQueries"
+                   Floating="@FilterPanelFloating" FloatingLabel="Filters · results"
+                   OnOpenSaveQuery="ShowSaveQueryDialog" OnOpenManageQueries="ShowManageQueriesDialog"
+                   OnCriteriaInput="OnCriteriaInput" OnCriteriaKeyPress="OnCriteriaKeyPress" />
+}
 
 @if (!State.IsLoading && State.LastPrepareResult is { IsComplete: false } partial)
 {
@@ -496,6 +393,17 @@ else if (State.FilteredLogLines.Count == 0)
     <div class="modern-card text-center py-16">
         <i class="bi bi-inbox text-6xl text-dark-text-muted"></i>
         <p class="text-dark-text-muted mt-4">No logs found matching your criteria. Try adjusting your filters or date range.</p>
+        @* Discard must survive an empty results grid (F10) — the toolbar it usually lives on
+           does not render here, and a results filter that matches nothing is exactly when
+           someone wants their way back to logs. *@
+        @if (State.Results is not null)
+        {
+            <button type="button" class="btn-secondary mt-4 flex items-center space-x-2 mx-auto" @onclick="DiscardResults"
+                    title="Drop the results table and search logs again — your logs filter comes back as it was">
+                <i class="bi bi-x-circle"></i>
+                <span>Discard results</span>
+            </button>
+        }
     </div>
 }
 else
@@ -506,7 +414,15 @@ else
         <div class="log-toolbar">
             <div class="log-toolbar-group">
                 <i class="bi bi-table text-accent-blue"></i>
-                <span class="log-page-range">Showing <strong>@PageRangeStart().ToString("N0")–@PageRangeEnd().ToString("N0")</strong> of <strong>@State.TotalRecords.ToString("N0")</strong></span>
+                <span class="log-page-range"><strong>@State.CurrentTableName</strong> · Showing <strong>@PageRangeStart().ToString("N0")–@PageRangeEnd().ToString("N0")</strong> of <strong>@State.TotalRecords.ToString("N0")</strong></span>
+                @if (State.Results is not null)
+                {
+                    <button type="button" class="btn-secondary flex items-center space-x-2" @onclick="DiscardResults"
+                            title="Drop the results table and search logs again — your logs filter comes back as it was">
+                        <i class="bi bi-x-circle"></i>
+                        <span>Discard results</span>
+                    </button>
+                }
             </div>
             <div class="log-toolbar-group">
                 <div class="log-segmented" role="group" aria-label="Results view">
@@ -535,21 +451,28 @@ else
                     </div>
                 }
             </div>
-            <div class="log-toolbar-group">
-                <span class="log-toolbar-label">Split by</span>
-                <div class="log-segmented" role="group" aria-label="Split results">
-                    @foreach (var option in SplitOptions)
-                    {
-                        <button type="button"
-                                class="@(State.SplitMode == option.Mode ? "active" : null)"
-                                @onclick="() => State.SetSplitModeAsync(option.Mode)"
-                                disabled="@State.IsLoading"
-                                aria-pressed="@(State.SplitMode == option.Mode)">
-                            @option.Label
-                        </button>
-                    }
+            @* Hidden entirely, not just disabled, once the active view's own columns support no
+               split mode beyond None — a GROUP BY collapse commonly has neither Location nor
+               SourceFile, and a control that can only ever do nothing is worse than absent.
+               Kept while a split is on, so a query that drops the split column can still turn it off. *@
+            @if (State.Active.AllowedSplitModes.Count > 1 || State.SplitMode != LogSplitMode.None)
+            {
+                <div class="log-toolbar-group">
+                    <span class="log-toolbar-label">Split by</span>
+                    <div class="log-segmented" role="group" aria-label="Split results">
+                        @foreach (var option in SplitOptions.Where(o => State.Active.AllowedSplitModes.Contains(o.Mode) || o.Mode == State.SplitMode))
+                        {
+                            <button type="button"
+                                    class="@(State.SplitMode == option.Mode ? "active" : null)"
+                                    @onclick="() => State.SetSplitModeAsync(option.Mode)"
+                                    disabled="@State.IsLoading"
+                                    aria-pressed="@(State.SplitMode == option.Mode)">
+                                @option.Label
+                            </button>
+                        }
+                    </div>
                 </div>
-            </div>
+            }
             <div class="log-toolbar-group">
                 <span class="log-toolbar-label">Page size</span>
                 <select class="input-modern w-auto" @bind="State.PageSize" @bind:after="OnPageSizeChanged">
@@ -780,7 +703,7 @@ else
 
         <button type="button" class="dropdown-item" role="menuitem"
                 @onclick="OpenContextRowSource" disabled="@(!ContextRowHasSource())"
-                title="@(ContextRowHasSource() ? null : "This row has no source file recorded. Run the search again.")">
+                title="@(ContextRowHasSource() ? null : OpenInEditorDisabledReason())">
             <i class="bi bi-box-arrow-up-right"></i>
             <span>Open in editor</span>
         </button>
@@ -801,11 +724,13 @@ else
                  IsVisibleChanged="@(v => _saveQueryVisible = v)"
                  Sql="@State.AdvancedExpression"
                  Template="@State.SelectedTemplateName"
+                 Target="@State.Active.SavedQueryTarget"
                  Existing="State.ActiveSavedQuery"
                  OnSaved="OnQuerySaved" />
 
 <SavedQueriesDialog IsVisible="_manageQueriesVisible"
                     IsVisibleChanged="@(v => _manageQueriesVisible = v)"
+                    Target="@State.Active.SavedQueryTarget"
                     InitialSelectionId="@State.ActiveSavedQuery?.Id"
                     OnChanged="State.LoadSavedQueriesAsync"
                     OnRun="ApplySavedQuery" />
@@ -813,60 +738,18 @@ else
 @code {
 
     // --- saved queries ---
-
-    /// <summary>
-    /// Identifies the saved-query picker to <see cref="MenuStateService"/> — the same one menu
-    /// at a time the Location dropdown uses, which is what buys click-outside dismissal.
-    /// </summary>
-    private const string SavedQueryMenuId = "logSavedQueries";
-
-    private bool SavedQueryMenuOpen => Menu.IsOpen(SavedQueryMenuId);
+    // Loading, applying and the per-card menu now live in LogFilterCard, one instance per table.
+    // What is left here is the pair of dialogs shared across both cards (D1) — bound to whichever
+    // table is Active — and the "Load & run" callback the picker dialog raises directly.
 
     private bool _saveQueryVisible;
     private bool _manageQueriesVisible;
 
-    /// <summary>
-    /// Opens or closes the picker, re-reading the list on the way open. Read here rather than
-    /// once at startup because <c>saved_queries.yaml</c> is meant to be hand-editable, and this
-    /// is the exact moment the list is about to be looked at.
-    /// </summary>
-    private async Task ToggleSavedQueryMenu()
-    {
-        var opening = !SavedQueryMenuOpen;
-        Menu.Toggle(SavedQueryMenuId);
-        if (opening) await State.LoadSavedQueriesAsync();
-    }
+    private void ShowSaveQueryDialog() => _saveQueryVisible = true;
 
-    /// <summary>
-    /// Typing in the SQL box. Only the value is set here — the 500ms debounce that actually
-    /// re-queries is <see cref="OnCriteriaInput"/>, wired to the editor's OnValueInput.
-    /// </summary>
-    private void OnAdvancedExpressionChanged(string sql) => State.AdvancedExpression = sql;
+    private void ShowManageQueriesDialog() => _manageQueriesVisible = true;
 
-    private async Task ApplySavedQuery(SavedQuery query)
-    {
-        Menu.Close();
-        await State.ApplySavedQueryAsync(query);
-    }
-
-    private async Task ClearSavedQuery() => await State.ClearSavedQueryAsync();
-
-    private void OpenSaveQuery()
-    {
-        Menu.Close();
-        _saveQueryVisible = true;
-    }
-
-    private async Task OpenManageQueries()
-    {
-        Menu.Close();
-
-        // Re-read first: the dialog lists from its own load, but the picker behind it is
-        // whatever was read last, and the two disagreeing is the sort of thing that looks
-        // like a lost save.
-        await State.LoadSavedQueriesAsync();
-        _manageQueriesVisible = true;
-    }
+    private async Task ApplySavedQuery(SavedQuery query) => await State.ApplySavedQueryAsync(query);
 
     /// <summary>
     /// A save landed. The box now holds exactly this query, so the "edited" marker goes away and
@@ -935,8 +818,6 @@ else
         State.FilterOverlayVisible = !State.FilterOverlayVisible;
         _focusFilterPending = State.FilterOverlayVisible;
     }
-
-    private void HideFilterPanel() => State.FilterOverlayVisible = false;
 
     /// <summary>
     /// Ctrl+F, from the document keydown listener; see wwwroot/js/logTools.js. It
@@ -1037,6 +918,12 @@ else
 
     private bool ContextRowHasSource() =>
         _contextRow is { } row && !string.IsNullOrWhiteSpace(row.GetValueOrDefault(DbLogService.SourcePathColumn, ""));
+
+    /// <summary>Why "Open in editor" is disabled — different reasons on `logs` (run it again) and
+    /// on `results` (the collapse that made these rows did not keep the column).</summary>
+    private string OpenInEditorDisabledReason() => State.Results is not null
+        ? "The query that made these rows did not keep SourcePath."
+        : "This row has no source file recorded. Run the search again.";
 
     private async Task OpenContextRowSource()
     {
@@ -1296,13 +1183,33 @@ else
         }
     }
 
-    private async Task OnAdvancedToggled() => await State.OnAdvancedToggledAsync();
-
-    private async Task RunLiveQueryAsync() => await State.RunLiveQueryAsync();
-
     private async Task Search() => await State.SearchAsync();
 
     private void CancelSearch() => State.CancelSearch();
+
+    // --- collapse into results ---
+
+    private async Task CollapseToResults() => await State.CollapseToResultsAsync();
+
+    private async Task DiscardResults() => await State.DiscardResultsAsync();
+
+    /// <summary>The locked logs line's text: "where checkout, cart AND error · Location: Web01 → 1,234 rows".</summary>
+    private string LockedLogsFilterSummary()
+    {
+        var logs = State.Logs;
+        string? tabLabel = null;
+        if (logs.SplitMode != LogSplitMode.None && logs.ActiveTab is { Value: not null } tab)
+        {
+            var splitName = logs.SplitMode == LogSplitMode.Location ? "Location" : "File";
+            tabLabel = $"{splitName}: {tab.Label}";
+        }
+
+        return LogFilterSummary.Describe(
+            logs.TableName, LogSearchStateService.BuildCriteria(logs), logs.ActiveSavedQueryLabel, tabLabel, logs.TotalRecords);
+    }
+
+    /// <summary>Which filter card Ctrl+F should raise and focus — the only one that is ever unlocked.</summary>
+    private string ActiveFilterCardId => State.Results is null ? "logFilterCard" : "resultsFilterCard";
 
     /// <summary>
     /// The Split by choices. "File" rather than "Source file" only because the
@@ -1455,10 +1362,6 @@ else
     private async Task SortByColumn(string column, bool append) =>
         await State.SortByColumnAsync(column, append);
 
-    private async Task AddKeywordRow() => await State.AddKeywordRowAsync();
-
-    private async Task RemoveKeywordRow(int index) => await State.RemoveKeywordRowAsync(index);
-
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
@@ -1480,7 +1383,7 @@ else
             _focusFilterPending = false;
             try
             {
-                await JS.InvokeVoidAsync("logTools.focusFilter");
+                await JS.InvokeVoidAsync("logTools.focusFilter", ActiveFilterCardId);
             }
             catch (JSException)
             {

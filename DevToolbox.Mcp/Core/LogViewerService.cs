@@ -402,10 +402,15 @@ public sealed class LogViewerService
 
     internal async Task<SavedQueriesResult> ListSavedQueriesAsync()
     {
+        // Logs-target only: a results query names a table (`results`) that exists only inside the
+        // app's own SQLite file for the lifetime of one collapsed filter, never in the MCP's own
+        // per-process database (see McpLogDatabase) — listing one here would be a query nothing an
+        // agent runs can ever satisfy.
         var all = await _savedQueries.GetAllAsync();
-        var groups = await _savedQueries.GetGroupsAsync();
+        var logsOnly = all.Where(q => SavedQueryTargets.IsFor(q, SavedQueryTargets.Logs)).ToList();
+        var groups = await _savedQueries.GetGroupsAsync(SavedQueryTargets.Logs);
 
-        return new SavedQueriesResult(all.Select(Describe).ToList(), groups);
+        return new SavedQueriesResult(logsOnly.Select(Describe).ToList(), groups);
     }
 
     /// <summary>

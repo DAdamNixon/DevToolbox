@@ -30,11 +30,16 @@ public interface ISavedQueryService
     /// <summary>Removes the query. A id that is not there is not an error — it is already gone.</summary>
     Task<bool> DeleteAsync(string id);
 
-    /// <summary>The distinct group names in use, ordered, excluding the ungrouped empty one.</summary>
-    Task<List<string>> GetGroupsAsync();
+    /// <summary>
+    /// The distinct group names in use, ordered, excluding the ungrouped empty one. Scoped to
+    /// <paramref name="target"/> when given — null means <see cref="SavedQueryTargets.Logs"/>, same
+    /// as everywhere else this field is read.
+    /// </summary>
+    Task<List<string>> GetGroupsAsync(string? target = null);
 
     /// <summary>
-    /// Renames a group across every query in it.
+    /// Renames a group across every query in it, scoped to <paramref name="target"/> when given so
+    /// a rename on one card's picker cannot move the other's queries.
     /// <para>
     /// Here rather than in the dialog because the group is denormalised onto each row: done
     /// anywhere else it is an N-row rewrite reimplemented per caller, and a half-applied one
@@ -42,5 +47,5 @@ public interface ISavedQueryService
     /// </para>
     /// </summary>
     /// <returns>How many queries moved.</returns>
-    Task<int> RenameGroupAsync(string from, string to);
+    Task<int> RenameGroupAsync(string from, string to, string? target = null);
 }

@@ -227,6 +227,83 @@ namespace DevToolbox.Services.Services
             await tx.CommitAsync();
         }
 
+        /// <summary>
+        /// Builds the keyword-mode WHERE and ORDER BY for <paramref name="tableName"/>: filters,
+        /// free-text search and structured criteria into one predicate, bound as parameters, plus
+        /// the resolved sort. Shared by <see cref="SearchLogsAsync"/> and
+        /// <see cref="CreateTableFromQueryAsync"/> so a keyword collapse can never disagree with
+        /// what the grid showed.
+        /// </summary>
+        private async Task<(List<string> Columns, string WhereSql, string OrderBySql, List<SqliteParameter> Parameters)>
+            BuildKeywordQueryAsync(string tableName, LogQuery query)
+        {
+            var parameters = new List<SqliteParameter>();
+            var filters = query.Filters ?? new();
+            var searchTerm = query.SearchTerm;
+
+            // Physical columns (used only to build the WHERE predicate).
+            List<string> columns;
+            using (var conn = GetConnection())
+            {
+                await conn.OpenAsync();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"PRAGMA table_info([{tableName}]);";
+                using var reader = await cmd.ExecuteReaderAsync();
+                columns = new();
+                while (await reader.ReadAsync())
+                    columns.Add(reader.GetString(1));
+            }
+
+            var where = new List<string>();
+
+            foreach (var filter in filters)
+            {
+                where.Add($"[{filter.Key}] = @{filter.Key}");
+                parameters.Add(new SqliteParameter($"@{filter.Key}", filter.Value ?? DBNull.Value));
+            }
+
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+            {
+                var searchClauses = columns.Select(col => $"[{col}] LIKE @searchTerm").ToList();
+                where.Add("(" + string.Join(" OR ", searchClauses) + ")");
+                parameters.Add(new SqliteParameter("@searchTerm", $"%{searchTerm}%"));
+            }
+
+            if (query.Criteria != null)
+            {
+                var criteriaSql = LogCriteriaTranslator.Build(query.Criteria, columns, parameters);
+                if (!string.IsNullOrEmpty(criteriaSql))
+                    where.Add(criteriaSql);
+            }
+
+            var whereSql = where.Any() ? "WHERE " + string.Join(" AND ", where) : "";
+
+            string orderBySql;
+            if (query.Sort != null && query.Sort.Any(s => !string.IsNullOrWhiteSpace(s.Column) && columns.Contains(s.Column)))
+            {
+                var orderClauses = query.Sort
+                    .Where(s => !string.IsNullOrWhiteSpace(s.Column) && columns.Contains(s.Column))
+                    .Select(s =>
+                    {
+                        var dir = s.Direction?.ToLower() == "desc" ? "DESC" : "ASC";
+                        // Sequence stores a line number; sort it numerically, not lexically ("10" vs "2").
+                        var expr = string.Equals(s.Column, "Sequence", StringComparison.OrdinalIgnoreCase)
+                            ? $"CAST([{s.Column}] AS INTEGER)"
+                            : $"[{s.Column}]";
+                        return $"{expr} {dir}";
+                    });
+                orderBySql = "ORDER BY " + string.Join(", ", orderClauses);
+            }
+            else
+            {
+                // A3: a materialized results table reads back in the order it was collapsed,
+                // instead of the newest-first default every other table opens with.
+                orderBySql = query.InsertionOrder ? "ORDER BY rowid ASC" : "ORDER BY rowid DESC";
+            }
+
+            return (columns, whereSql, orderBySql, parameters);
+        }
+
         public async Task<(IEnumerable<Dictionary<string, string>> Results, int TotalCount)> SearchLogsAsync(string tableName, LogQuery query)
         {
             var page = query.Page ?? 0;
@@ -241,8 +318,22 @@ namespace DevToolbox.Services.Services
             {
                 // Full custom SELECT: run as a subquery so count/paging stay correct; columns come from the reader.
                 var inner = query.RawQuery!.Trim().TrimEnd(';').Trim();
-                countSql = $"SELECT COUNT(*) FROM ({inner})";
-                var sb = new StringBuilder($"SELECT * FROM ({inner})");
+
+                // The active split tab, if any. The column is whitelisted rather than trusted,
+                // because it reaches SQL as an identifier, not a parameter.
+                var tabWhere = "";
+                var filters = query.Filters;
+                if (filters is { Count: > 0 })
+                {
+                    var filter = filters.First();
+                    if (!LogSplitColumns.IsAllowed(filter.Key))
+                        throw new ArgumentException($"'{filter.Key}' is not a groupable column.");
+                    tabWhere = $" WHERE [{filter.Key}] = @{filter.Key}";
+                    parameters.Add(new SqliteParameter($"@{filter.Key}", filter.Value ?? DBNull.Value));
+                }
+
+                countSql = $"SELECT COUNT(*) FROM ({inner}){tabWhere}";
+                var sb = new StringBuilder($"SELECT * FROM ({inner}){tabWhere}");
                 if (usePaging)
                 {
                     sb.Append(" LIMIT @limit OFFSET @offset");
@@ -253,66 +344,8 @@ namespace DevToolbox.Services.Services
             }
             else
             {
-                var filters = query.Filters ?? new();
-                var searchTerm = query.SearchTerm;
-
-                // Physical columns (used only to build the WHERE predicate).
-                List<string> columns;
-                using (var conn = GetConnection())
-                {
-                    await conn.OpenAsync();
-                    using var cmd = conn.CreateCommand();
-                    cmd.CommandText = $"PRAGMA table_info([{tableName}]);";
-                    using var reader = await cmd.ExecuteReaderAsync();
-                    columns = new();
-                    while (await reader.ReadAsync())
-                        columns.Add(reader.GetString(1));
-                }
-
-                var where = new List<string>();
-
-                foreach (var filter in filters)
-                {
-                    where.Add($"[{filter.Key}] = @{filter.Key}");
-                    parameters.Add(new SqliteParameter($"@{filter.Key}", filter.Value ?? DBNull.Value));
-                }
-
-                if (!string.IsNullOrWhiteSpace(searchTerm))
-                {
-                    var searchClauses = columns.Select(col => $"[{col}] LIKE @searchTerm").ToList();
-                    where.Add("(" + string.Join(" OR ", searchClauses) + ")");
-                    parameters.Add(new SqliteParameter("@searchTerm", $"%{searchTerm}%"));
-                }
-
-                if (query.Criteria != null)
-                {
-                    var criteriaSql = LogCriteriaTranslator.Build(query.Criteria, columns, parameters);
-                    if (!string.IsNullOrEmpty(criteriaSql))
-                        where.Add(criteriaSql);
-                }
-
-                var whereSql = where.Any() ? "WHERE " + string.Join(" AND ", where) : "";
-
-                string orderBySql;
-                if (query.Sort != null && query.Sort.Any(s => !string.IsNullOrWhiteSpace(s.Column) && columns.Contains(s.Column)))
-                {
-                    var orderClauses = query.Sort
-                        .Where(s => !string.IsNullOrWhiteSpace(s.Column) && columns.Contains(s.Column))
-                        .Select(s =>
-                        {
-                            var dir = s.Direction?.ToLower() == "desc" ? "DESC" : "ASC";
-                            // Sequence stores a line number; sort it numerically, not lexically ("10" vs "2").
-                            var expr = string.Equals(s.Column, "Sequence", StringComparison.OrdinalIgnoreCase)
-                                ? $"CAST([{s.Column}] AS INTEGER)"
-                                : $"[{s.Column}]";
-                            return $"{expr} {dir}";
-                        });
-                    orderBySql = "ORDER BY " + string.Join(", ", orderClauses);
-                }
-                else
-                {
-                    orderBySql = "ORDER BY rowid DESC";
-                }
+                var (columns, whereSql, orderBySql, builtParams) = await BuildKeywordQueryAsync(tableName, query);
+                parameters.AddRange(builtParams);
 
                 countSql = $"SELECT COUNT(*) FROM [{tableName}] {whereSql};";
 
@@ -390,6 +423,87 @@ namespace DevToolbox.Services.Services
             cmd.CommandText = $"DELETE FROM [{tableName}] WHERE [{column}] = @value;";
             cmd.Parameters.AddWithValue("@value", value);
             await cmd.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        public async Task<(int Rows, List<string> Columns)> CreateTableFromQueryAsync(
+            string source, string target, LogQuery query, CancellationToken cancellationToken = default)
+        {
+            GuardWritable(nameof(CreateTableFromQueryAsync));
+
+            if (string.IsNullOrWhiteSpace(target))
+                throw new ArgumentException("A target table name is required.", nameof(target));
+
+            var parameters = new List<SqliteParameter>();
+            string selectSql;
+
+            if (!string.IsNullOrWhiteSpace(query.RawQuery))
+            {
+                // Same subquery-plus-tab shape as SearchLogsAsync, minus paging: this is the whole
+                // result, not one page of it, and the inner query's own order (or lack of one)
+                // decides — never an outer ORDER BY of ours.
+                var inner = query.RawQuery!.Trim().TrimEnd(';').Trim();
+                var tabWhere = "";
+                var filters = query.Filters;
+                if (filters is { Count: > 0 })
+                {
+                    var filter = filters.First();
+                    if (!LogSplitColumns.IsAllowed(filter.Key))
+                        throw new ArgumentException($"'{filter.Key}' is not a groupable column.");
+                    tabWhere = $" WHERE [{filter.Key}] = @{filter.Key}";
+                    parameters.Add(new SqliteParameter($"@{filter.Key}", filter.Value ?? DBNull.Value));
+                }
+                selectSql = $"SELECT * FROM ({inner}){tabWhere}";
+            }
+            else
+            {
+                var (_, whereSql, orderBySql, builtParams) = await BuildKeywordQueryAsync(source, query);
+                parameters.AddRange(builtParams);
+                selectSql = $"SELECT * FROM [{source}] {whereSql} {orderBySql}";
+            }
+
+            using var conn = GetConnection();
+            await conn.OpenAsync(cancellationToken);
+
+            using (var dropCmd = conn.CreateCommand())
+            {
+                dropCmd.CommandText = $"DROP TABLE IF EXISTS [{target}];";
+                await dropCmd.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            using (var ctasCmd = conn.CreateCommand())
+            {
+                ctasCmd.CommandText = $"CREATE TABLE [{target}] AS {selectSql};";
+                ctasCmd.Parameters.AddRange(parameters.ToArray());
+                await ctasCmd.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            var columns = await GetColumnNamesAsync(target, cancellationToken);
+
+            // ']' would break the [name] quoting every later query on this table uses — refuse
+            // rather than hand back a table nothing can safely read.
+            var badColumn = columns.FirstOrDefault(c => c.Contains(']'));
+            if (badColumn is not null)
+            {
+                using var dropBad = conn.CreateCommand();
+                dropBad.CommandText = $"DROP TABLE IF EXISTS [{target}];";
+                await dropBad.ExecuteNonQueryAsync(cancellationToken);
+                throw new InvalidOperationException(
+                    $"Column '{badColumn}' cannot be collapsed into a table — rename it with AS in the SELECT.");
+            }
+
+            foreach (var column in columns.Where(LogSplitColumns.IsAllowed))
+            {
+                using var indexCmd = conn.CreateCommand();
+                indexCmd.CommandText =
+                    $"CREATE INDEX IF NOT EXISTS [ix_{target}_{column}] ON [{target}] ([{column}]);";
+                await indexCmd.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            using var countCmd = conn.CreateCommand();
+            countCmd.CommandText = $"SELECT COUNT(*) FROM [{target}];";
+            var rows = Convert.ToInt32(await countCmd.ExecuteScalarAsync(cancellationToken));
+
+            return (rows, columns);
         }
     }
 }

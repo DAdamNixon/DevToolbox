@@ -31,6 +31,20 @@ namespace DevToolbox.Services.Interfaces
         Task DropTableAsync(string tableName);
 
         /// <summary>
+        /// Materializes <paramref name="query"/>'s result against <paramref name="source"/> into a
+        /// new table <paramref name="target"/> (dropped first if it already exists) — the Log
+        /// Viewer's "collapse into results". Keyword mode reuses the same WHERE/ORDER builder as
+        /// <see cref="SearchLogsAsync"/>, so the copy can never disagree with what the grid showed;
+        /// SQL mode wraps <see cref="LogQuery.RawQuery"/> and applies the split tab exactly as
+        /// <see cref="SearchLogsAsync"/> does. Refused, with the table dropped again and nothing left
+        /// behind, if a resulting column name contains <c>]</c> — that would break the <c>[name]</c>
+        /// quoting every later query on the table uses.
+        /// </summary>
+        /// <returns>The row count and column names of the new table.</returns>
+        Task<(int Rows, List<string> Columns)> CreateTableFromQueryAsync(
+            string source, string target, LogQuery query, CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Deletes every row whose <paramref name="column"/> equals <paramref name="value"/> — the
         /// row-leak guard's purge (D4): a skipped file must contribute zero rows, including ones it
         /// already committed before the skip was noticed.

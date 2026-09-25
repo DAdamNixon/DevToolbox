@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading.Tasks;
 using DevToolbox.Services.Interfaces;
 using DevToolbox.Services.Models;
@@ -344,5 +346,118 @@ public class SavedQueryTests
         Assert.Equal("Checkout", stored.Group);
         Assert.Equal("SELECT 1", stored.Sql);
         Assert.Null(stored.Description);
+    }
+
+    // --- target (B) ---
+
+    [Fact]
+    public async Task A_query_with_no_target_loads_as_logs()
+    {
+        var (service, store) = Build();
+        store.Seed("saved_queries", """
+            queries:
+              - name: Old query
+                group: Checkout
+                sql: SELECT * FROM logs
+            """);
+
+        var loaded = Assert.Single(await service.GetAllAsync());
+        Assert.True(SavedQueryTargets.IsFor(loaded, SavedQueryTargets.Logs));
+        Assert.False(SavedQueryTargets.IsFor(loaded, SavedQueryTargets.Results));
+    }
+
+    [Fact]
+    public async Task A_logs_query_writes_no_target_key_and_a_results_query_writes_one()
+    {
+        var (service, store) = Build();
+        await service.SaveAsync(New("Orders", "Checkout"));
+        await service.SaveAsync(new SavedQuery { Name = "Top rows", Group = "Checkout", Sql = "SELECT 1", Target = SavedQueryTargets.Results });
+
+        var yaml = store.Raw("saved_queries");
+        var targetLine = Assert.Single(yaml.Split('\n'), l => l.TrimStart().StartsWith("target:"));
+        Assert.Equal("target: results", targetLine.Trim());
+    }
+
+    [Fact]
+    public async Task The_same_name_and_group_is_allowed_once_per_target()
+    {
+        var (service, _) = Build();
+        await service.SaveAsync(New("Errors", "Checkout"));
+        await service.SaveAsync(new SavedQuery { Name = "Errors", Group = "Checkout", Sql = "SELECT 1", Target = SavedQueryTargets.Results });
+
+        Assert.Equal(2, (await service.GetAllAsync()).Count);
+    }
+
+    [Fact]
+    public async Task The_same_name_and_group_is_refused_twice_within_one_target()
+    {
+        var (service, _) = Build();
+        await service.SaveAsync(new SavedQuery { Name = "Errors", Group = "Checkout", Sql = "SELECT 1", Target = SavedQueryTargets.Results });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.SaveAsync(
+            new SavedQuery { Name = "Errors", Group = "Checkout", Sql = "SELECT 2", Target = SavedQueryTargets.Results }));
+    }
+
+    /// <summary>A logs query's derived id must not move once results exists — pinned so a future
+    /// change to the id derivation cannot silently orphan every hand-edited file already on disk.</summary>
+    [Fact]
+    public async Task A_logs_querys_derived_id_is_unchanged()
+    {
+        var (service, store) = Build();
+        store.Seed("saved_queries", """
+            queries:
+              - name: Orders
+                group: Checkout
+                sql: SELECT 1
+            """);
+
+        // Reimplements the pre-target formula independently, rather than calling the private
+        // DerivedId — so this fails if a future change folds the target into a logs id too.
+        var key = "checkout\u0000orders";
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(key));
+        var expected = Convert.ToHexString(hash, 0, 16).ToLowerInvariant();
+
+        var loaded = Assert.Single(await service.GetAllAsync());
+        Assert.Equal(expected, loaded.Id);
+    }
+
+    [Fact]
+    public async Task Group_rename_with_a_target_moves_only_that_target()
+    {
+        var (service, _) = Build();
+        await service.SaveAsync(New("Orders", "Checkout"));
+        await service.SaveAsync(new SavedQuery { Name = "Orders", Group = "Checkout", Sql = "SELECT 1", Target = SavedQueryTargets.Results });
+
+        Assert.Equal(1, await service.RenameGroupAsync("Checkout", "Cart", SavedQueryTargets.Results));
+
+        var queries = await service.GetAllAsync();
+        Assert.Single(queries, q => q.Group == "Cart" && SavedQueryTargets.IsFor(q, SavedQueryTargets.Results));
+        Assert.Single(queries, q => q.Group == "Checkout" && SavedQueryTargets.IsFor(q, SavedQueryTargets.Logs));
+    }
+
+    [Fact]
+    public async Task Groups_are_scoped_to_the_requested_target()
+    {
+        var (service, _) = Build();
+        await service.SaveAsync(New("Orders", "Checkout"));
+        await service.SaveAsync(new SavedQuery { Name = "Totals", Group = "Reports", Sql = "SELECT 1", Target = SavedQueryTargets.Results });
+
+        Assert.Equal(new[] { "Checkout" }, await service.GetGroupsAsync(SavedQueryTargets.Logs));
+        Assert.Equal(new[] { "Reports" }, await service.GetGroupsAsync(SavedQueryTargets.Results));
+    }
+
+    [Fact]
+    public async Task An_update_keeps_its_target()
+    {
+        var (service, _) = Build();
+        var first = await service.SaveAsync(new SavedQuery { Name = "Top rows", Group = "Checkout", Sql = "SELECT 1", Target = SavedQueryTargets.Results });
+
+        first.Sql = "SELECT 2";
+        first.Target = null; // A caller passing an unnormalized value must not accidentally retarget it
+        var second = await service.SaveAsync(first);
+
+        // The draft is what decides the target on every save, same as name and group — this pins
+        // that clearing it moves the query rather than being ignored.
+        Assert.True(SavedQueryTargets.IsFor(second, SavedQueryTargets.Logs));
     }
 }

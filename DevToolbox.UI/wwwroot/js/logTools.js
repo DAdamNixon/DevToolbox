@@ -112,8 +112,12 @@ window.logTools.showFileList = function (inputId) {
 //
 // Caret at the end rather than a select-all: unlike a browser's find box this
 // holds a filter the user built up, and one keystroke should not wipe it.
-window.logTools.focusFilter = function () {
-    const card = document.getElementById('logFilterCard');
+//
+// Takes the card's id rather than assuming 'logFilterCard': once a collapse
+// exists the results card is the interactive one and the logs card is a locked
+// one-line summary with nothing to focus.
+window.logTools.focusFilter = function (cardId) {
+    const card = document.getElementById(cardId || 'logFilterCard');
     if (!card) { return; }
 
     // The keyword boxes carry no type attribute; the advanced-mode box is a

@@ -99,6 +99,11 @@
     /// <summary>The log template the query was written against, recorded as a hint.</summary>
     [Parameter] public string? Template { get; set; }
 
+    /// <summary>Which filter card this save is for — <see cref="SavedQueryTargets.Logs"/> or
+    /// <see cref="SavedQueryTargets.Results"/>. Stamped onto the saved query and scopes the group
+    /// suggestions and the uniqueness check to this card's own list.</summary>
+    [Parameter] public string Target { get; set; } = SavedQueryTargets.Logs;
+
     /// <summary>The saved query the box was loaded from, if any. Enables the update option.</summary>
     [Parameter] public SavedQuery? Existing { get; set; }
 
@@ -138,7 +143,7 @@
 
         try
         {
-            _groups = await SavedQueries.GetGroupsAsync();
+            _groups = await SavedQueries.GetGroupsAsync(Target);
         }
         catch (InvalidOperationException ex)
         {
@@ -170,7 +175,8 @@
             Group = _group,
             Sql = Sql,
             Description = _description,
-            Template = Template
+            Template = Template,
+            Target = Target
         };
 
         try

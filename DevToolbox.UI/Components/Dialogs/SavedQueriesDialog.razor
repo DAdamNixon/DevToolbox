@@ -138,7 +138,11 @@
                                        Value="@_draft.Sql" ValueChanged="OnSqlChanged" />
                         </div>
 
-                        @if (!string.IsNullOrWhiteSpace(_draft.Template))
+                        @if (SavedQueryTargets.IsFor(_draft, SavedQueryTargets.Results))
+                        {
+                            <p class="log-config-hint">Written for the results table.</p>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(_draft.Template))
                         {
                             <p class="log-config-hint">
                                 Written against the <strong>@_draft.Template</strong> template. It will still run
@@ -193,6 +197,11 @@
     /// <summary>The id the caller wants selected when the dialog opens — usually the loaded query.</summary>
     [Parameter] public string? InitialSelectionId { get; set; }
 
+    /// <summary>Which filter card this picker manages — <see cref="SavedQueryTargets.Logs"/> or
+    /// <see cref="SavedQueryTargets.Results"/>. The list, group suggestions and group rename all
+    /// scope to it, so one card's Manage can never touch the other's queries.</summary>
+    [Parameter] public string Target { get; set; } = SavedQueryTargets.Logs;
+
     private List<SavedQuery> _queries = new();
 
     // A copy, never the stored instance: editing the list's own object would show every
@@ -239,7 +248,8 @@
     {
         try
         {
-            _queries = await SavedQueries.GetAllAsync();
+            var all = await SavedQueries.GetAllAsync();
+            _queries = all.Where(q => SavedQueryTargets.IsFor(q, Target)).ToList();
         }
         catch (InvalidOperationException ex)
         {
@@ -262,6 +272,7 @@
         Sql = source.Sql,
         Description = source.Description,
         Template = source.Template,
+        Target = source.Target,
         UpdatedUtc = source.UpdatedUtc
     };
 
@@ -386,7 +397,7 @@
         _error = null;
         try
         {
-            await SavedQueries.RenameGroupAsync(_renamingGroup, _renamedGroupTo);
+            await SavedQueries.RenameGroupAsync(_renamingGroup, _renamedGroupTo, Target);
             await ReloadAsync();
 
             // The draft carries the old group name and would write it straight back on the next

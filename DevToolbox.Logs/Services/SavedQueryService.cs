@@ -38,7 +38,7 @@ public class SavedQueryService : ISavedQueryService
         // Filling one in on read keeps the query usable, and it becomes a real stored id the next
         // time anything saves.
         foreach (var query in queries.Where(q => string.IsNullOrWhiteSpace(q.Id)))
-            query.Id = DerivedId(query.Group, query.Name);
+            query.Id = DerivedId(query.Group, query.Name, query.Target);
 
         return Sorted(queries);
     }
@@ -56,6 +56,7 @@ public class SavedQueryService : ISavedQueryService
             throw new ArgumentException("There is no SQL to save.", nameof(query));
 
         var group = (query.Group ?? "").Trim();
+        var target = SavedQueryTargets.Normalize(query.Target);
         var queries = await GetAllAsync();
 
         var existing = string.IsNullOrWhiteSpace(query.Id)
@@ -63,6 +64,7 @@ public class SavedQueryService : ISavedQueryService
             : queries.FirstOrDefault(q => q.Id == query.Id);
 
         if (queries.Any(q => q != existing
+                             && NameOrder.Equals(SavedQueryTargets.Normalize(q.Target), target)
                              && NameOrder.Equals(q.Group, group)
                              && NameOrder.Equals(q.Name, name)))
         {
@@ -76,6 +78,7 @@ public class SavedQueryService : ISavedQueryService
         stored.Sql = sql;
         stored.Description = string.IsNullOrWhiteSpace(query.Description) ? null : query.Description.Trim();
         stored.Template = string.IsNullOrWhiteSpace(query.Template) ? null : query.Template.Trim();
+        stored.Target = target;
         stored.UpdatedUtc = DateTime.UtcNow;
 
         if (existing is null) queries.Add(stored);
@@ -96,10 +99,12 @@ public class SavedQueryService : ISavedQueryService
         return true;
     }
 
-    public async Task<List<string>> GetGroupsAsync()
+    public async Task<List<string>> GetGroupsAsync(string? target = null)
     {
         var queries = await GetAllAsync();
+        var scope = SavedQueryTargets.Normalize(target);
         return queries
+            .Where(q => NameOrder.Equals(SavedQueryTargets.Normalize(q.Target), scope))
             .Select(q => (q.Group ?? "").Trim())
             .Where(g => g.Length > 0)
             .Distinct(NameOrder)
@@ -107,31 +112,35 @@ public class SavedQueryService : ISavedQueryService
             .ToList();
     }
 
-    public async Task<int> RenameGroupAsync(string from, string to)
+    public async Task<int> RenameGroupAsync(string from, string to, string? target = null)
     {
         var source = (from ?? "").Trim();
-        var target = (to ?? "").Trim();
-        if (NameOrder.Equals(source, target)) return 0;
+        var dest = (to ?? "").Trim();
+        if (NameOrder.Equals(source, dest)) return 0;
 
+        var scope = SavedQueryTargets.Normalize(target);
         var queries = await GetAllAsync();
-        var moving = queries.Where(q => NameOrder.Equals((q.Group ?? "").Trim(), source)).ToList();
+        var moving = queries.Where(q =>
+            NameOrder.Equals(SavedQueryTargets.Normalize(q.Target), scope) &&
+            NameOrder.Equals((q.Group ?? "").Trim(), source)).ToList();
         if (moving.Count == 0) return 0;
 
         // Renaming onto an existing group merges the two, so the same collision that blocks a save
         // has to be checked here as well — otherwise the merge is how you end up with two rows the
-        // picker draws identically.
-        var staying = queries.Except(moving).ToList();
+        // picker draws identically. Scoped the same way: a rename on one card's picker can only
+        // collide with queries the same picker would ever show.
+        var staying = queries.Except(moving).Where(q => NameOrder.Equals(SavedQueryTargets.Normalize(q.Target), scope)).ToList();
         var clash = moving.FirstOrDefault(m => staying.Any(s =>
-            NameOrder.Equals((s.Group ?? "").Trim(), target) && NameOrder.Equals(s.Name, m.Name)));
+            NameOrder.Equals((s.Group ?? "").Trim(), dest) && NameOrder.Equals(s.Name, m.Name)));
 
         if (clash is not null)
         {
-            var where = target.Length == 0 ? "the ungrouped queries" : $"'{target}'";
+            var where = dest.Length == 0 ? "the ungrouped queries" : $"'{dest}'";
             throw new InvalidOperationException(
                 $"'{clash.Name}' cannot move to {where} — a query of that name is already there.");
         }
 
-        foreach (var query in moving) query.Group = target;
+        foreach (var query in moving) query.Group = dest;
 
         await WriteAsync(queries);
         return moving.Count;
@@ -163,10 +172,17 @@ public class SavedQueryService : ISavedQueryService
     /// then refuse itself as a duplicate name. Caught by
     /// <c>A_hand_written_query_with_no_id_still_loads_and_gets_one</c>.
     /// </para>
+    /// <para>
+    /// <paramref name="target"/> only enters the key for <see cref="SavedQueryTargets.Results"/> —
+    /// every id derived before that target existed is a logs id, and this keeps every one of them
+    /// exactly what it already was.
+    /// </para>
     /// </summary>
-    private static string DerivedId(string? group, string? name)
+    private static string DerivedId(string? group, string? name, string? target = null)
     {
-        var key = $"{(group ?? "").Trim().ToLowerInvariant()}\u0000{(name ?? "").Trim().ToLowerInvariant()}";
+        var normalizedTarget = SavedQueryTargets.Normalize(target);
+        var targetPart = normalizedTarget is null ? "" : $"\u0000{normalizedTarget}";
+        var key = $"{(group ?? "").Trim().ToLowerInvariant()}\u0000{(name ?? "").Trim().ToLowerInvariant()}{targetPart}";
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(key));
         return Convert.ToHexString(hash, 0, 16).ToLowerInvariant();
     }

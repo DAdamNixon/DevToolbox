@@ -44,9 +44,32 @@ public sealed class LogSearchStateService : IDisposable
     /// </summary>
     public string? LocationTemplateHint { get; set; }
 
-    // --- search results ---
-    public List<Dictionary<string, string>> FilteredLogLines { get; set; } = new();
-    public List<string> TableColumns { get; set; } = new();
+    // --- the two table views ---
+
+    /// <summary>The always-present view over the ingested <c>logs</c> table.</summary>
+    public LogFilterState Logs { get; } = new()
+    {
+        TableName = DbLogService.DefaultTableName,
+        SavedQueryTarget = SavedQueryTargets.Logs
+    };
+
+    /// <summary>
+    /// The view over the collapsed <c>results</c> table, or null when nothing has been collapsed
+    /// (or it has since been discarded). Its existence is what locks the logs filter card.
+    /// </summary>
+    public LogFilterState? Results { get; private set; }
+
+    /// <summary>
+    /// Whichever view the user can currently type into: <see cref="Results"/> once it exists,
+    /// otherwise <see cref="Logs"/>. Every interactive member below — sorting, paging, split,
+    /// saved queries, the keyword/SQL box — forwards here, so there is one code path for each,
+    /// wherever it happens to be pointed.
+    /// </summary>
+    public LogFilterState Active => Results ?? Logs;
+
+    // --- search results (forwarded to Active) ---
+    public List<Dictionary<string, string>> FilteredLogLines { get => Active.FilteredLogLines; set => Active.FilteredLogLines = value; }
+    public List<string> TableColumns { get => Active.TableColumns; set => Active.TableColumns = value; }
     public bool IsLoading { get; set; }
 
     /// <summary>
@@ -113,45 +136,30 @@ public sealed class LogSearchStateService : IDisposable
     /// look ignored.
     /// </summary>
     public bool IsCancelling { get; set; }
-    public List<SortColumn> ActiveSorts { get; set; } = new();
+    public List<SortColumn> ActiveSorts { get => Active.ActiveSorts; set => Active.ActiveSorts = value; }
     public bool HasSearched { get; set; }
     public string ErrorMessage { get; set; } = "";
-    public string CurrentTableName { get; set; } = "";
+    public string CurrentTableName { get => Active.TableName; set => Active.TableName = value; }
 
-    // --- advanced search ---
+    // --- advanced search (forwarded to Active) ---
     public class KeywordRow { public string Gate { get; set; } = "AND"; public string Text { get; set; } = ""; }
-    public List<KeywordRow> KeywordRows { get; set; } = new() { new KeywordRow() };
-    public bool AdvancedRawMode { get; set; }
-    public string AdvancedExpression { get; set; } = "";
+    public List<KeywordRow> KeywordRows { get => Active.KeywordRows; set => Active.KeywordRows = value; }
+    public bool AdvancedRawMode { get => Active.AdvancedRawMode; set => Active.AdvancedRawMode = value; }
+    public string AdvancedExpression { get => Active.AdvancedExpression; set => Active.AdvancedExpression = value; }
 
-    // --- saved queries ---
+    // --- saved queries (forwarded to Active) ---
 
-    /// <summary>
-    /// Every saved advanced-mode query, ordered group-then-name — the order the picker draws.
-    /// Loaded on demand rather than at startup: the list only matters once advanced mode is on,
-    /// and most sessions never turn it on.
-    /// </summary>
-    public List<SavedQuery> SavedQueries { get; private set; } = new();
+    /// <summary>Every saved advanced-mode query for Active's target, ordered group-then-name.</summary>
+    public List<SavedQuery> SavedQueries => Active.SavedQueries;
 
     /// <summary>Whichever saved query the SQL box was last loaded from, or null.</summary>
-    public SavedQuery? ActiveSavedQuery { get; private set; }
-
-    /// <summary>
-    /// The SQL as it was when <see cref="ActiveSavedQuery"/> was loaded, so the bar can say the
-    /// query has been edited since. Kept apart from the saved copy because that one is replaced
-    /// wholesale whenever the store is re-read.
-    /// </summary>
-    private string _activeSavedQuerySql = "";
+    public SavedQuery? ActiveSavedQuery => Active.ActiveSavedQuery;
 
     /// <summary>True when a saved query is loaded and the box no longer matches it.</summary>
-    public bool SavedQueryIsModified =>
-        ActiveSavedQuery is not null &&
-        !string.Equals((AdvancedExpression ?? "").Trim(), _activeSavedQuerySql, StringComparison.Ordinal);
+    public bool SavedQueryIsModified => Active.SavedQueryIsModified;
 
     /// <summary>"Checkout / Orders by hour", or just the name when it is ungrouped.</summary>
-    public string? ActiveSavedQueryLabel => ActiveSavedQuery is not { } q
-        ? null
-        : string.IsNullOrWhiteSpace(q.Group) ? q.Name : $"{q.Group} / {q.Name}";
+    public string? ActiveSavedQueryLabel => Active.ActiveSavedQueryLabel;
 
     // --- split into tabs ---
 
@@ -173,23 +181,22 @@ public sealed class LogSearchStateService : IDisposable
         public List<SortColumn> Sorts { get; set; } = new();
     }
 
-    public LogSplitMode SplitMode { get; set; } = LogSplitMode.None;
-    public List<LogTab> Tabs { get; set; } = new();
-    public int ActiveTabIndex { get; set; }
+    public LogSplitMode SplitMode { get => Active.SplitMode; set => Active.SplitMode = value; }
+    public List<LogTab> Tabs { get => Active.Tabs; set => Active.Tabs = value; }
+    public int ActiveTabIndex { get => Active.ActiveTabIndex; set => Active.ActiveTabIndex = value; }
 
-    public LogTab? ActiveTab =>
-        ActiveTabIndex >= 0 && ActiveTabIndex < Tabs.Count ? Tabs[ActiveTabIndex] : null;
+    public LogTab? ActiveTab => Active.ActiveTab;
 
     /// <summary>The predicate for the active tab, or null on All.</summary>
-    public LogSplitFilter? CurrentSplitFilter => LogSplitFilter.For(SplitMode, ActiveTab?.Value);
+    public LogSplitFilter? CurrentSplitFilter => Active.CurrentSplitFilter;
 
-    // --- pagination ---
-    public int CurrentPage { get; set; }
+    // --- pagination (forwarded to Active; PageSize stays shared) ---
+    public int CurrentPage { get => Active.CurrentPage; set => Active.CurrentPage = value; }
     public int PageSize { get; set; } = 500;
-    public bool HasMorePages { get; set; } = true;
-    public int PageInput { get; set; } = 1;
-    public int TotalPages { get; set; }
-    public int TotalRecords { get; set; }
+    public bool HasMorePages { get => Active.HasMorePages; set => Active.HasMorePages = value; }
+    public int PageInput { get => Active.PageInput; set => Active.PageInput = value; }
+    public int TotalPages { get => Active.TotalPages; set => Active.TotalPages = value; }
+    public int TotalRecords { get => Active.TotalRecords; set => Active.TotalRecords = value; }
 
     // --- lifecycle ---
     public bool IsInitialized { get; private set; }
@@ -309,7 +316,7 @@ public sealed class LogSearchStateService : IDisposable
             }
             else
             {
-                TableColumns = new();
+                Logs.TableColumns = new();
             }
 
             await RefreshLogFileNamesAsync();
@@ -362,7 +369,7 @@ public sealed class LogSearchStateService : IDisposable
         var existing = SelectedLocations.FirstOrDefault(l => l.Path == location.Path);
         if (existing != null) SelectedLocations.Remove(existing);
         else SelectedLocations.Add(location);
-        ResetPagination();
+        Logs.ResetPagination();
         await ApplyLocationDefaultTemplateAsync();
         await RefreshLogFileNamesAsync();
     }
@@ -370,7 +377,7 @@ public sealed class LogSearchStateService : IDisposable
     public async Task ToggleAllLocationsAsync()
     {
         SelectedLocations = AllLocationsSelected ? new() : new(LogLocations);
-        ResetPagination();
+        Logs.ResetPagination();
         await ApplyLocationDefaultTemplateAsync();
         await RefreshLogFileNamesAsync();
     }
@@ -416,7 +423,7 @@ public sealed class LogSearchStateService : IDisposable
         LocationTemplateHint = null;
         ApplyPresetsForTemplate();
         await UpdateTableColumnsAsync();
-        ResetPagination();
+        Logs.ResetPagination();
 
         // The template decides the extension, so the set of discoverable names
         // changes with it.
@@ -494,6 +501,11 @@ public sealed class LogSearchStateService : IDisposable
         }
     }
 
+    /// <summary>
+    /// The template's own column list, written to <see cref="Logs"/> only — a template describes
+    /// what an ingest produces, and <see cref="Results"/> never comes from an ingest. Writing here
+    /// unconditionally would repaint a collapsed results grid with columns it may not even have.
+    /// </summary>
     public async Task UpdateTableColumnsAsync()
     {
         try
@@ -502,7 +514,7 @@ public sealed class LogSearchStateService : IDisposable
             if (templateEntry != null)
             {
                 var template = await _logFileService.LoadTemplateAsync(templateEntry.File);
-                TableColumns = template?.Columns ?? new();
+                Logs.TableColumns = template?.Columns ?? new();
                 TemplateDelimiter = template?.Delimiter ?? "|";
             }
         }
@@ -514,48 +526,44 @@ public sealed class LogSearchStateService : IDisposable
 
     // --- pagination ---
 
-    public void ResetPagination()
-    {
-        CurrentPage = 0;
-        PageInput = 1;
-        TotalPages = 0;
-        TotalRecords = 0;
-        HasMorePages = true;
-    }
+    public void ResetPagination() => Active.ResetPagination();
 
     public async Task OnPageSizeChangedAsync()
     {
-        CurrentPage = 0;
-        PageInput = 1;
+        Active.CurrentPage = 0;
+        Active.PageInput = 1;
         if (HasSearched) await QueryCurrentPageAsync();
     }
 
     public async Task JumpToPageAsync()
     {
-        if (PageInput < 1) PageInput = 1;
-        if (PageInput > TotalPages) PageInput = TotalPages;
-        var newPage = PageInput - 1;
-        if (newPage != CurrentPage)
+        var state = Active;
+        if (state.PageInput < 1) state.PageInput = 1;
+        if (state.PageInput > state.TotalPages) state.PageInput = state.TotalPages;
+        var newPage = state.PageInput - 1;
+        if (newPage != state.CurrentPage)
         {
-            CurrentPage = newPage;
+            state.CurrentPage = newPage;
             await QueryCurrentPageAsync();
         }
     }
 
     public async Task NextPageAsync()
     {
-        if (HasMorePages && CurrentPage < TotalPages - 1)
+        var state = Active;
+        if (state.HasMorePages && state.CurrentPage < state.TotalPages - 1)
         {
-            CurrentPage++;
+            state.CurrentPage++;
             await QueryCurrentPageAsync();
         }
     }
 
     public async Task PrevPageAsync()
     {
-        if (CurrentPage > 0)
+        var state = Active;
+        if (state.CurrentPage > 0)
         {
-            CurrentPage--;
+            state.CurrentPage--;
             await QueryCurrentPageAsync();
         }
     }
@@ -593,6 +601,12 @@ public sealed class LogSearchStateService : IDisposable
     public void SetError(string message) { ErrorMessage = message; Notify(); }
     public void ClearError() { ErrorMessage = ""; Notify(); }
 
+    /// <summary>
+    /// "Load Logs": re-ingests the selected files. Drops <see cref="Results"/> first, before the
+    /// prepare runs, so a failed or cancelled load leaves none behind — results are scratch
+    /// (2026-08-18) and a stale collapse pointed at a table about to be rebuilt from underneath it
+    /// would be actively misleading, not merely unhelpful.
+    /// </summary>
     public async Task SearchAsync()
     {
         ClearError();
@@ -600,9 +614,11 @@ public sealed class LogSearchStateService : IDisposable
         if (SelectedLocations.Count == 0) { SetError("Please select at least one location."); return; }
         if (StartDate > EndDate) { SetError("Start date cannot be after end date."); return; }
 
-        ResetPagination();
+        await DropResultsAsync();
+
+        Logs.ResetPagination();
         HasSearched = true;
-        ActiveSorts.Clear();
+        Logs.ActiveSorts.Clear();
         await PrepareAndQueryAsync();
 
         // Fold the source card once a search lands, so the results get the
@@ -654,14 +670,14 @@ public sealed class LogSearchStateService : IDisposable
 
             if (token.IsCancellationRequested) return;
 
-            CurrentTableName = prepared.TableName;
+            Logs.TableName = prepared.TableName;
             LastPrepareResult = prepared;
 
             // Counts first: the All tab's total comes from the page query, so the
             // strip is rebuilt again afterwards to pick it up.
-            await RebuildTabsAsync(token);
-            await QueryPageCoreAsync(token);
-            await RebuildTabsAsync(token);
+            await RebuildTabsAsync(Logs, token);
+            await QueryPageCoreAsync(Logs, token);
+            await RebuildTabsAsync(Logs, token);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { SetError($"Search failed: {ex.Message}"); }
@@ -675,29 +691,29 @@ public sealed class LogSearchStateService : IDisposable
         Notify();
         try
         {
-            await QueryPageCoreAsync(BeginOperation());
+            await QueryPageCoreAsync(Active, BeginOperation());
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { SetError($"Search failed: {ex.Message}"); }
         finally { IsLoading = false; IsCancelling = false; Notify(); }
     }
 
-    private async Task QueryPageCoreAsync(CancellationToken token)
+    private async Task QueryPageCoreAsync(LogFilterState state, CancellationToken token)
     {
         var templateEntry = AvailableTemplates.FirstOrDefault(t => t.Name == SelectedTemplateName);
         if (templateEntry == null) { SetError($"Template '{SelectedTemplateName}' not found."); return; }
 
-        var criteria = BuildCriteria();
+        var criteria = BuildCriteria(state);
         var criteriaArg = criteria.HasContent ? criteria : null;
-        var sorts = AdvancedRawMode ? null : (ActiveSorts.Count > 0 ? ActiveSorts : null);
+        var sorts = state.AdvancedRawMode ? null : (state.ActiveSorts.Count > 0 ? state.ActiveSorts : null);
 
         // Snapshot locals for Task.Run closures
-        var tableName = CurrentTableName;
+        var tableName = state.TableName;
         var templateName = templateEntry.Name;
-        var page = CurrentPage;
+        var page = state.CurrentPage;
         var pageSize = PageSize;
 
-        var split = CurrentSplitFilter;
+        var split = state.CurrentSplitFilter;
 
         // Task.Run keeps SQLite queries off the UI thread
         var countTask = Task.Run(() => _logFileService.CountLogEntriesAsync(tableName, criteriaArg, split, token), token);
@@ -706,11 +722,11 @@ public sealed class LogSearchStateService : IDisposable
 
         if (token.IsCancellationRequested) return;
 
-        TotalRecords = await countTask;
-        TotalPages = (int)Math.Ceiling(TotalRecords / (double)pageSize);
+        state.TotalRecords = await countTask;
+        state.TotalPages = (int)Math.Ceiling(state.TotalRecords / (double)pageSize);
 
         var pageData = await dataTask;
-        FilteredLogLines = pageData ?? new();
+        state.FilteredLogLines = pageData ?? new();
 
         if (pageData?.Any() == true)
         {
@@ -718,7 +734,7 @@ public sealed class LogSearchStateService : IDisposable
             // file to open — but it is not a column anyone wants to read. Hiding it
             // here rather than dropping it keeps the grid unchanged while giving the
             // row somewhere to carry its origin.
-            TableColumns = pageData
+            state.TableColumns = pageData
                 .OrderByDescending(l => l.Count)
                 .FirstOrDefault()?
                 .Keys
@@ -726,8 +742,8 @@ public sealed class LogSearchStateService : IDisposable
                 .ToList() ?? new();
         }
 
-        HasMorePages = pageData?.Count == pageSize && (page + 1) < TotalPages;
-        PageInput = page + 1;
+        state.HasMorePages = pageData?.Count == pageSize && (page + 1) < state.TotalPages;
+        state.PageInput = page + 1;
     }
 
     // --- split tabs ---
@@ -737,20 +753,20 @@ public sealed class LogSearchStateService : IDisposable
     /// All is always tab 0, so turning splitting off is never a special case and
     /// the combined view is always one click away.
     /// </summary>
-    public async Task RebuildTabsAsync(CancellationToken token)
+    private async Task RebuildTabsAsync(LogFilterState state, CancellationToken token)
     {
-        var previousValue = ActiveTab?.Value;
+        var previousValue = state.ActiveTab?.Value;
 
-        if (SplitMode == LogSplitMode.None || string.IsNullOrEmpty(CurrentTableName))
+        if (state.SplitMode == LogSplitMode.None || string.IsNullOrEmpty(state.TableName))
         {
-            Tabs = new List<LogTab> { new() { Value = null, Label = "All", RowCount = TotalRecords } };
-            ActiveTabIndex = 0;
+            state.Tabs = new List<LogTab> { new() { Value = null, Label = "All", RowCount = state.TotalRecords } };
+            state.ActiveTabIndex = 0;
             return;
         }
 
-        var criteria = BuildCriteria();
+        var criteria = BuildCriteria(state);
         var groups = await Task.Run(
-            () => _logFileService.GetSplitGroupsAsync(CurrentTableName, SplitMode, criteria.HasContent ? criteria : null, token),
+            () => _logFileService.GetSplitGroupsAsync(state.TableName, state.SplitMode, criteria.HasContent ? criteria : null, token),
             token);
 
         // All's count is the sum of the groups, not TotalRecords. The groups
@@ -771,23 +787,24 @@ public sealed class LogSearchStateService : IDisposable
             Label = string.IsNullOrEmpty(g.Value) ? "(none)" : g.Value,
             RowCount = g.Count
         }));
-        Tabs = tabs;
+        state.Tabs = tabs;
 
         // Stay on the same tab across a filter change when it still exists, rather
         // than dumping the user back on All every time they type.
         var index = previousValue is null ? 0 : tabs.FindIndex(t => t.Value == previousValue);
-        ActiveTabIndex = index >= 0 ? index : 0;
+        state.ActiveTabIndex = index >= 0 ? index : 0;
     }
 
     public async Task SetSplitModeAsync(LogSplitMode mode)
     {
-        if (SplitMode == mode) return;
-        SplitMode = mode;
-        ActiveTabIndex = 0;
+        var state = Active;
+        if (state.SplitMode == mode) return;
+        state.SplitMode = mode;
+        state.ActiveTabIndex = 0;
 
-        if (!HasSearched || string.IsNullOrEmpty(CurrentTableName))
+        if (!HasSearched || string.IsNullOrEmpty(state.TableName))
         {
-            await RebuildTabsAsync(CancellationToken.None);
+            await RebuildTabsAsync(state, CancellationToken.None);
             Notify();
             return;
         }
@@ -797,13 +814,13 @@ public sealed class LogSearchStateService : IDisposable
         try
         {
             var token = BeginOperation();
-            await RebuildTabsAsync(token);
-            ResetPagination();
-            await QueryPageCoreAsync(token);
+            await RebuildTabsAsync(state, token);
+            state.ResetPagination();
+            await QueryPageCoreAsync(state, token);
 
             // Again afterwards so that turning splitting *off* picks up the All
             // total the query just produced; with splitting on this is a no-op.
-            await RebuildTabsAsync(token);
+            await RebuildTabsAsync(state, token);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { SetError($"Split failed: {ex.Message}"); }
@@ -812,35 +829,38 @@ public sealed class LogSearchStateService : IDisposable
 
     public async Task SelectTabAsync(int index)
     {
-        if (index < 0 || index >= Tabs.Count || index == ActiveTabIndex) return;
+        var state = Active;
+        if (index < 0 || index >= state.Tabs.Count || index == state.ActiveTabIndex) return;
 
         // Park the current tab's position so returning to it restores the view.
-        if (ActiveTab is { } leaving)
+        if (state.ActiveTab is { } leaving)
         {
-            leaving.CurrentPage = CurrentPage;
-            leaving.Sorts = new List<SortColumn>(ActiveSorts);
+            leaving.CurrentPage = state.CurrentPage;
+            leaving.Sorts = new List<SortColumn>(state.ActiveSorts);
         }
 
-        ActiveTabIndex = index;
+        state.ActiveTabIndex = index;
 
-        var entering = Tabs[index];
-        CurrentPage = entering.CurrentPage;
-        PageInput = entering.CurrentPage + 1;
-        ActiveSorts = new List<SortColumn>(entering.Sorts);
+        var entering = state.Tabs[index];
+        state.CurrentPage = entering.CurrentPage;
+        state.PageInput = entering.CurrentPage + 1;
+        state.ActiveSorts = new List<SortColumn>(entering.Sorts);
 
         await QueryCurrentPageAsync();
     }
 
-    public LogSearchCriteria BuildCriteria()
+    /// <summary>Builds the search criteria for a specific view — the locked logs line needs
+    /// <see cref="Logs"/>'s even once <see cref="Active"/> has moved on to <see cref="Results"/>.</summary>
+    public static LogSearchCriteria BuildCriteria(LogFilterState state)
     {
-        var criteria = new LogSearchCriteria { UseAdvanced = AdvancedRawMode };
-        if (AdvancedRawMode)
+        var criteria = new LogSearchCriteria { UseAdvanced = state.AdvancedRawMode };
+        if (state.AdvancedRawMode)
         {
-            criteria.AdvancedExpression = AdvancedExpression;
+            criteria.AdvancedExpression = state.AdvancedExpression;
         }
         else
         {
-            foreach (var row in KeywordRows)
+            foreach (var row in state.KeywordRows)
             {
                 var terms = (row.Text ?? string.Empty)
                     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -852,18 +872,21 @@ public sealed class LogSearchStateService : IDisposable
         return criteria;
     }
 
+    public LogSearchCriteria BuildCriteria() => BuildCriteria(Active);
+
     public async Task RunLiveQueryAsync()
     {
-        if (!HasSearched || string.IsNullOrEmpty(CurrentTableName)) return;
-        ResetPagination();
+        var state = Active;
+        if (!HasSearched || string.IsNullOrEmpty(state.TableName)) return;
+        state.ResetPagination();
         await QueryCurrentPageAsync();
 
         // Tab counts are part of the filter's result, so they move with it.
-        if (SplitMode != LogSplitMode.None)
+        if (state.SplitMode != LogSplitMode.None)
         {
             try
             {
-                await RebuildTabsAsync(CancellationToken.None);
+                await RebuildTabsAsync(state, CancellationToken.None);
                 Notify();
             }
             catch (OperationCanceledException) { }
@@ -873,26 +896,29 @@ public sealed class LogSearchStateService : IDisposable
 
     public async Task OnAdvancedToggledAsync()
     {
-        ActiveSorts.Clear();
+        Active.ActiveSorts.Clear();
         if (HasSearched) await RunLiveQueryAsync();
     }
 
     // --- saved queries ---
 
     /// <summary>
-    /// Re-reads the saved queries. Failure is reported and leaves the previous list in place: the
-    /// picker being stale is a great deal better than the SQL box disappearing behind a banner.
+    /// Re-reads the saved queries for Active's target. Failure is reported and leaves the previous
+    /// list in place: the picker being stale is a great deal better than the SQL box disappearing
+    /// behind a banner.
     /// </summary>
     public async Task LoadSavedQueriesAsync()
     {
+        var state = Active;
         try
         {
-            SavedQueries = await _savedQueries.GetAllAsync();
+            var all = await _savedQueries.GetAllAsync();
+            state.SavedQueries = all.Where(q => SavedQueryTargets.IsFor(q, state.SavedQueryTarget)).ToList();
 
             // The active query may have been renamed, regrouped or deleted by the manage dialog.
             // Re-resolving it by id keeps the label honest without disturbing the box.
-            if (ActiveSavedQuery is { } active)
-                ActiveSavedQuery = SavedQueries.FirstOrDefault(q => q.Id == active.Id);
+            if (state.ActiveSavedQuery is { } active)
+                state.ActiveSavedQuery = state.SavedQueries.FirstOrDefault(q => q.Id == active.Id);
         }
         catch (InvalidOperationException ex)
         {
@@ -913,12 +939,13 @@ public sealed class LogSearchStateService : IDisposable
     public async Task ApplySavedQueryAsync(SavedQuery query)
     {
         if (query is null) return;
+        var state = Active;
 
-        AdvancedRawMode = true;
-        AdvancedExpression = query.Sql;
-        ActiveSavedQuery = query;
-        _activeSavedQuerySql = (query.Sql ?? "").Trim();
-        ActiveSorts.Clear();
+        state.AdvancedRawMode = true;
+        state.AdvancedExpression = query.Sql;
+        state.ActiveSavedQuery = query;
+        state.ActiveSavedQuerySql = (query.Sql ?? "").Trim();
+        state.ActiveSorts.Clear();
         Notify();
 
         if (HasSearched) await RunLiveQueryAsync();
@@ -930,8 +957,9 @@ public sealed class LogSearchStateService : IDisposable
     /// </summary>
     public void MarkSavedQueryApplied(SavedQuery query)
     {
-        ActiveSavedQuery = query;
-        _activeSavedQuerySql = (query?.Sql ?? "").Trim();
+        var state = Active;
+        state.ActiveSavedQuery = query;
+        state.ActiveSavedQuerySql = (query?.Sql ?? "").Trim();
         Notify();
     }
 
@@ -943,9 +971,10 @@ public sealed class LogSearchStateService : IDisposable
     /// </summary>
     public async Task ClearSavedQueryAsync()
     {
-        ActiveSavedQuery = null;
-        _activeSavedQuerySql = "";
-        AdvancedExpression = "";
+        var state = Active;
+        state.ActiveSavedQuery = null;
+        state.ActiveSavedQuerySql = "";
+        state.AdvancedExpression = "";
         Notify();
 
         if (HasSearched) await RunLiveQueryAsync();
@@ -953,24 +982,25 @@ public sealed class LogSearchStateService : IDisposable
 
     public async Task AddKeywordRowAsync()
     {
-        KeywordRows.Add(new KeywordRow());
+        Active.KeywordRows.Add(new KeywordRow());
         await RunLiveQueryAsync();
     }
 
     public async Task RemoveKeywordRowAsync(int index)
     {
-        if (index < 0 || index >= KeywordRows.Count) return;
+        var rows = Active.KeywordRows;
+        if (index < 0 || index >= rows.Count) return;
 
         // The last row cannot be removed — the strip always shows one — so its X
         // clears the text instead of doing nothing.
-        if (KeywordRows.Count == 1)
+        if (rows.Count == 1)
         {
-            if (string.IsNullOrEmpty(KeywordRows[0].Text)) return;
-            KeywordRows[0].Text = "";
+            if (string.IsNullOrEmpty(rows[0].Text)) return;
+            rows[0].Text = "";
         }
         else
         {
-            KeywordRows.RemoveAt(index);
+            rows.RemoveAt(index);
         }
 
         await RunLiveQueryAsync();
@@ -978,24 +1008,114 @@ public sealed class LogSearchStateService : IDisposable
 
     public async Task SortByColumnAsync(string column, bool append)
     {
-        if (IsLoading || !HasSearched || AdvancedRawMode) return;
-        var existing = ActiveSorts.FirstOrDefault(s => s.Column == column);
+        var state = Active;
+        if (IsLoading || !HasSearched || state.AdvancedRawMode) return;
+        var existing = state.ActiveSorts.FirstOrDefault(s => s.Column == column);
         if (append)
         {
             if (existing != null) existing.Direction = existing.Direction == "asc" ? "desc" : "asc";
-            else ActiveSorts.Add(new SortColumn { Column = column, Direction = "asc" });
+            else state.ActiveSorts.Add(new SortColumn { Column = column, Direction = "asc" });
         }
-        else if (existing != null && ActiveSorts.Count == 1)
+        else if (existing != null && state.ActiveSorts.Count == 1)
         {
             existing.Direction = existing.Direction == "asc" ? "desc" : "asc";
         }
         else
         {
-            ActiveSorts = new List<SortColumn> { new() { Column = column, Direction = "asc" } };
+            state.ActiveSorts = new List<SortColumn> { new() { Column = column, Direction = "asc" } };
         }
-        CurrentPage = 0;
-        PageInput = 1;
+        state.CurrentPage = 0;
+        state.PageInput = 1;
         await QueryCurrentPageAsync();
+    }
+
+    // --- results (collapse the filter into a second table) ---
+
+    /// <summary>
+    /// True when collapsing the logs filter is offered: a search has run, nothing is loading,
+    /// there is no <see cref="Results"/> already, the filter has content, and the last query
+    /// matched at least one row.
+    /// </summary>
+    public bool CanCollapseToResults =>
+        Results is null && HasSearched && !IsLoading &&
+        BuildCriteria(Logs).HasContent && Logs.TotalRecords > 0;
+
+    /// <summary>
+    /// Copies the logs filter's current result — keyword or SQL mode, every page, only the active
+    /// split tab — into the <c>results</c> table, and switches the active view to it. Uses what is
+    /// in the box <em>now</em>: a keystroke still inside the debounce window is included, since the
+    /// page disposes that timer before calling this.
+    /// <para>
+    /// Not cancellable — it is one SQL statement, and the grid shows the spinner until it returns.
+    /// </para>
+    /// </summary>
+    public async Task CollapseToResultsAsync()
+    {
+        if (!CanCollapseToResults) return;
+
+        IsLoading = true;
+        Notify();
+        try
+        {
+            var criteria = BuildCriteria(Logs);
+            var (rows, columns) = await _logFileService.MaterializeResultsAsync(
+                Logs.TableName, SelectedTemplateName, Logs.ActiveSorts, criteria, Logs.CurrentSplitFilter);
+
+            if (rows == 0)
+            {
+                await _logFileService.DropResultsAsync();
+                SetError("Nothing matched — nothing was collapsed.");
+                return;
+            }
+
+            var results = new LogFilterState
+            {
+                TableName = DbLogService.ResultsTableName,
+                SavedQueryTarget = SavedQueryTargets.Results,
+                TableColumns = columns,
+                CollapsedRowCount = rows
+            };
+            Results = results;
+            await LoadSavedQueriesAsync();
+
+            await QueryPageCoreAsync(results, BeginOperation());
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { SetError($"Could not collapse into results: {ex.Message}"); }
+        finally { IsLoading = false; Notify(); }
+    }
+
+    /// <summary>
+    /// Drops the <c>results</c> table and brings the logs filter back exactly as it was — nothing
+    /// about <see cref="Logs"/> was ever touched by a collapse, so this is only forgetting
+    /// <see cref="Results"/> and re-querying at its parked page.
+    /// </summary>
+    public async Task DiscardResultsAsync()
+    {
+        if (Results is null) return;
+
+        await DropResultsAsync();
+        ClearError();
+
+        if (Logs.CurrentPage >= Logs.TotalPages && Logs.TotalPages > 0)
+            Logs.CurrentPage = Logs.TotalPages - 1;
+
+        Notify();
+        await QueryCurrentPageAsync();
+    }
+
+    /// <summary>Drops the <c>results</c> table, if any, and forgets it. Safe to call when there is none.</summary>
+    private async Task DropResultsAsync()
+    {
+        if (Results is null) return;
+        try
+        {
+            await _logFileService.DropResultsAsync();
+        }
+        finally
+        {
+            Results = null;
+        }
     }
 
     public void Dispose()

@@ -36,7 +36,9 @@ public sealed class SavedQueryTools
         "Read these before composing your own: each one is a question somebody already worked out how to " +
         "ask correctly against these logs, including which columns actually hold what. " +
         "A query's 'template' field is a hint about what it was written against, not a restriction — the " +
-        "SQL will run against any prepared table, it just may name columns that table does not have.")]
+        "SQL will run against any prepared table, it just may name columns that table does not have. " +
+        "Queries written for the app's 'results' table are not listed here — that table exists only inside " +
+        "the running app, never in a table this server can prepare.")]
     public Task<SavedQueriesResult> ListSavedQueries()
         => ToolErrors.GuardAsync(async () =>
         {

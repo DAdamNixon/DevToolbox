@@ -1,0 +1,226 @@
+@using DevToolbox.Services.Models
+@using DevToolbox.UI.Services
+@inject LogSearchStateService State
+@inject MenuStateService Menu
+
+@*
+    The Log Viewer's keyword/SQL filter, as one component rendered once per table — `logs` always,
+    `results` once a collapse exists. Only one of the two is ever unlocked at a time (the other is
+    folded to a one-line summary in Logs.razor), so every binding below reads and writes
+    LogSearchStateService's Active-forwarded members directly: whichever instance is actually on
+    screen in this shape IS Active, by construction.
+
+    Full screen covers the page-flow copy with the results, and Ctrl+F raises this very element
+    back over them rather than rendering a second copy — see logTools.focusFilter, which now takes
+    the card's id because there can be two of these on the page.
+*@
+
+<div id="@CardId" class="modern-card log-card-compact mb-4 log-filter-card @(Floating ? "is-floating" : null)">
+    @if (Floating)
+    {
+        <div class="log-filter-floating-head">
+            <i class="bi bi-funnel text-accent-blue"></i>
+            <span class="text-sm font-medium text-dark-text">@FloatingLabel</span>
+            <span class="log-filter-floating-hint">Enter applies · Esc closes</span>
+            <button type="button" class="btn-ghost p-1" title="Close the filters (Esc)" @onclick="HideFilterPanel">
+                <i class="bi bi-x-lg text-dark-text-muted"></i>
+            </button>
+        </div>
+    }
+    <div class="flex items-center justify-between mb-3">
+        <label class="flex items-center space-x-2 cursor-pointer">
+            <input type="checkbox" @bind="State.AdvancedRawMode" @bind:after="OnAdvancedToggled" />
+            <span class="text-sm font-medium text-dark-text">Advanced query mode (SQL)</span>
+        </label>
+        <span class="text-xs text-dark-text-muted">@(State.AdvancedRawMode ? $"Full SQL against the table named {Filter.TableName}." : "Filters the loaded rows as you type (Enter or 500ms). Rows combine with AND / OR / NOT.")</span>
+    </div>
+
+    @if (State.AdvancedRawMode)
+    {
+        <div>
+            <div class="log-field-head saved-query-bar relative" data-menu-anchor>
+                <label for="@EditorId" class="text-sm font-medium text-dark-text">Custom SQL query</label>
+
+                @if (State.ActiveSavedQueryLabel is { } loaded)
+                {
+                    <span class="saved-query-active" title="The saved query this box was loaded from">
+                        <i class="bi bi-bookmark-fill"></i>
+                        @loaded@(State.SavedQueryIsModified ? " · edited" : "")
+                        <button type="button" class="saved-query-active-clear" @onclick="ClearSavedQuery"
+                                aria-label="Stop using this saved query (clears the box, deletes nothing)"
+                                title="Stop using this saved query (clears the box, deletes nothing)">
+                            <i class="bi bi-x"></i>
+                        </button>
+                    </span>
+                }
+
+                <div class="flex-1"></div>
+
+                <button type="button" class="saved-query-btn" @onclick="ToggleSavedQueryMenu"
+                        aria-expanded="@(SavedQueryMenuOpen ? "true" : "false")"
+                        title="Load a saved query">
+                    <i class="bi bi-bookmarks"></i>
+                    <span>Saved</span>
+                    <span class="dropdown-chevron @(SavedQueryMenuOpen ? "is-open" : null)"></span>
+                </button>
+                <button type="button" class="saved-query-btn" @onclick="OpenSaveQuery"
+                        disabled="@string.IsNullOrWhiteSpace(State.AdvancedExpression)"
+                        title="Save what is in the box">
+                    <i class="bi bi-bookmark-plus"></i>
+                    <span>Save</span>
+                </button>
+                <button type="button" class="saved-query-btn" @onclick="OpenManageQueries"
+                        title="Edit, regroup or delete saved queries">
+                    <i class="bi bi-sliders"></i>
+                    <span>Manage</span>
+                </button>
+
+                @if (SavedQueryMenuOpen)
+                {
+                    <div class="saved-query-menu">
+                        @if (State.SavedQueries.Count == 0)
+                        {
+                            <p class="saved-query-empty">
+                                Nothing saved yet. Write a query and press <strong>Save</strong>.
+                            </p>
+                        }
+                        else
+                        {
+                            @foreach (var group in State.SavedQueries.GroupBy(q => q.Group ?? "")
+                                                        .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
+                            {
+                                <div class="saved-query-menu-group">
+                                    @(string.IsNullOrWhiteSpace(group.Key) ? "Ungrouped" : group.Key)
+                                </div>
+                                @foreach (var query in group)
+                                {
+                                    <button type="button" class="saved-query-menu-item" @onclick="() => ApplySavedQuery(query)">
+                                        <span class="saved-query-menu-name">@query.Name</span>
+                                        @if (!string.IsNullOrWhiteSpace(query.Description))
+                                        {
+                                            <span class="saved-query-menu-note">@query.Description</span>
+                                        }
+                                    </button>
+                                }
+                            }
+                        }
+                    </div>
+                }
+            </div>
+
+            <SqlEditor Id="@EditorId" Rows="3"
+                       Placeholder="SELECT LEFT(DateTime,4) AS Year, COUNT(*) AS Hits FROM logs GROUP BY Year"
+                       AriaLabel="Custom SQL query"
+                       Value="@State.AdvancedExpression"
+                       ValueChanged="OnAdvancedExpressionChanged"
+                       OnValueInput="OnCriteriaInput" />
+
+            <div class="text-xs text-dark-text-muted mt-1">Full SQL against the table <code>@Filter.TableName</code>. Sorting and keyword groups are ignored in this mode. Runs as you type (500ms) or on Enter.</div>
+        </div>
+    }
+    else
+    {
+        <div class="space-y-2">
+            @for (int i = 0; i < State.KeywordRows.Count; i++)
+            {
+                var index = i;
+                var row = State.KeywordRows[index];
+                <div class="flex items-center space-x-2">
+                    @if (index == 0)
+                    {
+                        <span class="w-20 text-xs text-dark-text-muted text-center">where</span>
+                    }
+                    else
+                    {
+                        <select class="input-modern w-20" @bind="row.Gate" @bind:after="RunLiveQueryAsync">
+                            <option value="AND">AND</option>
+                            <option value="OR">OR</option>
+                            <option value="NOT">NOT</option>
+                        </select>
+                    }
+                    <input class="input-modern flex-1" placeholder="Interchangeable terms (any match), comma-separated"
+                           @bind="row.Text" @bind:event="oninput" @bind:after="RaiseCriteriaInput" @onkeypress="OnCriteriaKeyPress" />
+                    <button type="button" class="btn-ghost p-2"
+                            title="@(State.KeywordRows.Count == 1 ? "Clear" : "Remove group")"
+                            @onclick="() => RemoveKeywordRow(index)"
+                            disabled="@(State.KeywordRows.Count == 1 && string.IsNullOrEmpty(row.Text))">
+                        <i class="bi bi-x-lg text-dark-text-muted"></i>
+                    </button>
+                    @if (index == State.KeywordRows.Count - 1)
+                    {
+                        <button type="button" class="btn-ghost p-2" title="Add group" @onclick="AddKeywordRow">
+                            <i class="bi bi-plus-lg text-dark-text-muted"></i>
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    @ChildContent
+</div>
+
+@code {
+    /// <summary>The view this instance edits — <c>State.Logs</c> or <c>State.Results</c>. Only ever
+    /// rendered while it is also <c>State.Active</c>, since the other one is locked/absent.</summary>
+    [Parameter, EditorRequired] public LogFilterState Filter { get; set; } = null!;
+
+    [Parameter, EditorRequired] public string CardId { get; set; } = "";
+    [Parameter, EditorRequired] public string EditorId { get; set; } = "";
+    [Parameter, EditorRequired] public string SavedQueryMenuId { get; set; } = "";
+
+    [Parameter] public bool Floating { get; set; }
+    [Parameter] public string FloatingLabel { get; set; } = "Filters";
+
+    /// <summary>Rendered last, inside the card — where a bottom-edge lip has to sit for its negative margins to meet the card's edges.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private bool SavedQueryMenuOpen => Menu.IsOpen(SavedQueryMenuId);
+
+    private async Task ToggleSavedQueryMenu()
+    {
+        var opening = !SavedQueryMenuOpen;
+        Menu.Toggle(SavedQueryMenuId);
+        if (opening) await State.LoadSavedQueriesAsync();
+    }
+
+    private void OnAdvancedExpressionChanged(string sql) => State.AdvancedExpression = sql;
+
+    private async Task ApplySavedQuery(SavedQuery query)
+    {
+        Menu.Close();
+        await State.ApplySavedQueryAsync(query);
+    }
+
+    private async Task ClearSavedQuery() => await State.ClearSavedQueryAsync();
+
+    private void OpenSaveQuery()
+    {
+        Menu.Close();
+        _ = OnOpenSaveQuery.InvokeAsync();
+    }
+
+    private async Task OpenManageQueries()
+    {
+        Menu.Close();
+        await State.LoadSavedQueriesAsync();
+        await OnOpenManageQueries.InvokeAsync();
+    }
+
+    [Parameter, EditorRequired] public EventCallback OnOpenSaveQuery { get; set; }
+    [Parameter, EditorRequired] public EventCallback OnOpenManageQueries { get; set; }
+    [Parameter, EditorRequired] public EventCallback OnCriteriaInput { get; set; }
+    [Parameter, EditorRequired] public EventCallback<KeyboardEventArgs> OnCriteriaKeyPress { get; set; }
+
+    private Task OnAdvancedToggled() => State.OnAdvancedToggledAsync();
+
+    private Task RunLiveQueryAsync() => State.RunLiveQueryAsync();
+
+    private Task AddKeywordRow() => State.AddKeywordRowAsync();
+
+    private Task RemoveKeywordRow(int index) => State.RemoveKeywordRowAsync(index);
+
+    private void HideFilterPanel() => State.FilterOverlayVisible = false;
+
+    private Task RaiseCriteriaInput() => OnCriteriaInput.InvokeAsync();
+}

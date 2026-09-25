@@ -42,6 +42,14 @@ namespace DevToolbox.Services.Services
         public const string DefaultTableName = "logs";
 
         /// <summary>
+        /// What the Log Viewer's collapsed filter is called. A constant, never a literal, so
+        /// <see cref="QueryLogPageAsync"/> and <see cref="DownloadLogCsvAsync"/> can recognise it and
+        /// skip the template-sort fallback — a page over <c>results</c> orders itself by when it was
+        /// collapsed, not by a template that may not even describe its columns.
+        /// </summary>
+        public const string ResultsTableName = "results";
+
+        /// <summary>
         /// Column holding each row's originating file path. Public so the UI can
         /// both find it and know to keep it out of the visible grid.
         /// </summary>
@@ -740,7 +748,7 @@ namespace DevToolbox.Services.Services
             };
             ApplyCriteria(query, criteria);
             if (query.RawQuery == null)
-                query.Sort = await ResolveEffectiveSortAsync(sortColumns, templateName);
+                await ResolveResultsOrTemplateSortAsync(query, tableName, sortColumns, templateName);
 
             try
             {
@@ -839,6 +847,54 @@ namespace DevToolbox.Services.Services
             return await ResolveSortColumnsAsync(template);
         }
 
+        /// <summary>
+        /// Resolves <paramref name="query"/>'s sort the way a page query always has — except on
+        /// <see cref="ResultsTableName"/>, which never falls back to the template's sort (that
+        /// template may not even describe these columns) and instead reads back in the order it was
+        /// collapsed in when nobody has clicked a header since.
+        /// </summary>
+        private async Task ResolveResultsOrTemplateSortAsync(
+            LogQuery query, string tableName, List<SortColumn>? requested, string templateName)
+        {
+            if (string.Equals(tableName, ResultsTableName, StringComparison.Ordinal))
+            {
+                query.Sort = requested;
+                query.InsertionOrder = true;
+            }
+            else
+            {
+                query.Sort = await ResolveEffectiveSortAsync(requested, templateName);
+            }
+        }
+
+        public async Task<(int Rows, List<string> Columns)> MaterializeResultsAsync(
+            string sourceTable,
+            string templateName,
+            List<SortColumn>? sorts,
+            LogSearchCriteria? criteria,
+            LogSplitFilter? split,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.Equals(sourceTable, ResultsTableName, StringComparison.Ordinal))
+                throw new InvalidOperationException("Results cannot themselves be collapsed.");
+
+            var query = new LogQuery { Filters = split?.ToFilters() };
+            ApplyCriteria(query, criteria);
+            if (query.RawQuery == null)
+                query.Sort = await ResolveEffectiveSortAsync(sorts, templateName);
+
+            try
+            {
+                return await _logStorage.CreateTableFromQueryAsync(sourceTable, ResultsTableName, query, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                throw ToUserFacing(ex, query, "Failed to collapse the filter into results");
+            }
+        }
+
+        public Task DropResultsAsync() => _logStorage.DropTableAsync(ResultsTableName);
+
         private static void ApplyCriteria(LogQuery query, LogSearchCriteria? criteria)
         {
             if (criteria == null)
@@ -878,7 +934,7 @@ namespace DevToolbox.Services.Services
                 var query = new LogQuery { Filters = split?.ToFilters() };
                 ApplyCriteria(query, criteria);
                 if (query.RawQuery == null)
-                    query.Sort = await ResolveEffectiveSortAsync(sortColumns, templateName);
+                    await ResolveResultsOrTemplateSortAsync(query, tableName, sortColumns, templateName);
 
                 var (results, _) = await _logStorage.SearchLogsAsync(tableName, query);
 

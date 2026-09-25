@@ -52,5 +52,11 @@ namespace DevToolbox.Services.Services
 
         public Task<string> DownloadLogCsvAsync(string tableName, string templateName, List<SortColumn>? sortColumns, LogSearchCriteria? criteria, string? outputPath = null, LogSplitFilter? split = null, CancellationToken cancellationToken = default)
             => throw new NotSupportedException("Use DbLogService.");
+
+        public Task<(int Rows, List<string> Columns)> MaterializeResultsAsync(string sourceTable, string templateName, List<SortColumn>? sorts, LogSearchCriteria? criteria, LogSplitFilter? split, CancellationToken cancellationToken = default)
+            => throw new NotSupportedException("Use DbLogService.");
+
+        public Task DropResultsAsync()
+            => throw new NotSupportedException("Use DbLogService.");
     }
 }

@@ -18,5 +18,13 @@ namespace DevToolbox.Services.Models
 
         // Add this property for sorting
         public List<SortColumn>? Sort { get; set; }
+
+        /// <summary>
+        /// When no sort resolves, order by <c>rowid ASC</c> instead of the usual
+        /// <c>rowid DESC</c> — the order a materialized <c>results</c> table was collapsed in.
+        /// Ignored once <see cref="Sort"/> resolves to anything, and ignored in SQL mode, where
+        /// the inner query's own order (or lack of one) always decides.
+        /// </summary>
+        public bool InsertionOrder { get; set; }
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using YamlDotNet.Serialization;
 
 namespace DevToolbox.Services.Models
 {
@@ -43,6 +44,38 @@ namespace DevToolbox.Services.Models
         /// </summary>
         public string? Template { get; set; }
 
+        /// <summary>
+        /// Which filter card this query belongs to — <see cref="SavedQueryTargets.Logs"/> or
+        /// <see cref="SavedQueryTargets.Results"/>. Null, blank and <c>logs</c> all normalise to
+        /// null on save (<see cref="SavedQueryTargets.IsFor"/> treats null as <c>logs</c>), so every
+        /// query saved before <c>results</c> existed still reads as a logs query and writes no new
+        /// key.
+        /// </summary>
+        [YamlMember(DefaultValuesHandling = DefaultValuesHandling.OmitNull)]
+        public string? Target { get; set; }
+
         public DateTime UpdatedUtc { get; set; }
+    }
+
+    /// <summary>The two filter cards a saved query can belong to.</summary>
+    public static class SavedQueryTargets
+    {
+        public const string Logs = "logs";
+        public const string Results = "results";
+
+        /// <summary>True when <paramref name="query"/>'s target is <paramref name="target"/> —
+        /// null, blank and <see cref="Logs"/> all mean the same thing.</summary>
+        public static bool IsFor(SavedQuery query, string target) =>
+            string.Equals(Normalize(query.Target), Normalize(target), StringComparison.Ordinal);
+
+        /// <summary>Null, blank and <see cref="Logs"/> all collapse to null — nothing new to write
+        /// for the common case, and every file on disk before this field existed still reads right.</summary>
+        public static string? Normalize(string? target)
+        {
+            var trimmed = (target ?? "").Trim();
+            return trimmed.Length == 0 || string.Equals(trimmed, Logs, StringComparison.OrdinalIgnoreCase)
+                ? null
+                : trimmed;
+        }
     }
 }
