@@ -28,7 +28,7 @@ public class ThemeCatalogTests
     /// static content, not compiled or copied, so there is nothing in the output directory to look
     /// at — the source tree is the only copy there is.
     /// </summary>
-    private static readonly string WebRoot = Path.Combine(FindRepoRoot(), "DevToolbox.UI", "wwwroot");
+    private static readonly string WebRoot = Path.Combine(FindRepoRoot(), "DevToolbox.UI.Shared", "wwwroot");
 
     private static string FindRepoRoot()
     {

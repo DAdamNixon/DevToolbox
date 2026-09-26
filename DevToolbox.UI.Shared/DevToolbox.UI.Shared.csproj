@@ -1,0 +1,71 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <!--
+    Every page, component, stylesheet, script and theme DevToolbox has, for every platform.
+
+    The hosts are thin on purpose: DevToolbox.UI (the Windows Forms window with its WebView),
+    DevToolbox.UI.Linux (a browser or app window over Kestrel) and DevToolbox.DevServer only open
+    a surface and register their platform's services. None of them carries markup or CSS, so a
+    change here reaches every platform with nothing else to do.
+
+    Differences between platforms go through service interfaces in DevToolbox.Services
+    (ISystemService, IPathPicker, the hosts-file broker), never through OperatingSystem checks in a
+    .razor file or a per-platform copy of a page.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RazorLangVersion>latest</RazorLangVersion>
+
+    <!-- The namespaces these files had when they lived in DevToolbox.UI. Kept, so moving them was a
+         move and nothing else: DevToolbox.UI.Components, DevToolbox.UI.Pages and so on. -->
+    <RootNamespace>DevToolbox.UI</RootNamespace>
+
+    <!-- Served at the site root rather than the usual _content/DevToolbox.UI.Shared/, so css/theme.css
+         and js/theme.js keep the URLs every host page, stylesheet and script already uses. -->
+    <StaticWebAssetBasePath>/</StaticWebAssetBasePath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Kestrel and interactive server rendering, for WebPreviewHost: the browser view that every
+         host can serve and the Linux host is built on. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DevToolbox.Services\DevToolbox.Services.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DevToolbox.Tests" />
+  </ItemGroup>
+
+  <!--
+    Rebuild the Tailwind stylesheet when its inputs change.
+
+    wwwroot/css/output.css is a committed artifact, and keeping it in sync used to
+    be something you had to remember: Tailwind only emits the classes it saw at
+    build time, so a new utility class in markup silently did nothing until
+    someone re-ran npm. That trap is what pushed dashboard.css into being plain
+    CSS in the first place.
+
+    Conditioned on node_modules existing so `dotnet build` still works on a clone
+    with no npm install — the committed output.css is used as-is in that case,
+    which is the same behaviour as before. ContinueOnError keeps a Tailwind
+    failure from breaking an otherwise fine build; the stale stylesheet is a
+    cosmetic problem, not a broken one.
+  -->
+  <Target Name="BuildTailwindCss"
+          BeforeTargets="BeforeBuild"
+          Condition="Exists('$(MSBuildProjectDirectory)\node_modules')"
+          Inputs="wwwroot\css\input.css;tailwind.config.js;@(Content);@(None)"
+          Outputs="wwwroot\css\output.css">
+    <Message Importance="high" Text="Tailwind: rebuilding wwwroot/css/output.css" />
+    <Exec Command="npm run build-css-prod"
+          WorkingDirectory="$(MSBuildProjectDirectory)"
+          ContinueOnError="true" />
+  </Target>
+
+</Project>
