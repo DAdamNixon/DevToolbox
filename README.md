@@ -50,10 +50,23 @@ A comprehensive desktop application for development tools and utilities built wi
    - `Ctrl+Shift+B` to run the application
    - Terminal > Run Task > build/run for other options
 
+### Linux
+
+DevToolbox also runs on Linux, in an app window over a local server. It needs the .NET 10 SDK (`sudo apt install dotnet-sdk-10.0`).
+
+```
+./DevToolbox.UI.Linux/packaging/install.sh
+```
+
+That installs it for your user only and adds it to the app menu. Run `devtoolbox` to open it, and `devtoolbox --quit` to stop it. For a quick run from the repo, use `dotnet run --project DevToolbox.UI.Linux`. How the platforms fit together is in [Engineering Documentation/CrossPlatform.md](Engineering%20Documentation/CrossPlatform.md).
+
 ## Project Structure
 
-- **DevToolbox.UI**: Main application UI components (Blazor WebView + Windows Forms)
-- **DevToolbox.Services**: PowerShell services and script management
+- **DevToolbox.UI.Shared**: Every page, component, stylesheet and theme, for every platform
+- **DevToolbox.UI**: The Windows app (Windows Forms + Blazor WebView)
+- **DevToolbox.UI.Linux**: The Linux app
+- **DevToolbox.Services**: The platform-neutral services, PowerShell and script management
+- **DevToolbox.Services.Windows** / **DevToolbox.Services.Unix**: What each platform does differently
 - **DevToolbox.Services/Scripts**: PowerShell script collection
 
 ## PowerShell Scripts
