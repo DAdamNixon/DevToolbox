@@ -42,12 +42,15 @@ internal sealed class Instance : IDisposable
         }
     }
 
-    /// <summary>Records where this copy is listening, once it is.</summary>
-    public void Publish(string url) =>
-        File.WriteAllLines(InfoPath, [Environment.ProcessId.ToString(), url]);
+    /// <summary>
+    /// Records this copy, and where it is listening. The address is null when the browser view did not
+    /// start, which the window survives; the process id is still worth having, for --quit.
+    /// </summary>
+    public void Publish(string? url) =>
+        File.WriteAllLines(InfoPath, [Environment.ProcessId.ToString(), url ?? ""]);
 
     /// <summary>The address of the copy that is running, or null.</summary>
-    public static string? RunningUrl() => Read()?.Url;
+    public static string? RunningUrl() => Read()?.Url is { Length: > 0 } url ? url : null;
 
     /// <summary>Asks the running copy to stop, the way the session would. True if one was running.</summary>
     public static bool Quit()

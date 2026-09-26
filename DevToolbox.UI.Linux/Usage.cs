@@ -8,6 +8,7 @@ internal static class Usage
         Console.Out.WriteLine("""
             Usage:
               devtoolbox                 Open DevToolbox, or bring up the window of the copy already running
+              devtoolbox --browser       Open it in a Chrome app window instead of its own
               devtoolbox --no-window     Start it without a window (for starting at login)
               devtoolbox --quit          Stop the running copy
               devtoolbox --version       Show the version
