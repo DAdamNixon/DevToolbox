@@ -33,6 +33,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DevToolbox.Services\DevToolbox.Services.csproj" />
+    <ProjectReference Include="..\DevToolbox.Services.Windows\DevToolbox.Services.Windows.csproj" />
   </ItemGroup>
 
   <!--

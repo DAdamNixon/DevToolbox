@@ -1,10 +1,12 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- Plain net10.0: the platform-neutral core. Anything that has to call Windows or Unix goes
+         behind an interface here, with the implementations in DevToolbox.Services.Windows and
+         DevToolbox.Services.Unix. -->
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,6 +24,7 @@
     <!-- So the test project can assert on monitor-loop lifecycle, which is not observable from
          the public surface and is exactly where two duplicate-loop bugs went unnoticed. -->
     <InternalsVisibleTo Include="DevToolbox.Tests" />
+    <InternalsVisibleTo Include="DevToolbox.Tests.Windows" />
   </ItemGroup>
 
   <ItemGroup>

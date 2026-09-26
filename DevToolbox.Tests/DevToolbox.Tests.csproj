@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <!-- Matches DevToolbox.Services, which is net10.0-windows/win-x64. -->
@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DevToolbox.Services\DevToolbox.Services.csproj" />
+    <ProjectReference Include="..\DevToolbox.Services.Windows\DevToolbox.Services.Windows.csproj" />
     <!-- For WebPreviewHost's port selection, where a busy 5218 used to crash the app at launch.
          Referenced as a plain library; the WinExe entry point is not compiled in here. -->
     <ProjectReference Include="..\DevToolbox.UI\DevToolbox.UI.csproj" />

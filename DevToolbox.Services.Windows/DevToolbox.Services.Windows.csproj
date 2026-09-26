@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- The Windows implementations of DevToolbox.Services' platform interfaces: opening things
+       through Explorer, Windows Terminal, cmd and the App Paths registry (SystemService), and the
+       hosts file's UAC-elevated write and ACL grant (HostsWriteBroker, HostsPermissionService,
+       HostsElevatedCommands).
+
+       MOVED, NOT REWRITTEN. These files came out of DevToolbox.Services unchanged, namespaces
+       included, so the Windows app registers exactly the classes it always did. The Unix
+       counterparts live in DevToolbox.Services.Unix; neither project knows about the other.
+
+       Plain net10.0 with [SupportedOSPlatform("windows")] rather than net10.0-windows, so a host
+       that picks its platform at run time (DevToolbox.DevServer) and the portable test project can
+       still reference it. The analyzer then flags any call into it that is not behind an
+       OperatingSystem.IsWindows() check. -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\DevToolbox.Services\DevToolbox.Services.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DevToolbox.Tests" />
+    <InternalsVisibleTo Include="DevToolbox.Tests.Windows" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.Versioning.SupportedOSPlatformAttribute">
+      <_Parameter1>windows</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>
