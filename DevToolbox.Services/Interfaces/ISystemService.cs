@@ -8,6 +8,12 @@ namespace DevToolbox.Services.Interfaces
     public interface ISystemService
     {
         /// <summary>
+        /// What the platform's file manager is called, for menu text such as "Open in Explorer".
+        /// Explorer unless an implementation says otherwise.
+        /// </summary>
+        string FileManagerName => "Explorer";
+
+        /// <summary>
         /// Opens a file or folder location using the default system application
         /// </summary>
         Task<OpenResult> OpenLocationAsync(string path);

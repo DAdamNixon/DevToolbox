@@ -129,16 +129,27 @@ public sealed class HostsSettings
         UnscopedGapBlankLines = Math.Max(1, UnscopedGapBlankLines),
     };
 
-    /// <summary>The settings a first run writes: the defaults plus a DNS flush after a change.</summary>
+    /// <summary>
+    /// The settings a first run writes: the defaults plus a DNS flush after a change — ipconfig on
+    /// Windows, and on Linux systemd-resolved's, which an ordinary user may run.
+    /// </summary>
     public static HostsSettings CreateStarter() => new()
     {
-        AfterApply = new CustomOpenOption
-        {
-            Name = "Flush DNS cache",
-            Type = OpenOptionType.Executable,
-            ExecutablePath = "ipconfig",
-            Arguments = "/flushdns",
-        },
+        AfterApply = OperatingSystem.IsWindows()
+            ? new CustomOpenOption
+            {
+                Name = "Flush DNS cache",
+                Type = OpenOptionType.Executable,
+                ExecutablePath = "ipconfig",
+                Arguments = "/flushdns",
+            }
+            : new CustomOpenOption
+            {
+                Name = "Flush DNS cache",
+                Type = OpenOptionType.Executable,
+                ExecutablePath = "resolvectl",
+                Arguments = "flush-caches",
+            },
     };
 
     private static string Fallback(string? value, string standby) =>

@@ -29,6 +29,9 @@ public sealed class UnixSystemService : ISystemService
 
     private static string Opener => OperatingSystem.IsMacOS() ? "open" : "xdg-open";
 
+    /// <summary>Finder on macOS. On Linux it depends on the desktop — Files, Dolphin, Thunar — so it goes unnamed.</summary>
+    public string FileManagerName => OperatingSystem.IsMacOS() ? "Finder" : "file manager";
+
     public Task<OpenResult> OpenLocationAsync(string path) => Task.Run(() =>
     {
         if (!File.Exists(path) && !Directory.Exists(path))

@@ -149,8 +149,8 @@ public class HostsSettingsTests
         var starter = HostsSettings.CreateStarter();
 
         Assert.NotNull(starter.AfterApply);
-        Assert.Equal("ipconfig", starter.AfterApply!.ExecutablePath);
-        Assert.Equal("/flushdns", starter.AfterApply.Arguments);
+        Assert.Equal(OperatingSystem.IsWindows() ? "ipconfig" : "resolvectl", starter.AfterApply!.ExecutablePath);
+        Assert.Equal(OperatingSystem.IsWindows() ? "/flushdns" : "flush-caches", starter.AfterApply.Arguments);
 
         // Nothing in a seeded file may name anybody's real infrastructure.
         Assert.Null(starter.HostsFilePath);
