@@ -57,13 +57,12 @@ internal static class LogFileNamePolicy
         if (string.IsNullOrWhiteSpace(logFile))
             return ReasonBlank;
 
-        // Covers every escape in one check, because on Windows the invalid set includes both
-        // separators, the drive colon, and the wildcards: \ / : * ? " < > | and the control
-        // characters. Separators are what make traversal possible; the colon is what makes
-        // "C:name" drive-relative; and the wildcards matter because this argument is already
-        // used as a prefix with the server appending its own '*', so a caller-supplied one only
-        // widens a match in ways the caller cannot see reported.
-        if (logFile.AsSpan().IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        // Covers every escape in one check: both separators, the drive colon, and the wildcards —
+        // \ / : * ? " < > | and the control characters. Separators are what make traversal
+        // possible; the colon is what makes "C:name" drive-relative; and the wildcards matter
+        // because this argument is already used as a prefix with the server appending its own
+        // '*', so a caller-supplied one only widens a match in ways the caller cannot see reported.
+        if (logFile.AsSpan().IndexOfAny(Forbidden) >= 0)
             return ReasonPathShape;
 
         // A name of only dots carries no separator and so survives the check above, while still
@@ -77,4 +76,13 @@ internal static class LogFileNamePolicy
     }
 
     internal static bool IsAcceptable(string? logFile) => Refuse(logFile) is null;
+
+    /// <summary>
+    /// What <see cref="Path.GetInvalidFileNameChars"/> returns on Windows, written out rather than
+    /// asked for. On Linux and macOS that call returns only <c>/</c> and NUL, so asking for it there
+    /// let <c>*</c> and <c>?</c> through: <c>*</c> alone became the pattern <c>**.txt</c> and read
+    /// every file in the location. The set does not depend on the OS the server runs on.
+    /// </summary>
+    private static readonly System.Buffers.SearchValues<char> Forbidden = System.Buffers.SearchValues.Create(
+        "\"<>|:*?\\/" + new string(Enumerable.Range(0, 32).Select(c => (char)c).ToArray()));
 }

@@ -44,7 +44,8 @@ public class SourcePreviewTests : IDisposable
     /// <summary>A file at a path below the root, creating the folders on the way.</summary>
     private void FileAt(string relativePath, string content = "{}")
     {
-        var full = Path.Combine(_root, relativePath);
+        // Fixtures are written with Windows separators; the code under test runs everywhere.
+        var full = Path.Combine(_root, relativePath.Replace('\\', Path.DirectorySeparatorChar));
         Directory.CreateDirectory(Path.GetDirectoryName(full)!);
         File.WriteAllText(full, content);
     }
@@ -61,7 +62,8 @@ public class SourcePreviewTests : IDisposable
     };
 
     /// <summary>The regex that pulls a branch folder and a module out of a website path.</summary>
-    private const string BranchPathRegex = @"^(?<location>[^\\]+)\\.*\\(?<workspace>[^\\]+)\.sln$";
+    /// Either separator, so the same pattern reads a relative path on Windows and on Linux.
+    private const string BranchPathRegex = @"^(?<location>[^\\/]+)[\\/].*[\\/](?<workspace>[^\\/]+)\.sln$";
 
     /// <summary>
     /// The layout the website working copies use, and the one the entry name cannot describe:

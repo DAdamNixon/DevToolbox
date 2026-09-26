@@ -91,7 +91,7 @@ public sealed class ScriptStreamingTests : IDisposable
         // writes a line a second for a minute, so the first one arriving early is the whole test.
         using var cts = new CancellationTokenSource();
         var recorder = new Recorder();
-        var run = Run("ping -n 60 127.0.0.1", recorder, cts.Token);
+        var run = Run(Ping(60), recorder, cts.Token);
 
         await WaitFor(() => recorder.Lines.Any(l => l.Kind == ScriptOutputKind.Output && l.Text.Contains("127.0.0.1")));
         Assert.False(run.IsCompleted);
@@ -121,7 +121,7 @@ public sealed class ScriptStreamingTests : IDisposable
         // npm writes its warnings and progress to stderr. Shown as errors, a successful npm install
         // looked like a failed one in every folder.
         var recorder = new Recorder();
-        var outcome = await Run("cmd.exe /c \"echo from-stderr 1>&2\"; Write-Error 'a real one'", recorder).WaitAsync(Patience);
+        var outcome = await Run((OperatingSystem.IsWindows() ? "cmd.exe /c \"echo from-stderr 1>&2\"" : "sh -c 'echo from-stderr 1>&2'") + "; Write-Error 'a real one'", recorder).WaitAsync(Patience);
 
         Assert.Equal(ScriptRunOutcome.Completed, outcome);
         Assert.Contains(recorder.Lines, l => l.Kind == ScriptOutputKind.NativeStderr && l.Text.Contains("from-stderr"));
@@ -178,7 +178,7 @@ public sealed class ScriptStreamingTests : IDisposable
         // Otherwise Stop on npm-install would stop watching an npm install that carries on regardless.
         using var cts = new CancellationTokenSource();
         var recorder = new Recorder();
-        var run = Run("ping -n 120 127.0.0.1", recorder, cts.Token);
+        var run = Run(Ping(120), recorder, cts.Token);
 
         await WaitFor(() => recorder.Lines.Any(l => l.Text.Contains("127.0.0.1")));
         var before = ChildPings();
@@ -226,12 +226,45 @@ public sealed class ScriptStreamingTests : IDisposable
     }
 
     /// <summary>
-    /// ping.exe processes this test process started. PowerShell starts a native program itself,
+    /// A native program that prints a line a second for <paramref name="count"/> seconds. The
+    /// switch for the count is the one thing ping spells differently on Windows.
+    /// </summary>
+    private static string Ping(int count) =>
+        OperatingSystem.IsWindows() ? $"ping -n {count} 127.0.0.1" : $"ping -c {count} 127.0.0.1";
+
+    /// <summary>
+    /// ping processes this test process started. PowerShell starts a native program itself,
     /// in-process, so the test host is the parent.
     /// </summary>
     private static List<int> ChildPings() =>
-        ParentsOf("PING.EXE").Where(p => p.Parent == Environment.ProcessId).Select(p => p.Id).ToList();
+        (OperatingSystem.IsWindows() ? ParentsOf("PING.EXE") : UnixParentsOf("ping"))
+            .Where(p => p.Parent == Environment.ProcessId).Select(p => p.Id).ToList();
 
+    /// <summary>
+    /// The same question answered from <c>/proc</c>. Field 2 of <c>stat</c> is the command name in
+    /// parentheses and field 4 the parent; the name can itself contain spaces and parentheses,
+    /// so the fields after it are counted from the last closing one.
+    /// </summary>
+    private static IEnumerable<(int Id, int Parent)> UnixParentsOf(string command)
+    {
+        foreach (var directory in Directory.EnumerateDirectories("/proc"))
+        {
+            if (!int.TryParse(Path.GetFileName(directory), out var id)) continue;
+
+            string stat;
+            try { stat = File.ReadAllText(Path.Combine(directory, "stat")); }
+            catch (IOException) { continue; } // Exited while we looked.
+
+            var open = stat.IndexOf('(');
+            var close = stat.LastIndexOf(')');
+            if (open < 0 || close < open || stat[(open + 1)..close] != command) continue;
+
+            var rest = stat[(close + 2)..].Split(' ');
+            if (rest.Length > 1 && int.TryParse(rest[1], out var parent)) yield return (id, parent);
+        }
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static IEnumerable<(int Id, int Parent)> ParentsOf(string image)
     {
         using var search = new System.Management.ManagementObjectSearcher(

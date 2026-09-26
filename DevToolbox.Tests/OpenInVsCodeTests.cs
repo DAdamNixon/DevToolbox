@@ -76,7 +76,8 @@ public class OpenInVsCodeTests : IDisposable
 
     private WorkspaceLocation At(string relativePath)
     {
-        var full = Path.Combine(_root, relativePath);
+        // Fixtures are written with Windows separators; the code under test runs everywhere.
+        var full = Path.Combine(_root, relativePath.Replace('\\', Path.DirectorySeparatorChar));
         Directory.CreateDirectory(Path.GetDirectoryName(full)!);
         File.WriteAllText(full, "{}");
 

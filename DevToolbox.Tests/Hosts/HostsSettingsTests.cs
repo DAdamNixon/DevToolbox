@@ -1,4 +1,4 @@
-using DevToolbox.Services.Models.Hosts;
+﻿using DevToolbox.Services.Models.Hosts;
 
 namespace DevToolbox.Tests.Hosts;
 
@@ -120,8 +120,9 @@ public class HostsSettingsTests
     [Fact]
     public void A_blank_path_means_the_system_hosts_file()
     {
-        var expected = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.System), "drivers", "etc", "hosts");
+        var expected = OperatingSystem.IsWindows()
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "drivers", "etc", "hosts")
+            : "/etc/hosts";
 
         Assert.Equal(expected, new HostsSettings().ResolveHostsPath());
         Assert.Equal(expected, new HostsSettings { HostsFilePath = "  " }.ResolveHostsPath());
@@ -131,7 +132,7 @@ public class HostsSettingsTests
     /// A configurable path is what makes the write path testable against a copy instead of the real
     /// system file, so environment variables have to expand.
     /// </summary>
-    [Fact]
+    [WindowsFact] // %TEMP% and a backslash are how the setting is written on Windows.
     public void A_configured_path_is_expanded_and_made_absolute()
     {
         var settings = new HostsSettings { HostsFilePath = @"%TEMP%\hosts-test" };

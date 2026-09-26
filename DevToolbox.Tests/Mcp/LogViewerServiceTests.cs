@@ -28,6 +28,11 @@ internal sealed class LogEnvironment : IDisposable
     /// An extra (name, path) appended to log_paths.yaml. Used to add a deliberately broken entry —
     /// the only kind of location the policy still refuses.
     /// </param>
+    /// <summary>A network share that is not there: UNC on Windows, a mount point elsewhere.</summary>
+    private static readonly string ArchivedPath = OperatingSystem.IsWindows()
+        ? @"\\fileserver01\LogFiles\WebServers\ElliottLogs"
+        : "/mnt/fileserver01/LogFiles/WebServers/ElliottLogs";
+
     internal LogEnvironment((string Name, string Path)? extraLocation = null)
     {
         File.WriteAllText(Path.Combine(_config.Path, "log_templates_index.yaml"), """
@@ -78,7 +83,7 @@ internal sealed class LogEnvironment : IDisposable
               path: {_logs.Path}
               defaultTemplate: WebsiteBase
             - name: Archived Logs
-              path: '\\fileserver01\LogFiles\WebServers\ElliottLogs'
+              path: '{ArchivedPath}'
             """;
 
         if (extraLocation is not null)

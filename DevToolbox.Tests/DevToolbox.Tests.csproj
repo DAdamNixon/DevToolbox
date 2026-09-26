@@ -1,15 +1,12 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <!-- Matches DevToolbox.Services, which is net10.0-windows/win-x64. -->
-    <TargetFramework>net10.0-windows</TargetFramework>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!-- Plain net10.0, so the suite runs on Linux and macOS as well as Windows. The few tests that
+         need Windows Forms or Win32 live in DevToolbox.Tests.Windows. -->
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
-    <!-- Only for WindowIconGuardTests, which needs a real System.Windows.Forms.Form on a bare STA
-         thread — no MainWindow, no WebView. -->
-    <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,14 +19,17 @@
   <ItemGroup>
     <ProjectReference Include="..\DevToolbox.Services\DevToolbox.Services.csproj" />
     <ProjectReference Include="..\DevToolbox.Services.Windows\DevToolbox.Services.Windows.csproj" />
-    <!-- For WebPreviewHost's port selection, where a busy 5218 used to crash the app at launch.
-         Referenced as a plain library; the WinExe entry point is not compiled in here. -->
-    <ProjectReference Include="..\DevToolbox.UI\DevToolbox.UI.csproj" />
     <ProjectReference Include="..\DevToolbox.Mcp\DevToolbox.Mcp.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- TEMPORARY, until the Blazor components move into a platform-neutral library: these test
+         classes that live in DevToolbox.UI, which is still a Windows Forms executable. -->
+    <Compile Remove="LogFilterSummaryTests.cs;LogSearchStateServiceResultsTests.cs;WebPreviewPortTests.cs" />
   </ItemGroup>
 
   <ItemGroup>
