@@ -25,6 +25,21 @@ if (args.Length > 0 && DevToolbox.Cli.Cli.Verbs.Contains(args[0]))
     return await DevToolbox.Cli.Cli.RunAsync(args);
 }
 
+// Help, and anything this does not know, before anything starts: a typo must not open a window.
+string[] windowSwitches = ["--no-window", "--quit"];
+if (args.Any(a => a is "-h" or "-?" or "--help" or "help"))
+{
+    return await Usage.PrintAsync();
+}
+
+if (args.FirstOrDefault(a => !windowSwitches.Contains(a)) is { } unknown)
+{
+    Console.Error.WriteLine($"Unknown argument: {unknown}");
+    Console.Error.WriteLine();
+    await Usage.PrintAsync();
+    return 1;
+}
+
 if (args.Contains("--quit"))
 {
     return Instance.Quit() ? 0 : 1;
