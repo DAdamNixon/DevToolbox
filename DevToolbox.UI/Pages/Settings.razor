@@ -13,6 +13,7 @@
 @inject IJSRuntime JS
 @inject WebPreviewInfo WebPreview
 @inject CardStateService Cards
+@inject IPathPicker Picker
 
 <!-- Page Header -->
 <div class="mb-8">
@@ -819,7 +820,7 @@
     // --- workspace defaults ---
 
     /// <summary>
-    /// Opens a folder picker at whatever is already in the box. WinForms directly, the way
+    /// Opens a folder picker at whatever is already in the box. The native dialog, the way
     /// <c>PathBrowser</c> does it: this is a desktop application and the native dialog is the one
     /// that can reach a mapped drive and a UNC share.
     /// </summary>
@@ -827,23 +828,14 @@
     {
         try
         {
-            // Fully qualified rather than a using: System.Windows.Forms carries a Label, a Button
-            // and a Timer, and importing it into a Razor page is how those start colliding with
-            // the framework's own types.
-            using var dialog = new System.Windows.Forms.FolderBrowserDialog
-            {
-                Description = "Default workspace location",
-                UseDescriptionForTitle = true,
-                ShowNewFolderButton = true,
-                RootFolder = Environment.SpecialFolder.MyComputer
-            };
-
             var current = defaultWorkspaceLocation.Trim();
-            if (current.Length > 0 && Directory.Exists(current)) dialog.SelectedPath = current;
+            var picked = await Picker.PickFolderAsync(new FolderPickerOptions(
+                "Default workspace location",
+                current.Length > 0 && Directory.Exists(current) ? current : null));
 
-            if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+            if (picked is null) return;
 
-            defaultWorkspaceLocation = dialog.SelectedPath;
+            defaultWorkspaceLocation = picked;
             await SaveWorkspaceDefaultsAsync();
         }
         catch (Exception ex) when (ex is InvalidOperationException or IOException)

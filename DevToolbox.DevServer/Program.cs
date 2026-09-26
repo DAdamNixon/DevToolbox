@@ -1,4 +1,6 @@
+using DevToolbox.Services;
 using DevToolbox.Services.Interfaces;
+using DevToolbox.UI.Services;
 using DevToolbox.UI.Web;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -13,7 +15,12 @@ var port = args.Length > 0 && int.TryParse(args[0], out var requested)
     ? requested
     : WebPreviewHost.DefaultPort;
 
-var web = WebPreviewHost.Build(new WebPreviewInfo(), port);
+// The platform services the window registers, so the pages resolve the same implementations here.
+var web = WebPreviewHost.Build(new WebPreviewInfo(), port, configureServices: services =>
+{
+    services.AddWindowsPlatform();
+    services.AddSingleton<IPathPicker, WinFormsPathPicker>();
+});
 await web.StartAsync();
 
 if (!web.IsRunning)

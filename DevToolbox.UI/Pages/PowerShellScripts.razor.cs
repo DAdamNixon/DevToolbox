@@ -159,6 +159,7 @@ namespace DevToolbox.UI.Pages
         [Inject] IUiSettingsService uiSettings { get; set; } = null!;
         [Inject] ScriptRunSession Run { get; set; } = null!;
         [Inject] IJSRuntime JS { get; set; } = null!;
+        [Inject] IPathPicker Picker { get; set; } = null!;
         private string searchText = "";
 
         protected override async Task OnInitializedAsync()
@@ -467,34 +468,20 @@ namespace DevToolbox.UI.Pages
         }
 
         /// <summary>Opens a native picker for a path parameter and puts the result in its field.</summary>
-        private void BrowseFor(ScriptParameter parameter)
+        private async Task BrowseFor(ScriptParameter parameter)
         {
             var picked = parameter.Kind == ScriptParameterKind.File
-                ? PickFile(Value(parameter.Name))
-                : PickFolder(Value(parameter.Name));
+                ? await PickFile(Value(parameter.Name))
+                : await PickFolder(Value(parameter.Name));
 
             if (picked is not null) SetValue(parameter.Name, picked);
         }
 
-        /// <summary>
-        /// Fully qualified rather than a using: System.Windows.Forms has its own Label, Button and
-        /// Timer, and importing it into a page is how those start colliding with the framework's.
-        /// </summary>
-        private string? PickFolder(string current)
+        private async Task<string?> PickFolder(string current)
         {
             try
             {
-                using var dialog = new System.Windows.Forms.FolderBrowserDialog
-                {
-                    Description = "Select a folder",
-                    UseDescriptionForTitle = true,
-                    ShowNewFolderButton = true,
-                    RootFolder = Environment.SpecialFolder.MyComputer
-                };
-
-                if (StartingFolder(current) is { } start) dialog.SelectedPath = start;
-
-                return dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK ? dialog.SelectedPath : null;
+                return await Picker.PickFolderAsync(new FolderPickerOptions("Select a folder", StartingFolder(current)));
             }
             catch (Exception ex) when (ex is InvalidOperationException or IOException)
             {
@@ -503,20 +490,11 @@ namespace DevToolbox.UI.Pages
             }
         }
 
-        private string? PickFile(string current)
+        private async Task<string?> PickFile(string current)
         {
             try
             {
-                using var dialog = new System.Windows.Forms.OpenFileDialog
-                {
-                    Title = "Select a file",
-                    Filter = "All Files (*.*)|*.*",
-                    CheckFileExists = true,
-                    CheckPathExists = true,
-                    InitialDirectory = StartingFolder(current) ?? Environment.GetFolderPath(Environment.SpecialFolder.MyComputer)
-                };
-
-                return dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK ? dialog.FileName : null;
+                return await Picker.PickFileAsync(new FilePickerOptions("Select a file", StartingFolder(current)));
             }
             catch (Exception ex) when (ex is InvalidOperationException or IOException)
             {
