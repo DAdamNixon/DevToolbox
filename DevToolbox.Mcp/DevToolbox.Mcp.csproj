@@ -2,14 +2,14 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- win-x64 when built on Windows, so the packaged devtoolbox-mcp.exe comes out exactly as it
+         did before. Elsewhere the SDK's own RID, which gives a native launcher for that machine. -->
+    <RuntimeIdentifier Condition="$([MSBuild]::IsOSPlatform('Windows'))">win-x64</RuntimeIdentifier>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <AssemblyName>DevToolbox.Mcp</AssemblyName>
-    <!-- Windows-targeted only because DevToolbox.Logs is (it inherits the toolbox's
-         net10.0-windows/win-x64). Nothing here needs Windows itself. -->
   </PropertyGroup>
 
   <ItemGroup>

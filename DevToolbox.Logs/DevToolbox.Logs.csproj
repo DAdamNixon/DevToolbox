@@ -1,10 +1,12 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- Plain net10.0: nothing in the Log Viewer's data layer needs Windows, and the Linux host
+         and the MCP server on Linux reference it. No RuntimeIdentifier either — a library takes
+         its RID from whichever executable references it, so the Windows app still gets win-x64. -->
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
   </PropertyGroup>
 
   <!-- The Log Viewer's data layer, lifted out of DevToolbox.Services so a headless host can
