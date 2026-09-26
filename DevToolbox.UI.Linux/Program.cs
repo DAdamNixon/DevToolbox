@@ -12,10 +12,18 @@ using Microsoft.Extensions.DependencyInjection;
 //   devtoolbox              start, or bring up the window of the copy that is already running
 //   devtoolbox --no-window  start the server only, for a login autostart
 //   devtoolbox --quit       stop the running copy
+//   devtoolbox projects …   the command line (DevToolbox.Cli): find and open projects
+//   devtoolbox logs …       the command line: search logs
 //
 // Closing the window does not stop DevToolbox, the same as closing the Windows window with the tray
 // icon on: Service Pulse keeps polling and its alerts keep arriving as desktop notifications. The
 // launcher's Quit action, or --quit, is the Exit in the tray menu.
+
+// The command line needs no server and no lock, so it runs beside a running window.
+if (args.Length > 0 && DevToolbox.Cli.Cli.Verbs.Contains(args[0]))
+{
+    return await DevToolbox.Cli.Cli.RunAsync(args);
+}
 
 if (args.Contains("--quit"))
 {

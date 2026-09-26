@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The command line: projects and log search without a window, for a terminal, a script or a
+       machine with no desktop. Built on the same services as the app, and for log search on the
+       MCP server's LogViewerService, so a search here has the same guardrails as an agent's:
+       read-only queries, a row cap, and a time limit. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>devtoolbox-cli</AssemblyName>
+    <RootNamespace>DevToolbox.Cli</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" Version="2.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DevToolbox.Services\DevToolbox.Services.csproj" />
+    <ProjectReference Include="..\DevToolbox.Services.Windows\DevToolbox.Services.Windows.csproj" />
+    <ProjectReference Include="..\DevToolbox.Services.Unix\DevToolbox.Services.Unix.csproj" />
+    <ProjectReference Include="..\DevToolbox.Mcp\DevToolbox.Mcp.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DevToolbox.Tests" />
+  </ItemGroup>
+
+</Project>

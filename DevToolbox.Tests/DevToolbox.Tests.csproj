@@ -24,6 +24,7 @@
          used to crash the app at launch. -->
     <ProjectReference Include="..\DevToolbox.UI.Shared\DevToolbox.UI.Shared.csproj" />
     <ProjectReference Include="..\DevToolbox.Mcp\DevToolbox.Mcp.csproj" />
+    <ProjectReference Include="..\DevToolbox.Cli\DevToolbox.Cli.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -15,6 +15,7 @@ DevToolbox has one UI and one set of services for every platform. What differs b
 | `DevToolbox.UI.Linux` | `net10.0` | The Linux host (assembly `devtoolbox`): Kestrel on loopback and a Chrome app window. |
 | `DevToolbox.DevServer` | `net10.0` | The browser-only dev tool; picks Windows or Unix services at startup. |
 | `DevToolbox.Mcp` | `net10.0` | The MCP server. Still `win-x64` when built on Windows. |
+| `DevToolbox.Cli` | `net10.0` | The command line (`devtoolbox-cli`, and `devtoolbox projects …` / `devtoolbox logs …` on Linux). Log search runs on the MCP server's `LogViewerService`. |
 | `DevToolbox.Tests` | `net10.0` | The suite. Runs on Linux too; Windows-only tests use `[WindowsFact]` and skip elsewhere. |
 | `DevToolbox.Tests.Windows` | `net10.0-windows` | The tests that need a real Windows Forms window. |
 
@@ -47,6 +48,22 @@ A few model defaults are OS-specific and decide it themselves: the system hosts 
 - `DevToolbox.UI.Linux/packaging/install.sh` installs it for the current user, with no root: the app under `~/.local/share/DevToolbox/bin/app`, a launcher in the app menu, and `~/.local/bin/devtoolbox`.
 - Config is in `~/.local/share/DevToolbox/Config` (what `LocalApplicationData` is on Linux). A Linux `openHandlers.yaml` in `DevToolbox.UI.Linux/ConfigDefaults` replaces the Windows one in that host's output.
 - Host Changer writes `/etc/hosts` through `pkexec`, which shows the desktop's password prompt. The step that runs as root is `UnixHostsWriteBroker.ElevatedScript`. It only checks two hashes and swaps a staged file in.
+
+## The command line
+
+The same projects and logs as the app, from a terminal. On Linux it is part of the `devtoolbox` command; elsewhere, run `devtoolbox-cli`.
+
+```sh
+devtoolbox projects swdr                       # search, abbreviations and aliases included
+devtoolbox projects open DevToolbox            # what the card's Open button does
+devtoolbox projects open DevToolbox --in terminal
+devtoolbox logs locations
+devtoolbox logs files -l "Sample logs"
+devtoolbox logs search app -l "Sample logs" --from 2026-09-20 --to 2026-09-25 --terms Timeout
+devtoolbox logs search app -l "Sample logs" --sql "SELECT Level, COUNT(*) FROM {table} GROUP BY Level"
+```
+
+Every command takes `--json`. Log search uses the MCP server's `LogViewerService`, so it has the same guardrails: only the locations named, file names that cannot leave a location, read-only queries, 200 rows a page, and a time limit. Each run has its own scratch database, deleted when it exits, so it never touches the app's `logs.db` and is safe beside the running app.
 
 ## Checking Windows after a change here
 

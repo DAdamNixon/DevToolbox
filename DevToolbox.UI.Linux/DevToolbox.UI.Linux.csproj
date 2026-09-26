@@ -26,6 +26,8 @@
   <ItemGroup>
     <ProjectReference Include="..\DevToolbox.UI.Shared\DevToolbox.UI.Shared.csproj" />
     <ProjectReference Include="..\DevToolbox.Services.Unix\DevToolbox.Services.Unix.csproj" />
+    <!-- devtoolbox projects … and devtoolbox logs … are the command line, run in this process. -->
+    <ProjectReference Include="..\DevToolbox.Cli\DevToolbox.Cli.csproj" />
   </ItemGroup>
 
   <ItemGroup>

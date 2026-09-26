@@ -37,6 +37,8 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="DevToolbox.Tests" />
+    <!-- The command line's log search runs on LogViewerService, so it has the same guardrails. -->
+    <InternalsVisibleTo Include="devtoolbox-cli" />
   </ItemGroup>
 
 </Project>

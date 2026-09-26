@@ -58,7 +58,7 @@ DevToolbox also runs on Linux, in an app window over a local server. It needs th
 ./DevToolbox.UI.Linux/packaging/install.sh
 ```
 
-That installs it for your user only and adds it to the app menu. Run `devtoolbox` to open it, and `devtoolbox --quit` to stop it. For a quick run from the repo, use `dotnet run --project DevToolbox.UI.Linux`. How the platforms fit together is in [Engineering Documentation/CrossPlatform.md](Engineering%20Documentation/CrossPlatform.md).
+That installs it for your user only and adds it to the app menu. Run `devtoolbox` to open it, and `devtoolbox --quit` to stop it. The same command works from a terminal: `devtoolbox projects <search>`, `devtoolbox projects open <name>`, and `devtoolbox logs search …` (add `--help` to any of them). For a quick run from the repo, use `dotnet run --project DevToolbox.UI.Linux`. How the platforms fit together is in [Engineering Documentation/CrossPlatform.md](Engineering%20Documentation/CrossPlatform.md).
 
 ## Project Structure
 
@@ -67,6 +67,7 @@ That installs it for your user only and adds it to the app menu. Run `devtoolbox
 - **DevToolbox.UI.Linux**: The Linux app
 - **DevToolbox.Services**: The platform-neutral services, PowerShell and script management
 - **DevToolbox.Services.Windows** / **DevToolbox.Services.Unix**: What each platform does differently
+- **DevToolbox.Cli**: The command line: projects and log search
 - **DevToolbox.Services/Scripts**: PowerShell script collection
 
 ## PowerShell Scripts
