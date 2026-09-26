@@ -26,6 +26,11 @@
     <!-- Served at the site root rather than the usual _content/DevToolbox.UI.Shared/, so css/theme.css
          and js/theme.js keep the URLs every host page, stylesheet and script already uses. -->
     <StaticWebAssetBasePath>/</StaticWebAssetBasePath>
+
+    <!-- No precompressed .gz/.br copies. A class library gets them by default, the Windows app
+         never had them, and every host serves over loopback, where compressing buys nothing. Off,
+         the Windows package holds exactly the files it did before the move. -->
+    <CompressionEnabled>false</CompressionEnabled>
   </PropertyGroup>
 
   <ItemGroup>
