@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- The Linux and macOS implementations of DevToolbox.Services' platform interfaces: opening
+       things with xdg-open (open on macOS), native dialogs through zenity, and the hosts file's
+       write through pkexec.
+
+       One project for both, because nearly everything that matters is shared — /etc/hosts, Unix
+       permissions, a POSIX shell. The few differences are OperatingSystem.IsMacOS() checks inside
+       it. macOS is designed for here but has not been run; see the Linux Port Plan in the vault.
+
+       The Windows counterparts are DevToolbox.Services.Windows; neither project knows the other. -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\DevToolbox.Services\DevToolbox.Services.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DevToolbox.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.Versioning.UnsupportedOSPlatformAttribute">
+      <_Parameter1>windows</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

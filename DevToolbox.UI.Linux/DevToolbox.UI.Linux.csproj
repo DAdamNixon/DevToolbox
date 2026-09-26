@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    The Linux host (and, untested, the macOS one): the same Blazor components the Windows window
+    shows, served on loopback by Kestrel and opened as an app window in Chrome or Chromium, or in
+    the default browser when neither is installed.
+
+    Thin on purpose, like every host. Pages, styles and themes come from DevToolbox.UI.Shared, and
+    the platform services — xdg-open, zenity, pkexec — from DevToolbox.Services.Unix. What is here
+    is only the shell: one running copy, the window, desktop notifications, and the quit switch.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>devtoolbox</AssemblyName>
+    <RootNamespace>DevToolbox.UI.Linux</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <!-- Serves its own components over Kestrel, so it needs the framework's static assets —
+         _framework/blazor.web.js — resolved into its manifest. The Windows host sets the same. -->
+    <RequiresAspNetWebAssets>true</RequiresAspNetWebAssets>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DevToolbox.UI.Shared\DevToolbox.UI.Shared.csproj" />
+    <ProjectReference Include="..\DevToolbox.Services.Unix\DevToolbox.Services.Unix.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The openHandlers.yaml a Linux machine starts with: VS Code and xdg-open instead of Visual
+         Studio and vswhere. Same file name and folder as the Windows default in
+         DevToolbox.Services, so ConfigDefaults seeds and restores it without knowing the OS; this
+         project's copy replaces that one in this project's output. -->
+    <None Update="ConfigDefaults\*.yaml" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="packaging\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.Versioning.UnsupportedOSPlatformAttribute">
+      <_Parameter1>windows</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

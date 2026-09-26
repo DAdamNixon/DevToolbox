@@ -24,3 +24,15 @@ public sealed class WindowsTheoryAttribute : TheoryAttribute
         if (!OperatingSystem.IsWindows()) Skip = "Windows-only by design.";
     }
 }
+
+/// <summary>
+/// A test of the Linux and macOS implementations, which call programs — sh, sha256sum — that only
+/// exist there. Skipped on Windows.
+/// </summary>
+public sealed class UnixFactAttribute : FactAttribute
+{
+    public UnixFactAttribute()
+    {
+        if (OperatingSystem.IsWindows()) Skip = "Linux and macOS only.";
+    }
+}
