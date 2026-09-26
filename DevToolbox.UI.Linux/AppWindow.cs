@@ -31,6 +31,15 @@ internal static class AppWindow
         }
     }
 
+    /// <summary>The browser view in the default browser, as a tab: the tray's "Open in browser".</summary>
+    public static void OpenInBrowser(string url)
+    {
+        if (!TryStart(OperatingSystem.IsMacOS() ? "open" : "xdg-open", [url]))
+        {
+            Console.Error.WriteLine($"Could not open a browser. DevToolbox is at {url}");
+        }
+    }
+
     private static bool TryStart(string program, string[] arguments)
     {
         try

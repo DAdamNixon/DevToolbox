@@ -159,6 +159,38 @@ internal sealed class PhotinoWindow : IDisposable
         application.Dispatcher.BeginInvoke(() => application.Shutdown(0, force: true));
     }
 
+    /// <summary>
+    /// Runs <paramref name="action"/> on the GTK thread once GTK is running, just before the loop
+    /// starts: after the window has been shown, but before anything of it has been drawn.
+    /// </summary>
+    public void WhenStarted(Action action) =>
+        _app.Application.RegisterStartupHandler((_, _) => action());
+
+    /// <summary>Runs <paramref name="action"/> on the GTK thread, from any thread.</summary>
+    public void Post(Action action) => _app.Application.Dispatcher.BeginInvoke(action);
+
+    /// <summary>
+    /// Starts with the window hidden, for the login autostart: running, in the tray, and shown by the
+    /// first launch. PhotinoX's Run always shows the main window, so it is hidden again before the
+    /// loop draws it.
+    /// </summary>
+    public void StartHidden() => WhenStarted(() => _app.MainWindow.Hide());
+
+    /// <summary>
+    /// Closing the window hides it instead, whenever <paramref name="shouldHide"/> says so at the time;
+    /// <paramref name="hidden"/> runs after. Never for a close DevToolbox asked for itself: Exit, --quit,
+    /// the session ending.
+    /// </summary>
+    public void HideOnClose(Func<bool> shouldHide, Action hidden) =>
+        _app.MainWindow.RegisterClosingHandler((_, e) =>
+        {
+            if (_closeRequested || !shouldHide()) return;
+
+            e.Cancel = true;
+            _app.MainWindow.Hide();
+            hidden();
+        });
+
     /// <summary>Disposes the container, and with it the singletons: after the browser view has stopped.</summary>
     public void Dispose() => _app.Dispose();
 }

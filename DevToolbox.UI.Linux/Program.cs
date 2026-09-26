@@ -3,6 +3,7 @@ using DevToolbox.Services;
 using DevToolbox.Services.Interfaces;
 using DevToolbox.Services.Services;
 using DevToolbox.UI.Linux;
+using DevToolbox.UI.Services;
 using DevToolbox.UI.Web;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,7 +12,7 @@ using Microsoft.Extensions.DependencyInjection;
 //
 //   devtoolbox              start, or bring up the window of the copy that is already running
 //   devtoolbox --browser    start in a Chrome app window instead of DevToolbox's own
-//   devtoolbox --no-window  start the server only, for a login autostart
+//   devtoolbox --no-window  start with the window hidden in the tray, for a login autostart
 //   devtoolbox --quit       stop the running copy
 //   devtoolbox projects …   the command line (DevToolbox.Cli): find and open projects
 //   devtoolbox logs …       the command line: search logs
@@ -19,8 +20,9 @@ using Microsoft.Extensions.DependencyInjection;
 // Shaped like the Windows app: DevToolbox's own window (PhotinoX, WebKitGTK) owns the services, and
 // the browser view at localhost:5218 runs beside it for as long as the app does. linux.yaml's openIn,
 // or --browser, opens a Chrome app window instead, as before; closing that window does not stop
-// DevToolbox, and --quit or the launcher's Quit action does. Closing DevToolbox's own window quits,
-// until it has a tray icon to hide in.
+// DevToolbox, and --quit or the launcher's Quit action does. Closing DevToolbox's own window hides it
+// in the tray when Host Changer's "minimize to tray" is on and the desktop shows tray icons, as on
+// Windows; otherwise it quits. The tray's Exit, --quit or the launcher's Quit action stop it.
 
 // The command line needs no server and no lock, so it runs beside a running window.
 if (args.Length > 0 && DevToolbox.Cli.Cli.Verbs.Contains(args[0]))
@@ -108,16 +110,19 @@ var configuration = new ConfigurationBuilder()
 var info = new WebPreviewInfo();
 
 // DevToolbox's own window unless asked for the browser, and the browser if the window cannot open.
+// Built for --no-window too, hidden, so that the first launch after a login autostart shows this
+// window rather than a browser.
 PhotinoWindow? window = null;
-if (openWindow && !args.Contains("--browser") && !LinuxSettings.Load().OpensInBrowser)
+if (!args.Contains("--browser") && !LinuxSettings.Load().OpensInBrowser)
 {
     if (PhotinoWindow.Unavailable() is { } reason)
     {
-        Console.Error.WriteLine($"Opening DevToolbox in the browser instead of its own window: {reason}.");
+        Console.Error.WriteLine($"DevToolbox cannot use its own window, and will use the browser: {reason}.");
     }
     else
     {
         window = PhotinoWindow.Create(configuration, info);
+        if (!openWindow) window.StartHidden();
     }
 }
 
@@ -203,7 +208,38 @@ catch (InvalidOperationException ex)
 
 if (window is not null)
 {
+    // The tray icon, when Host Changer's settings want one, as on Windows. Made once GTK is running,
+    // on its thread, which is where every call into the tray happens from then on.
+    var hostsSettings = services.GetRequiredService<IHostsSettingsService>();
+    ITrayIcon? tray = null;
+    if (hostsSettings.GetAsync().GetAwaiter().GetResult().ShowTrayIcon)
+    {
+        window.WhenStarted(() => tray = AppIndicatorTray.TryCreate(
+            services.GetRequiredService<IHostsFileService>(),
+            services.GetRequiredService<AppShellService>(),
+            window.Post,
+            showWindow: () => window.Show(null),
+            openInBrowser: web.IsRunning ? () => AppWindow.OpenInBrowser(web.Url!) : null,
+            exit: Stop));
+    }
+
+    // Closing hides the window when "minimize to tray" is on and a tray is there to hide in; otherwise
+    // it quits. The settings are read at the moment of closing, so changing them takes effect at once;
+    // they are cached by then, so reading them does not keep the window waiting.
+    window.HideOnClose(
+        shouldHide: () => tray is { IsShowing: true } && hostsSettings.GetAsync().GetAwaiter().GetResult().MinimizeToTray,
+        hidden: () =>
+        {
+            var current = hostsSettings.GetAsync().GetAwaiter().GetResult();
+            if (current.TrayHintShown) return;
+
+            Notifications.HiddenToTray();
+            current.TrayHintShown = true;
+            _ = hostsSettings.SaveAsync(current);
+        });
+
     window.Run();
+    tray?.Dispose();
 }
 else
 {

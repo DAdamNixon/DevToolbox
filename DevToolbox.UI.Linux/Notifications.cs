@@ -22,7 +22,14 @@ internal static class Notifications
         }
     }
 
-    private static void Show(string title, string body, string urgency)
+    /// <summary>
+    /// Closing the window hid it rather than quitting: said once, the first time, as the Windows app's
+    /// balloon does.
+    /// </summary>
+    public static void HiddenToTray() =>
+        Show("DevToolbox is still running", "Use its icon in the top bar to switch hosts, show the window, or exit.");
+
+    public static void Show(string title, string body, string urgency = "normal")
     {
         try
         {
