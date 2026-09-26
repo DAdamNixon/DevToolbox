@@ -26,7 +26,8 @@ if (args.Length > 0 && DevToolbox.Cli.Cli.Verbs.Contains(args[0]))
 }
 
 // Help, and anything this does not know, before anything starts: a typo must not open a window.
-string[] windowSwitches = ["--no-window", "--quit"];
+// --photino is the Photino plan's phase 1 spike, left out of the usage until phase 2 makes it the default.
+string[] windowSwitches = ["--no-window", "--quit", "--photino"];
 if (args.Any(a => a is "-h" or "-?" or "--help" or "help"))
 {
     return await Usage.PrintAsync();
@@ -75,6 +76,11 @@ if (instance is null)
 // yesterday's rows. Thrown away before any service can open the database, which is safe only
 // because the check above means no other copy is running.
 LogDatabase.Reset();
+
+if (args.Contains("--photino"))
+{
+    return PhotinoWindow.Run();
+}
 
 var configuration = new ConfigurationBuilder()
     .SetBasePath(AppContext.BaseDirectory)

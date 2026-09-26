@@ -31,6 +31,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The native window: GTK with WebKitGTK 4.1, the Linux counterpart of the Windows host's
+         Windows Forms window and WebView2. PhotinoX is the maintained fork of Photino; pinned exactly,
+         because its native library runs in this process and each new release is read before it is
+         taken. -->
+    <PackageReference Include="PhotinoX.Blazor" Version="[5.3.0]" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- The openHandlers.yaml a Linux machine starts with: VS Code and xdg-open instead of Visual
          Studio and vswhere. Same file name and folder as the Windows default in
          DevToolbox.Services, so ConfigDefaults seeds and restores it without knowing the OS; this
