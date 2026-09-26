@@ -64,13 +64,32 @@ if (instance is null)
 {
     if (!openWindow) return 0;
 
+    // The token the desktop gave this launch, for the running copy's window to take focus with:
+    // XDG_ACTIVATION_TOKEN on Wayland, DESKTOP_STARTUP_ID on X11.
+    var token = Environment.GetEnvironmentVariable("XDG_ACTIVATION_TOKEN") is { Length: > 0 } wayland
+        ? wayland
+        : Environment.GetEnvironmentVariable("DESKTOP_STARTUP_ID");
+
+    switch (Instance.Show(token))
+    {
+        case "shown":
+            return 0;
+
+        // Running in the browser: opened from here rather than from there, so the browser starts
+        // with this launch's token and is allowed to come forward.
+        case { } reply when reply.StartsWith("open "):
+            AppWindow.Open(reply["open ".Length..]);
+            return 0;
+    }
+
+    // No answer: a copy from before the socket, or one whose socket could not be opened.
     if (Instance.RunningUrl() is { } url)
     {
         AppWindow.Open(url);
         return 0;
     }
 
-    Console.Error.WriteLine("DevToolbox is already running, but its address could not be read. Try: devtoolbox --quit");
+    Console.Error.WriteLine("DevToolbox is already running, but could not be reached. Try: devtoolbox --quit");
     return 1;
 }
 
@@ -138,6 +157,24 @@ if (!web.IsRunning)
 
 instance.Publish(web.Url);
 if (web.IsRunning) Console.WriteLine($"DevToolbox is running at {web.Url}");
+
+// A second launch asks this copy to show itself, and --quit asks it to stop.
+instance.Listen((command, argument) =>
+{
+    switch (command)
+    {
+        case "show" when window is not null:
+            window.Show(argument);
+            return "shown";
+        case "show" when web.IsRunning:
+            return $"open {web.Url}";
+        case "quit":
+            Stop();
+            return "stopping";
+        default:
+            return "unknown";
+    }
+});
 
 var services = window?.Services ?? web.Services;
 

@@ -110,6 +110,47 @@ internal sealed class PhotinoWindow : IDisposable
     /// <summary>Shows the window and runs until it is closed or <see cref="Close"/> is called.</summary>
     public int Run() => _closeRequested ? 0 : _app.Run();
 
+    /// <summary>
+    /// Brings the window forward: shown if hidden, restored if minimized, and focused. Safe from any
+    /// thread, such as the instance socket's.
+    /// <para>
+    /// <paramref name="activationToken"/> is the one the desktop gave the second launch, forwarded
+    /// here. Wayland lets a window take focus only with a token like it. Without one, GNOME shows a
+    /// "DevToolbox is ready" notice instead of raising the window: the case for a second launch from
+    /// a terminal, which has no token to give.
+    /// </para>
+    /// </summary>
+    public void Show(string? activationToken)
+    {
+        var token = IsToken(activationToken) ? activationToken : null;
+
+        _app.Application.Dispatcher.BeginInvoke(() =>
+        {
+            var window = _app.MainWindow;
+            if (window.IsClosed) return;
+
+            if (token is not null) Gtk.SetStartupId(window.WindowHandle, token);
+            window.Show();
+            window.Activate();
+        });
+    }
+
+    /// <summary>
+    /// What an activation token looks like on X11 and Wayland: printable ASCII, no spaces. Anything
+    /// else is dropped before it reaches GTK, since it came in over a socket.
+    /// </summary>
+    private static bool IsToken(string? value) =>
+        value is { Length: > 0 and <= 512 } && value.All(c => c is > ' ' and < (char)127);
+
+    private static class Gtk
+    {
+        [DllImport("libgtk-3.so.0", EntryPoint = "gtk_window_set_startup_id")]
+        private static extern void gtk_window_set_startup_id(IntPtr window, [MarshalAs(UnmanagedType.LPUTF8Str)] string startupId);
+
+        /// <summary>Hands the token to GTK, which spends it on the next present — Activate's.</summary>
+        public static void SetStartupId(IntPtr window, string token) => gtk_window_set_startup_id(window, token);
+    }
+
     /// <summary>Closes the window and ends <see cref="Run"/>. Safe from any thread, such as a signal handler.</summary>
     public void Close()
     {
