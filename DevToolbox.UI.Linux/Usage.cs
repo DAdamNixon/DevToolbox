@@ -10,6 +10,7 @@ internal static class Usage
               devtoolbox                 Open DevToolbox, or bring up the window of the copy already running
               devtoolbox --no-window     Start it without a window (for starting at login)
               devtoolbox --quit          Stop the running copy
+              devtoolbox --version       Show the version
               devtoolbox projects …      Find and open projects from the terminal
               devtoolbox logs …          Search logs from the terminal
 

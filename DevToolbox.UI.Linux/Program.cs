@@ -32,6 +32,13 @@ if (args.Any(a => a is "-h" or "-?" or "--help" or "help"))
     return await Usage.PrintAsync();
 }
 
+if (args.Contains("--version"))
+{
+    // The same string the status bar and Settings show, e.g. 0.9.10.2-beta.20.
+    Console.Out.WriteLine(DevToolbox.Services.AppVersion.Display);
+    return 0;
+}
+
 if (args.FirstOrDefault(a => !windowSwitches.Contains(a)) is { } unknown)
 {
     Console.Error.WriteLine($"Unknown argument: {unknown}");
