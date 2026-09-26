@@ -34,8 +34,25 @@
          DevToolbox.Services, so ConfigDefaults seeds and restores it without knowing the OS; this
          project's copy replaces that one in this project's output. -->
     <None Update="ConfigDefaults\*.yaml" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="packaging\**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- install.sh, the launcher's icon: used from the repo, not shipped in the app folder. -->
+    <None Remove="packaging\**" />
   </ItemGroup>
+
+  <!--
+    The same rule for publish that MSBuild already applies to build: when this project and a project
+    it references both copy a file to the same place, this project's copy wins. Build removes the
+    referenced one (_TransitiveItemsToCopyToOutputDirectory, matched on TargetPath); publish has no
+    such step and stops with NETSDK1152 instead. Limited to ConfigDefaults, the one folder a host
+    is meant to override, and to files this project actually has there.
+  -->
+  <Target Name="PreferOwnConfigDefaultsForPublish" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').StartsWith('ConfigDefaults'))
+                                        and !$([System.String]::Copy('%(ResolvedFileToPublish.FullPath)').StartsWith('$(MSBuildProjectDirectory)'))
+                                        and Exists('$(MSBuildProjectDirectory)/%(ResolvedFileToPublish.RelativePath)')" />
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.Versioning.UnsupportedOSPlatformAttribute">
