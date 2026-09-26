@@ -58,9 +58,20 @@ internal sealed class Instance : IDisposable
         {
             using var process = Process.GetProcessById(running.Pid);
 
-            // SIGTERM, which the running copy handles by shutting the server down cleanly.
+            // SIGTERM, which the running copy handles by closing its window and shutting the server
+            // down cleanly.
             Process.Start("kill", ["-TERM", running.Pid.ToString()])?.WaitForExit();
-            process.WaitForExit(TimeSpan.FromSeconds(10));
+
+            // Polled, because WaitForExit does not wait for a process this one did not start. Waited
+            // for at all so that a launch right after --quit — an upgrade, a restart — finds the lock
+            // free rather than the copy that is still on its way out.
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while (!process.HasExited && DateTime.UtcNow < deadline)
+            {
+                Thread.Sleep(100);
+                process.Refresh();
+            }
+
             return true;
         }
         catch (ArgumentException)
