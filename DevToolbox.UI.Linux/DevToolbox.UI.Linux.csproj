@@ -2,12 +2,14 @@
 
   <!--
     The Linux host (and, untested, the macOS one): the same Blazor components the Windows window
-    shows, served on loopback by Kestrel and opened as an app window in Chrome or Chromium, or in
-    the default browser when neither is installed.
+    shows, in a native window (PhotinoX: GTK and WebKitGTK), with the browser view on loopback
+    beside it as on Windows. A Chrome app window, or the default browser, when asked for or when
+    the native window cannot open.
 
     Thin on purpose, like every host. Pages, styles and themes come from DevToolbox.UI.Shared, and
     the platform services — xdg-open, zenity, pkexec — from DevToolbox.Services.Unix. What is here
-    is only the shell: one running copy, the window, desktop notifications, and the quit switch.
+    is only the shell: one running copy, the window, the tray icon, desktop notifications, and the
+    quit switch.
   -->
 
   <PropertyGroup>
@@ -44,8 +46,10 @@
          DevToolbox.Services, so ConfigDefaults seeds and restores it without knowing the OS; this
          project's copy replaces that one in this project's output. -->
     <None Update="ConfigDefaults\*.yaml" CopyToOutputDirectory="PreserveNewest" />
-    <!-- install.sh, the launcher's icon: used from the repo, not shipped in the app folder. -->
+    <!-- install.sh and the uninstaller: used from the repo, not shipped in the app folder. -->
     <None Remove="packaging\**" />
+    <!-- Except the icon, which the window shows too, beside the executable. -->
+    <None Include="packaging\devtoolbox.png" Link="devtoolbox.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!--

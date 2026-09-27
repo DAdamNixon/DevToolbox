@@ -93,18 +93,71 @@ internal sealed class PhotinoWindow : IDisposable
         // PhotinoX's own log of what it is doing.
         var devTools = Environment.GetEnvironmentVariable("DEVTOOLBOX_DEVTOOLS") == "1";
 
-        builder.ConfigureMainWindow(window => window
-            .SetTitle("DevToolbox")
-            .SetSize(1600, 900)
-            .SetLogVerbosity(devTools ? 2 : 0)
+        // The launcher's icon, for desktops that take a window's icon from the window itself (X11
+        // ones); GNOME on Wayland takes it from the desktop entry.
+        var icon = Path.Combine(AppContext.BaseDirectory, "devtoolbox.png");
+
+        builder.ConfigureMainWindow(window =>
+        {
+            window
+                .SetTitle("DevToolbox")
+                .SetSize(Preferred.Width, Preferred.Height)
+                .SetLogVerbosity(devTools ? 2 : 0)
             // Only DevToolbox's own pages load here, and none of them needs more than a browser tab
             // would allow. Photino's defaults are looser, so these are said outright.
             .SetFileSystemAccessEnabled(false)
             .SetWebSecurityEnabled(true)
             .SetDevToolsEnabled(devTools)
-            .SetBrowserControlInitParameters(devTools ? """{ "enable_write_console_messages_to_stdout": true }""" : ""));
+                .SetBrowserControlInitParameters(devTools ? """{ "enable_write_console_messages_to_stdout": true }""" : "");
 
-        return new PhotinoWindow(builder.Build());
+            if (File.Exists(icon)) window.SetIconFile(icon);
+        });
+
+        var window = new PhotinoWindow(QuietlyBuild(builder, devTools));
+
+        // The Windows window's minimum, where the screen has room for it: with fractional scaling a
+        // laptop's screen can be smaller than that, and a minimum larger than the screen cannot be met.
+        // Set once the window exists, because only then does it know which monitor it is on.
+        window.WhenStarted(() =>
+        {
+            var main = window._app.MainWindow;
+            try
+            {
+                var work = main.MainMonitor.WorkArea;
+                main.SetMinSize(Math.Min(Preferred.Width, work.Width), Math.Min(Preferred.Height, work.Height));
+            }
+            catch (InvalidOperationException)
+            {
+                // No monitor to measure against yet; a window of the preferred size is still resizable.
+            }
+        });
+
+        return window;
+    }
+
+    /// <summary>The Windows window's size and minimum: 1600 × 900.</summary>
+    private static readonly (int Width, int Height) Preferred = (1600, 900);
+
+    /// <summary>
+    /// Builds the app without PhotinoX's startup chatter: six "PhotinoX: …" lines of the built-in
+    /// window defaults it applies before any setting of ours, the log level included, can reach the
+    /// window. Nothing else in the process writes to the console this early; with devtools on, the
+    /// lines are let through.
+    /// </summary>
+    private static PhotinoBlazorApp QuietlyBuild(PhotinoBlazorAppBuilder builder, bool devTools)
+    {
+        if (devTools) return builder.Build();
+
+        var console = Console.Out;
+        Console.SetOut(TextWriter.Null);
+        try
+        {
+            return builder.Build();
+        }
+        finally
+        {
+            Console.SetOut(console);
+        }
     }
 
     /// <summary>Shows the window and runs until it is closed or <see cref="Close"/> is called.</summary>
