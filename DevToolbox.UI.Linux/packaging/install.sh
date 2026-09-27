@@ -2,7 +2,7 @@
 # Installs DevToolbox for this user: no root, nothing outside your home folder.
 #
 #   ./install.sh               build and install, add DevToolbox to the app menu
-#   ./install.sh --autostart   the same, and start it (without a window) when you log in
+#   ./install.sh --autostart   the same, and start it in the tray (window hidden) when you log in
 #
 # Where things go:
 #   ~/.local/share/DevToolbox/bin/app   the app              (replaced on every install)
@@ -11,8 +11,9 @@
 #   ~/.local/bin/devtoolbox             the command
 #   ~/.local/share/applications/devtoolbox.desktop, and the icon beside it
 #
-# Needs the .NET 10 SDK (sudo apt install dotnet-sdk-10.0). zenity (folder dialogs),
-# notify-send (Service Pulse alerts) and Chrome or Chromium (app window) are used when present.
+# Needs the .NET 10 SDK (sudo apt install dotnet-sdk-10.0) and WebKitGTK 4.1 for the window (Ubuntu has
+# it). Used when present: zenity (dialogs), notify-send (alerts), libayatana-appindicator3 and, on
+# GNOME, the AppIndicator extension (the tray icon), and Chrome or Chromium (devtoolbox --browser).
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -63,7 +64,7 @@ command -v update-desktop-database >/dev/null && update-desktop-database "$data/
 if [ "${1:-}" = "--autostart" ]; then
     mkdir -p "$HOME/.config/autostart"
     desktop_entry "--no-window" > "$HOME/.config/autostart/devtoolbox.desktop"
-    echo "DevToolbox will start when you log in (no window; open it from the app menu)."
+    echo "DevToolbox will start in the tray when you log in (open the window from the app menu or the tray)."
 fi
 
 echo

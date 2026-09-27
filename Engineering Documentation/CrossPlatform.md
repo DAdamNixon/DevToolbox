@@ -12,7 +12,7 @@ DevToolbox has one UI and one set of services for every platform. What differs b
 | `DevToolbox.Services.Unix` | `net10.0`, not Windows | The same interfaces for Linux and macOS: `xdg-open` / `open`, zenity dialogs, the hosts writer through `pkexec`. |
 | `DevToolbox.UI.Shared` | `net10.0` Razor class library | Every page, component, stylesheet, script and theme. |
 | `DevToolbox.UI` | `net10.0-windows` | The Windows host: Windows Forms window, WebView, tray icon, single instance. **Still the project the installer publishes.** |
-| `DevToolbox.UI.Linux` | `net10.0` | The Linux host (assembly `devtoolbox`): Kestrel on loopback and a Chrome app window. |
+| `DevToolbox.UI.Linux` | `net10.0` | The Linux host (assembly `devtoolbox`): a native window (PhotinoX, WebKitGTK) with the browser view beside it, a tray icon, single instance. Chrome app window as the fallback. |
 | `DevToolbox.DevServer` | `net10.0` | The browser-only dev tool; picks Windows or Unix services at startup. |
 | `DevToolbox.Mcp` | `net10.0` | The MCP server. Still `win-x64` when built on Windows. |
 | `DevToolbox.Cli` | `net10.0` | The command line (`devtoolbox-cli`, and `devtoolbox projects …` / `devtoolbox logs …` on Linux). Log search runs on the MCP server's `LogViewerService`. |
@@ -24,7 +24,8 @@ DevToolbox has one UI and one set of services for every platform. What differs b
 - **Pages and components go in `DevToolbox.UI.Shared`.** A change there reaches every platform with nothing else to do.
 - **No `OperatingSystem.Is…()` checks and no `System.Windows.Forms` in a `.razor` file.** If a page needs something the platforms do differently, it goes through a service interface. See the table below.
 - **Static assets keep their root URLs.** The library serves `wwwroot/` at `/` (`StaticWebAssetBasePath`), so `css/theme.css` is still `css/theme.css`.
-- **A new stylesheet or script** goes into both host pages: `DevToolbox.UI/wwwroot/index.html` (the WebView) and `DevToolbox.UI.Shared/Web/Root.razor` (every browser surface).
+- **A new stylesheet or script** goes into all three host pages: `DevToolbox.UI/wwwroot/index.html` (the Windows WebView), `DevToolbox.UI.Linux/wwwroot/index.html` (the Linux window, a copy of the Windows one) and `DevToolbox.UI.Shared/Web/Root.razor` (every browser surface).
+- **CSS has to work in WebKit too.** The Linux window is WebKitGTK, the engine family Safari uses, and the macOS one would be WKWebView. Every tab and theme was checked there without a change; if something draws differently, fix it in the shared CSS, never with a per-platform page.
 
 ## The platform seams
 
@@ -41,11 +42,27 @@ A few model defaults are OS-specific and decide it themselves: the system hosts 
 
 ## The Linux host
 
-- `devtoolbox` starts the server and opens a window. A second `devtoolbox` opens the running copy's window instead of starting another.
-- `devtoolbox --no-window` starts the server only. `devtoolbox --quit` stops it.
-- Closing the window leaves DevToolbox running, as the tray does on Windows. Service Pulse alerts arrive through `notify-send`.
-- The window is Chrome, Chromium, Edge or Brave in `--app` mode, and the default browser otherwise.
+Shaped like the Windows host, part for part:
+
+| | Windows (`DevToolbox.UI`) | Linux (`DevToolbox.UI.Linux`) |
+|---|---|---|
+| Window | Windows Forms + WebView2 | PhotinoX (`PhotinoWindow`): GTK + WebKitGTK 4.1 |
+| Owns the singletons | the Windows Forms container | the PhotinoX container |
+| Browser view at 5218 | `WebPreviewHost`, borrowing them | the same |
+| Tray | `HostsTrayIcon` (`NotifyIcon`) | `AppIndicatorTray` (libayatana-appindicator), behind `ITrayIcon` |
+| Single instance | named mutex + a broadcast window message | `instance.lock` + a Unix socket, `$XDG_RUNTIME_DIR/devtoolbox.sock` |
+| Notifications | tray balloons | `notify-send` |
+
+- `devtoolbox` opens the window. Launching it again brings the running window forward: the new process passes its launcher's activation token over the socket, which is what lets a window take focus on Wayland. From a terminal there is no token, and GNOME shows "DevToolbox is ready" instead.
+- `devtoolbox --browser`, or `openIn: browser` in `Config/linux.yaml`, uses a Chrome, Chromium, Edge or Brave app window instead (or the default browser). So does a machine with no display or no WebKitGTK, which says why on stderr.
+- `devtoolbox --no-window` (the login autostart) starts with the window hidden and only the tray icon showing. `devtoolbox --quit` stops the running copy, over the socket or with `SIGTERM`, and waits until it has exited.
+- The tray has the Windows menu (hosts switches, Open HOSTS file and folder, Open Host Changer, Show, Exit) plus **Open in browser**. Each group's state is in its label, since GNOME shows no tooltip. GNOME only shows tray icons with the AppIndicator extension (`ubuntu-appindicators@ubuntu.com` on Ubuntu, where it may be disabled).
+- Closing the window hides it to the tray when Host Changer's "minimize to tray" is on and a panel is showing the icon, with the same one-time hint (`TrayHintShown`). Otherwise closing quits.
+- `DEVTOOLBOX_DEVTOOLS=1` turns on the WebKit inspector (right-click → Inspect), prints the page's console in the terminal, and lets PhotinoX log what it does.
+- PhotinoX serves only a real `wwwroot` folder, and a build has none for the shared library's files, so `WebRoot` lays the static web assets manifest over it with ASP.NET's `StaticWebAssetsLoader`. A publish has the folder and no manifest.
+- The PhotinoX packages are pinned to an exact version. Their native library runs inside the app, so read what changed in a new release before moving to it.
 - `DevToolbox.UI.Linux/packaging/install.sh` installs it for the current user, with no root: the app under `~/.local/share/DevToolbox/bin/app`, a launcher in the app menu, and `~/.local/bin/devtoolbox`.
+- Starting it from VS Code's terminal inherits `GDK_BACKEND=x11`, so the window runs under XWayland. Use `env -u GDK_BACKEND devtoolbox`, or the app menu, to see what users get.
 - Config is in `~/.local/share/DevToolbox/Config` (what `LocalApplicationData` is on Linux). A Linux `openHandlers.yaml` in `DevToolbox.UI.Linux/ConfigDefaults` replaces the Windows one in that host's output.
 - Host Changer writes `/etc/hosts` through `pkexec`, which shows the desktop's password prompt. The step that runs as root is `UnixHostsWriteBroker.ElevatedScript`. It only checks two hashes and swaps a staged file in.
 

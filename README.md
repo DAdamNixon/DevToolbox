@@ -52,19 +52,19 @@ A comprehensive desktop application for development tools and utilities built wi
 
 ### Linux
 
-DevToolbox also runs on Linux, in an app window over a local server. It needs the .NET 10 SDK (`sudo apt install dotnet-sdk-10.0`).
+DevToolbox also runs on Linux, in a window of its own with a tray icon, the same as on Windows, and at `http://localhost:5218` in any browser while it runs. It needs the .NET 10 SDK (`sudo apt install dotnet-sdk-10.0`) and WebKitGTK 4.1, which Ubuntu has by default. On GNOME, the tray icon needs the AppIndicator extension (`gnome-extensions enable ubuntu-appindicators@ubuntu.com` on Ubuntu).
 
 ```
 ./DevToolbox.UI.Linux/packaging/install.sh
 ```
 
-That installs it for your user only and adds it to the app menu. Run `devtoolbox` to open it, and `devtoolbox --quit` to stop it. The same command works from a terminal: `devtoolbox projects <search>`, `devtoolbox projects open <name>`, and `devtoolbox logs search …` (add `--help` to any of them). For a quick run from the repo, use `dotnet run --project DevToolbox.UI.Linux`. How the platforms fit together is in [Engineering Documentation/CrossPlatform.md](Engineering%20Documentation/CrossPlatform.md).
+That installs it for your user only and adds it to the app menu. Run `devtoolbox` to open it, and `devtoolbox --quit` to stop it; `devtoolbox --browser` opens it in a Chrome app window instead. `install.sh --autostart` starts it in the tray when you log in. The same command works from a terminal: `devtoolbox projects <search>`, `devtoolbox projects open <name>`, and `devtoolbox logs search …` (add `--help` to any of them). For a quick run from the repo, use `dotnet run --project DevToolbox.UI.Linux`. How the platforms fit together is in [Engineering Documentation/CrossPlatform.md](Engineering%20Documentation/CrossPlatform.md).
 
 ## Project Structure
 
 - **DevToolbox.UI.Shared**: Every page, component, stylesheet and theme, for every platform
 - **DevToolbox.UI**: The Windows app (Windows Forms + Blazor WebView)
-- **DevToolbox.UI.Linux**: The Linux app
+- **DevToolbox.UI.Linux**: The Linux app (a PhotinoX window, WebKitGTK)
 - **DevToolbox.Services**: The platform-neutral services, PowerShell and script management
 - **DevToolbox.Services.Windows** / **DevToolbox.Services.Unix**: What each platform does differently
 - **DevToolbox.Cli**: The command line: projects and log search
