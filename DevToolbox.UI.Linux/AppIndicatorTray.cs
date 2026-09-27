@@ -93,9 +93,10 @@ internal sealed class AppIndicatorTray : ITrayIcon
 
         // Shown only once it has a menu, so a panel never offers a click on an icon with nothing behind it.
         //
-        // Two "gtk_widget_get_scale_factor: assertion 'GTK_IS_WIDGET (widget)' failed" lines follow at
-        // startup. They come from libayatana-appindicator's own idle handler (0.5.93), with or without a
-        // panel, a menu target or anything else passed in here, and are harmless.
+        // Two "gtk_widget_get_scale_factor: assertion 'GTK_IS_WIDGET (widget)' failed" lines can follow
+        // at startup, on some starts and not others. They come from libayatana-appindicator's own idle
+        // handler (0.5.93), with or without a panel, a menu target or anything else passed in here, and
+        // are harmless.
         Native.app_indicator_set_status(_indicator, Native.StatusActive);
 
         // Assumed showing until the panel says otherwise: the signal only fires on a change, and on
