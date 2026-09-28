@@ -24,7 +24,7 @@ public sealed class LocationPolicyTests
 {
     private static LogLocation At(string path, string name = "test") => new() { Name = name, Path = path };
 
-    [Fact]
+    [UnixFact]
     public void An_absolute_unix_path_is_usable()
     {
         // The Linux and macOS shape of both a local folder and a mounted share.

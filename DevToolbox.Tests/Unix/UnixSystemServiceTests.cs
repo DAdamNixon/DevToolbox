@@ -21,7 +21,9 @@ public sealed class UnixSystemServiceTests : IDisposable
         _record = Path.Combine(_directory, "args.txt");
         _recorder = Path.Combine(_directory, "fake-editor");
         File.WriteAllText(_recorder, $"#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\"; done > '{_record}'\n");
-        File.SetUnixFileMode(_recorder, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        // Only the [UnixFact] tests start the recorder; the string tests below also run on Windows.
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(_recorder, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
     }
 
     private static UnixSystemService Service() => new(new PowerShellService());
