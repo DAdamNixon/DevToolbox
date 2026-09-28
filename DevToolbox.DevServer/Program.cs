@@ -1,4 +1,6 @@
+using DevToolbox.Services;
 using DevToolbox.Services.Interfaces;
+using DevToolbox.Services.Models;
 using DevToolbox.UI.Web;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -7,13 +9,27 @@ using Microsoft.Extensions.DependencyInjection;
 // The WinForms app hosts the same server itself and has done since it starts one on
 // launch, so this is not how the feature ships — it exists for working on the UI
 // without a desktop session or a WebView in the way. The host, the shell document and
-// the routing all come from DevToolbox.UI.Web so there is one definition of them.
+// the routing all come from DevToolbox.UI.Web, in DevToolbox.UI.Shared, so there is one
+// definition of them. On Linux, DevToolbox.UI.Linux is the real app and this stays a dev tool.
 
 var port = args.Length > 0 && int.TryParse(args[0], out var requested)
     ? requested
     : WebPreviewHost.DefaultPort;
 
-var web = WebPreviewHost.Build(new WebPreviewInfo(), port);
+var web = WebPreviewHost.Build(new WebPreviewInfo(), port, configureServices: services =>
+{
+    // The same platform services the real hosts register. On Windows there is no Windows Forms
+    // here to show a folder dialog, so Browse says so and the path box stays typeable.
+    if (OperatingSystem.IsWindows())
+    {
+        services.AddWindowsPlatform();
+        services.AddSingleton<IPathPicker, NoPathPicker>();
+    }
+    else
+    {
+        services.AddUnixPlatform();
+    }
+});
 await web.StartAsync();
 
 if (!web.IsRunning)
@@ -48,3 +64,14 @@ catch (InvalidOperationException ex)
 
 await Task.Delay(Timeout.Infinite);
 return 0;
+
+/// <summary>Browse, where there is no native dialog to show. The pages report this and leave the box typeable.</summary>
+internal sealed class NoPathPicker : IPathPicker
+{
+    private static InvalidOperationException Unavailable() =>
+        new("The dev server has no folder dialog. Type the path instead.");
+
+    public Task<string?> PickFolderAsync(FolderPickerOptions options) => throw Unavailable();
+
+    public Task<string?> PickFileAsync(FilePickerOptions options) => throw Unavailable();
+}

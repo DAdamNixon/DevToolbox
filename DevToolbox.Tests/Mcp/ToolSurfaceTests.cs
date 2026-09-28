@@ -166,7 +166,13 @@ public sealed class McpDependencyTests
 /// <summary>
 /// The runtime half of the stdout guarantee, covering what the source scan cannot: a logging
 /// provider whose default sink is stdout.
+/// <para>
+/// In its own collection, run after everything else: it swaps the process-wide Console.Out, and any
+/// other test that writes to the console while it is swapped lands in the capture and fails this
+/// one for something the server never did.
+/// </para>
 /// </summary>
+[Collection(ConsoleCapture.Name)]
 public sealed class LoggingSinkTests
 {
     [Fact]
@@ -208,4 +214,11 @@ public sealed class LoggingSinkTests
         Assert.Contains("information", errorText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("critical", errorText, StringComparison.OrdinalIgnoreCase);
     }
+}
+
+/// <summary>Tests that redirect the process-wide console, and so cannot share the run with anything.</summary>
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class ConsoleCapture
+{
+    public const string Name = "Console capture";
 }

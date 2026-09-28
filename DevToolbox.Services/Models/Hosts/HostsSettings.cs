@@ -1,4 +1,4 @@
-using DevToolbox.Services.Models;
+﻿using DevToolbox.Services.Models;
 
 namespace DevToolbox.Services.Models.Hosts;
 
@@ -96,11 +96,13 @@ public sealed class HostsSettings
     public CustomOpenOption? Editor { get; set; }
 
     /// <summary>
-    /// The system hosts file, built from <see cref="Environment.SpecialFolder.System"/> so nothing
-    /// hardcodes a Windows directory.
+    /// The system hosts file. On Windows it is built from <see cref="Environment.SpecialFolder.System"/>
+    /// so nothing hardcodes a Windows directory; Linux and macOS both keep it at <c>/etc/hosts</c>,
+    /// where SpecialFolder.System has no meaning.
     /// </summary>
-    public static string DefaultHostsPath() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.System), "drivers", "etc", "hosts");
+    public static string DefaultHostsPath() => OperatingSystem.IsWindows()
+        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "drivers", "etc", "hosts")
+        : "/etc/hosts";
 
     /// <summary>The file to operate on, with environment variables expanded.</summary>
     public string ResolveHostsPath() =>
@@ -127,16 +129,27 @@ public sealed class HostsSettings
         UnscopedGapBlankLines = Math.Max(1, UnscopedGapBlankLines),
     };
 
-    /// <summary>The settings a first run writes: the defaults plus a DNS flush after a change.</summary>
+    /// <summary>
+    /// The settings a first run writes: the defaults plus a DNS flush after a change — ipconfig on
+    /// Windows, and on Linux systemd-resolved's, which an ordinary user may run.
+    /// </summary>
     public static HostsSettings CreateStarter() => new()
     {
-        AfterApply = new CustomOpenOption
-        {
-            Name = "Flush DNS cache",
-            Type = OpenOptionType.Executable,
-            ExecutablePath = "ipconfig",
-            Arguments = "/flushdns",
-        },
+        AfterApply = OperatingSystem.IsWindows()
+            ? new CustomOpenOption
+            {
+                Name = "Flush DNS cache",
+                Type = OpenOptionType.Executable,
+                ExecutablePath = "ipconfig",
+                Arguments = "/flushdns",
+            }
+            : new CustomOpenOption
+            {
+                Name = "Flush DNS cache",
+                Type = OpenOptionType.Executable,
+                ExecutablePath = "resolvectl",
+                Arguments = "flush-caches",
+            },
     };
 
     private static string Fallback(string? value, string standby) =>

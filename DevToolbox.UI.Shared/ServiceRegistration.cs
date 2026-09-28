@@ -20,6 +20,13 @@ namespace DevToolbox.UI
     /// logs.db. Hence the split below: one host owns the singletons and the other
     /// borrows them.
     /// </para>
+    /// <para>
+    /// What differs by operating system is not registered here. The owning host adds its
+    /// platform's <see cref="ISystemService"/>, <see cref="IHostsWriteBroker"/>,
+    /// <see cref="IHostsPermissionService"/> and <see cref="IPathPicker"/> as singletons —
+    /// <c>AddWindowsPlatform</c> or <c>AddUnixPlatform</c> — and the container's
+    /// ValidateOnBuild says so at startup if one is missing.
+    /// </para>
     /// </summary>
     public static class ServiceRegistration
     {
@@ -94,8 +101,8 @@ namespace DevToolbox.UI
             // OpenHandlerService caches one config snapshot the way UiSettingsService and
             // HostsSettingsService already do — shared, so a handler saved on the dashboard is
             // also seen by the hosts file's Open button.
+            // ISystemService is the third, and comes from the host's platform registration.
             services.AddSingleton<PowerShellService>();
-            services.AddSingleton<ISystemService, SystemService>();
             services.AddSingleton<IOpenHandlerService, OpenHandlerService>();
 
             // Singleton, not scoped: YAML storage is stateless and both singletons
@@ -124,8 +131,7 @@ namespace DevToolbox.UI
             // on — which they only can if they share one snapshot.
             services.AddSingleton<IHostsSettingsService, HostsSettingsService>();
             services.AddSingleton<IHostsBackupService, HostsBackupService>();
-            services.AddSingleton<IHostsWriteBroker, HostsWriteBroker>();
-            services.AddSingleton<IHostsPermissionService, HostsPermissionService>();
+            // IHostsWriteBroker and IHostsPermissionService are the host's platform registration.
             services.AddSingleton<IHostsFileService, HostsFileService>();
 
             // The seam between the tray icon, which is Windows Forms, and the Blazor router.
@@ -153,6 +159,7 @@ namespace DevToolbox.UI
             services.Borrow<IHostsBackupService>(owner);
             services.Borrow<IHostsWriteBroker>(owner);
             services.Borrow<IHostsPermissionService>(owner);
+            services.Borrow<IPathPicker>(owner);
             services.Borrow<IHostsFileService>(owner);
             services.Borrow<AppShellService>(owner);
 

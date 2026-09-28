@@ -4,6 +4,7 @@
 @inject IWorkspaceSourceService SourceService
 @inject IUiSettingsService UiSettings
 @inject IIconService IconService
+@inject IPathPicker Picker
 @implements IDisposable
 
 @* An (i) beside a field label, toggling the example underneath it. Declared here because a Razor
@@ -1124,7 +1125,7 @@ else
         SchedulePreview();
     }
 
-    private void BrowseForFolder()
+    private async Task BrowseForFolder()
     {
         if (selected is null)
         {
@@ -1133,26 +1134,18 @@ else
 
         try
         {
-            using var dialog = new System.Windows.Forms.FolderBrowserDialog
-            {
-                Description = "Folder to scan for projects",
-                UseDescriptionForTitle = true,
-                ShowNewFolderButton = false,
-                RootFolder = Environment.SpecialFolder.MyComputer
-            };
-
             var current = Environment.ExpandEnvironmentVariables(selected.Path?.Trim() ?? string.Empty);
-            if (current.Length > 0 && Directory.Exists(current))
-            {
-                dialog.SelectedPath = current;
-            }
+            var picked = await Picker.PickFolderAsync(new FolderPickerOptions(
+                "Folder to scan for projects",
+                current.Length > 0 && Directory.Exists(current) ? current : null,
+                AllowNewFolder: false));
 
-            if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+            if (picked is null)
             {
                 return;
             }
 
-            selected.Path = dialog.SelectedPath;
+            selected.Path = picked;
             SchedulePreview();
         }
         catch (Exception ex) when (ex is InvalidOperationException or IOException)

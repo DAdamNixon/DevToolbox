@@ -1,5 +1,7 @@
-@using System.Windows.Forms
 @using System.IO
+@using DevToolbox.Services.Interfaces
+@using DevToolbox.Services.Models
+@inject IPathPicker Picker
 
 <div class="space-y-2">
     <div class="flex space-x-2">
@@ -67,7 +69,7 @@
     /// <summary>
     /// The folder a dialog should open on: what is already selected, else the configured default.
     /// Checked for existence here so a stale path costs nothing — passing a missing directory to
-    /// FolderBrowserDialog silently drops it, and to OpenFileDialog it lands you somewhere
+    /// the folder dialog silently drops it, and the file dialog lands you somewhere
     /// unrelated.
     /// </summary>
     private string? StartingDirectory()
@@ -90,18 +92,11 @@
     {
         try
         {
-            using var dialog = new OpenFileDialog
-            {
-                Title = "Select a file",
-                Filter = Filter,
-                CheckFileExists = true,
-                CheckPathExists = true,
-                InitialDirectory = StartingDirectory() ?? Environment.GetFolderPath(Environment.SpecialFolder.MyComputer)
-            };
+            var picked = await Picker.PickFileAsync(new FilePickerOptions("Select a file", StartingDirectory(), Filter));
 
-            if (dialog.ShowDialog() == DialogResult.OK)
+            if (picked is not null)
             {
-                await OnPathSelected.InvokeAsync(dialog.FileName);
+                await OnPathSelected.InvokeAsync(picked);
             }
         }
         catch (Exception ex)
@@ -114,23 +109,12 @@
     {
         try
         {
-            using var dialog = new FolderBrowserDialog
-            {
-                Description = "Select a folder",
-                UseDescriptionForTitle = true,
-                ShowNewFolderButton = true,
-                RootFolder = Environment.SpecialFolder.MyComputer
-            };
-
             // What is already selected, else the configured default workspace location.
-            if (StartingDirectory() is { } initialDir)
-            {
-                dialog.SelectedPath = initialDir;
-            }
+            var picked = await Picker.PickFolderAsync(new FolderPickerOptions("Select a folder", StartingDirectory()));
 
-            if (dialog.ShowDialog() == DialogResult.OK)
+            if (picked is not null)
             {
-                await OnPathSelected.InvokeAsync(dialog.SelectedPath);
+                await OnPathSelected.InvokeAsync(picked);
             }
         }
         catch (Exception ex)

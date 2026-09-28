@@ -354,8 +354,14 @@ public class PowerShellService
         // is handed over as a string and never checked, but any .ps1 it calls is - and `npm` resolves
         // to npm.ps1. A hosted runspace has no powershell.config.json beside it, so the machine
         // setting it falls back to is Restricted, and npm-install failed in every folder it found.
+        //
+        // Windows only: PowerShell has no execution policy anywhere else — it is always
+        // Unrestricted — and setting one throws PlatformNotSupportedException as the runspace opens.
         var session = InitialSessionState.CreateDefault();
-        session.ExecutionPolicy = Microsoft.PowerShell.ExecutionPolicy.Bypass;
+        if (OperatingSystem.IsWindows())
+        {
+            session.ExecutionPolicy = Microsoft.PowerShell.ExecutionPolicy.Bypass;
+        }
 
         using var runspace = RunspaceFactory.CreateRunspace(session);
 

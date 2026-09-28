@@ -74,6 +74,8 @@ namespace DevToolbox.UI
             services.AddBlazorWebViewDeveloperTools();
             services.AddSingleton<IConfiguration>(configuration);
             services.AddDevToolboxApp();
+            services.AddWindowsPlatform();
+            services.AddSingleton<IPathPicker, WinFormsPathPicker>();
 
             // One instance, registered in both containers, so the Settings page reports the
             // same address whichever host is rendering it.

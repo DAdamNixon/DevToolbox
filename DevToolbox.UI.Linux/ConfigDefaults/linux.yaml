@@ -1,0 +1,12 @@
+# Settings only the Linux version of DevToolbox has.
+#
+# Copied into the config folder (~/.local/share/DevToolbox/Config) on first run only if that folder
+# does not already have a linux.yaml. A file you already have is yours, and an upgrade never
+# replaces it. Changes take effect the next time DevToolbox starts.
+
+# Where DevToolbox opens:
+#   window    its own window (the default)
+#   browser   a Chrome or Chromium app window, or the default browser if neither is installed
+# `devtoolbox --browser` does the same for one launch. Either way, DevToolbox is also open in any
+# browser at http://localhost:5218 while it runs.
+openIn: window

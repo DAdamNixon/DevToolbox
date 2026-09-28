@@ -31,7 +31,7 @@
           style="@CursorStyle(LocationMenuId(location))">
         <button class="dropdown-item" @onclick="() => OnOpenInExplorer.InvokeAsync(location)">
             <i class="bi bi-folder2-open"></i>
-            <span>Open in Explorer</span>
+            <span>Open in @SystemService.FileManagerName</span>
         </button>
         <button class="dropdown-item" @onclick="() => OnOpenInTerminal.InvokeAsync(location)">
             <i class="bi bi-terminal"></i>

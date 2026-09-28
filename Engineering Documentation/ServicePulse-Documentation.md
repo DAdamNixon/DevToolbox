@@ -51,8 +51,8 @@ Service Pulse is a new real-time health monitoring dashboard for DevToolbox that
 - `DevToolbox.Services/Services/HealthMonitoringService.cs` - Core monitoring service
 
 ### UI Components
-- `DevToolbox.UI/Pages/ServicePulse.razor` - Main dashboard page
-- `DevToolbox.UI/Components/Dialogs/AddServiceDialog.razor` - Service management modal
+- `DevToolbox.UI.Shared/Pages/ServicePulse.razor` - Main dashboard page
+- `DevToolbox.UI.Shared/Components/Dialogs/AddServiceDialog.razor` - Service management modal
 
 ### Configuration
 - Navigation tab added to `NavMenu.razor`

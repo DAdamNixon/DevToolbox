@@ -18,13 +18,25 @@ public sealed class LocationSelectionTests
 {
     private static LogLocation At(string name, string path) => new() { Name = name, Path = path };
 
-    private static readonly List<LogLocation> Configured =
-    [
-        At("Local Logs", @"C:\inetpub\LogFiles"),
-        At("Live Web01", @"\\web01\inetpub\LogFiles"),
-        At("Archived Logs", @"\\fileserver01\LogFiles\WebServers\ElliottLogs"),
-        At("Broken", ""),
-    ];
+    /// <summary>
+    /// A local folder and two network ones, spelled the way each OS spells them: a drive and UNC
+    /// shares on Windows, and on Linux a folder and two mounts, which is what a share is there.
+    /// </summary>
+    private static readonly List<LogLocation> Configured = OperatingSystem.IsWindows()
+        ?
+        [
+            At("Local Logs", @"C:\inetpub\LogFiles"),
+            At("Live Web01", @"\\web01\inetpub\LogFiles"),
+            At("Archived Logs", @"\\fileserver01\LogFiles\WebServers\ElliottLogs"),
+            At("Broken", ""),
+        ]
+        :
+        [
+            At("Local Logs", "/var/log/inetpub"),
+            At("Live Web01", "/mnt/web01/inetpub/LogFiles"),
+            At("Archived Logs", "/mnt/fileserver01/LogFiles/WebServers/ElliottLogs"),
+            At("Broken", ""),
+        ];
 
     [Fact]
     public void Named_locations_come_back_in_the_order_requested()
@@ -41,7 +53,7 @@ public sealed class LocationSelectionTests
         // argument at all.
         var selected = LocationSelection.Resolve(new[] { "Live Web01" }, Configured);
 
-        Assert.Equal(@"\\web01\inetpub\LogFiles", Assert.Single(selected).Path);
+        Assert.Equal(Configured[1].Path, Assert.Single(selected).Path);
     }
 
     [Fact]

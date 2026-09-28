@@ -12,7 +12,12 @@ namespace DevToolbox.Tests.Hosts;
 /// has thread affinity. The release threw, and because it threw from a <c>finally</c> it also never
 /// happened — so the lock stayed held and every later write waited out the full timeout.
 /// </para>
+/// <para>
+/// The Windows broker: the named mutex and the UAC path are Windows-only by design. The Linux
+/// broker has its own tests in <see cref="UnixHostsWriteBrokerTests"/>.
+/// </para>
 /// </summary>
+[System.Runtime.Versioning.SupportedOSPlatform("windows")]
 public class HostsWriteBrokerTests : IDisposable
 {
     private readonly string _directory =
@@ -56,7 +61,7 @@ public class HostsWriteBrokerTests : IDisposable
         mutex.ReleaseMutex();
     }
 
-    [Fact]
+    [WindowsFact]
     public async Task A_write_replaces_the_file_and_reports_the_hash_it_wrote()
     {
         var result = await _broker.WriteAsync(_target, Replacement, HashOnDisk(), null);
@@ -67,7 +72,7 @@ public class HostsWriteBrokerTests : IDisposable
         Assert.Equal(HostsDocument.HashOf(Replacement), result.WrittenSha256);
     }
 
-    [Fact]
+    [WindowsFact]
     public async Task The_lock_is_released_when_a_write_succeeds()
     {
         Assert.True((await _broker.WriteAsync(_target, Replacement, HashOnDisk(), null)).Success);
@@ -75,7 +80,7 @@ public class HostsWriteBrokerTests : IDisposable
         AssertLockIsFree("after a successful write");
     }
 
-    [Fact]
+    [WindowsFact]
     public async Task The_lock_is_released_when_a_write_is_refused()
     {
         var result = await _broker.WriteAsync(_target, Replacement, "not the hash on disk", null);
@@ -86,7 +91,7 @@ public class HostsWriteBrokerTests : IDisposable
         AssertLockIsFree("after a refused write");
     }
 
-    [Fact]
+    [WindowsFact]
     public async Task The_lock_is_released_when_the_target_is_missing()
     {
         File.Delete(_target);
@@ -100,7 +105,7 @@ public class HostsWriteBrokerTests : IDisposable
     /// The shape the bug actually took: the first write left the lock held, so the second waited out
     /// the timeout and reported another instance was writing.
     /// </summary>
-    [Fact]
+    [WindowsFact]
     public async Task Writes_in_succession_all_go_through()
     {
         for (var round = 0; round < 5; round++)
@@ -115,7 +120,7 @@ public class HostsWriteBrokerTests : IDisposable
         AssertLockIsFree("after five writes");
     }
 
-    [Fact]
+    [WindowsFact]
     public async Task A_failed_verification_puts_the_backup_back()
     {
         var backup = Path.Combine(_directory, "backup");
@@ -131,7 +136,7 @@ public class HostsWriteBrokerTests : IDisposable
         AssertLockIsFree("after a write with a backup available");
     }
 
-    [Fact]
+    [WindowsFact]
     public void CanWriteInProcess_answers_without_changing_anything()
     {
         Assert.True(_broker.CanWriteInProcess(_target));

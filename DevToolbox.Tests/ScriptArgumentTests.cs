@@ -11,13 +11,18 @@ namespace DevToolbox.Tests;
 /// to use a drive called <c>'C</c>. Two of the four bundled scripts happened to strip quotes off
 /// their own parameter, which is the only reason they appeared to work.
 /// </para>
+/// <para>
+/// The Windows launcher, powershell.exe, so Windows-only by design. The Linux launcher's command
+/// is tested in <see cref="Unix.UnixSystemServiceTests"/>.
+/// </para>
 /// </summary>
+[System.Runtime.Versioning.SupportedOSPlatform("windows")]
 public class ScriptArgumentTests
 {
     private static string Build(string script, params (string Key, object Value)[] parameters) =>
         SystemService.BuildScriptArguments(script, parameters.ToDictionary(p => p.Key, p => p.Value));
 
-    [Fact]
+    [WindowsFact]
     public void The_script_runs_through_the_call_operator_not_minus_file()
     {
         var arguments = Build(@"C:\Scripts\Real-Clean.ps1", ("ProjectPath", @"C:\TFS"));
@@ -26,7 +31,7 @@ public class ScriptArgumentTests
         Assert.DoesNotContain("-File", arguments);
     }
 
-    [Fact]
+    [WindowsFact]
     public void A_value_is_quoted_so_PowerShell_strips_the_quotes_itself()
     {
         var arguments = Build(@"C:\Scripts\Real-Clean.ps1", ("ProjectPath", @"C:\TFS\Tools\DevToolbox"));
@@ -34,7 +39,7 @@ public class ScriptArgumentTests
         Assert.Contains(@"-ProjectPath 'C:\TFS\Tools\DevToolbox'", arguments);
     }
 
-    [Fact]
+    [WindowsFact]
     public void A_path_containing_a_space_survives()
     {
         var arguments = Build(@"C:\Scripts\Real-Clean.ps1", ("ProjectPath", @"C:\Program Files\Thing"));
@@ -42,7 +47,7 @@ public class ScriptArgumentTests
         Assert.Contains(@"-ProjectPath 'C:\Program Files\Thing'", arguments);
     }
 
-    [Fact]
+    [WindowsFact]
     public void An_apostrophe_in_a_path_is_doubled_rather_than_ending_the_string()
     {
         // Doubling is how a single-quoted PowerShell string escapes a quote. Without it a folder
@@ -52,7 +57,7 @@ public class ScriptArgumentTests
         Assert.Contains(@"-ProjectPath 'C:\Juan''s Projects'", arguments);
     }
 
-    [Fact]
+    [WindowsFact]
     public void An_apostrophe_in_the_script_path_is_escaped_too()
     {
         var arguments = Build(@"C:\Juan's Scripts\Real-Clean.ps1", ("ProjectPath", @"C:\TFS"));
@@ -60,7 +65,7 @@ public class ScriptArgumentTests
         Assert.Contains(@"& 'C:\Juan''s Scripts\Real-Clean.ps1'", arguments);
     }
 
-    [Fact]
+    [WindowsFact]
     public void Several_parameters_are_all_passed()
     {
         var arguments = Build(@"C:\Scripts\Workspace-Builder.ps1",
@@ -71,7 +76,7 @@ public class ScriptArgumentTests
         Assert.Contains("-OutputFile 'groups.yaml'", arguments);
     }
 
-    [Fact]
+    [WindowsFact]
     public void The_window_is_kept_open_and_policy_is_bypassed()
     {
         var arguments = Build(@"C:\Scripts\Real-Clean.ps1", ("ProjectPath", @"C:\TFS"));

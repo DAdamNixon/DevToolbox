@@ -215,8 +215,26 @@
     Configuration is beta.19's exactly, except openHandlers.yaml, which now comes from the repo
     instead of an installer copy of it: the same vswhere query, with the comments that say why.
   -->
+  <!--
+    0.9.11.0 / beta.21: DevToolbox runs on Linux. DevToolbox.UI.Linux is a native window (PhotinoX
+    over WebKitGTK) with the browser view beside it, a tray icon, and a second launch that brings
+    the running window forward. DevToolbox.Cli puts the projects and the log search in a terminal,
+    the search on the MCP server's LogViewerService so it keeps the same guardrails. See
+    Engineering Documentation/CrossPlatform.md.
+
+    The Windows app does nothing new. Every page, component and stylesheet moved into
+    DevToolbox.UI.Shared, and the Windows-only services into DevToolbox.Services.Windows, but
+    DevToolbox.UI registers the same classes it always has, and neither new executable is in the
+    package. The one move a Windows user could see is DevToolbox.Mcp's build output, now
+    bin\<config>\net10.0\win-x64 rather than net10.0-windows, which only matters to anything run
+    from bin.
+
+    The patch digit although the Windows package gains nothing: the version is the product's,
+    stamped on the Linux host and the command line too, and a new platform is a feature on the rule
+    0.9.6 set. 0.9.11.0 rises above 0.9.10.2, which is what App Installer compares.
+  -->
   <PropertyGroup>
-    <VersionPrefix>0.9.10.2</VersionPrefix>
-    <VersionSuffix>beta.20</VersionSuffix>
+    <VersionPrefix>0.9.11.0</VersionPrefix>
+    <VersionSuffix>beta.21</VersionSuffix>
   </PropertyGroup>
 </Project>

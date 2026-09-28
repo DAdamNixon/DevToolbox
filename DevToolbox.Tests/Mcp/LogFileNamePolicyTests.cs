@@ -116,13 +116,13 @@ public sealed class LogFileNamePolicyTests
         {
             // (1) The escape is real: this is DbLogService's call, with the traversal in place.
             var reachable = new DirectoryInfo(env.LogFolder)
-                .EnumerateFiles($@"..\{decoyName}*.txt")
+                .EnumerateFiles($"..{Path.DirectorySeparatorChar}{decoyName}*.txt")
                 .ToList();
             Assert.Single(reachable);
 
             // (2) And prepare_table will not make it.
             var refused = await Assert.ThrowsAsync<ArgumentException>(
-                () => env.Service.PrepareAsync($@"..\{decoyName}", "Checkout", "2026-08-21", "2026-08-21", LogEnvironment.LocalOnly));
+                () => env.Service.PrepareAsync($"..{Path.DirectorySeparatorChar}{decoyName}", "Checkout", "2026-08-21", "2026-08-21", LogEnvironment.LocalOnly));
             Assert.Contains(LogFileNamePolicy.ReasonPathShape, refused.Message);
         }
         finally

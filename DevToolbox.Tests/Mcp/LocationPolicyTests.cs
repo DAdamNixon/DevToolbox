@@ -24,14 +24,23 @@ public sealed class LocationPolicyTests
 {
     private static LogLocation At(string path, string name = "test") => new() { Name = name, Path = path };
 
-    [Fact]
+    [UnixFact]
+    public void An_absolute_unix_path_is_usable()
+    {
+        // The Linux and macOS shape of both a local folder and a mounted share.
+        Assert.Null(LocationPolicy.Refuse(At("/var/log")));
+        Assert.Null(LocationPolicy.Refuse(At("/mnt/fileserver01/LogFiles")));
+        Assert.Null(LocationPolicy.Refuse(At("/this/does/not/exist/anywhere")));
+    }
+
+    [WindowsFact]
     public void A_local_drive_path_is_usable()
     {
         Assert.Null(LocationPolicy.Refuse(At(@"C:\inetpub\LogFiles")));
         Assert.True(LocationPolicy.IsUsable(At(@"C:\inetpub\LogFiles")));
     }
 
-    [Fact]
+    [WindowsFact]
     public void A_unc_path_is_usable_now()
     {
         // The inverted test. The real config's nine network locations all take this shape, and every
@@ -59,7 +68,7 @@ public sealed class LocationPolicyTests
         Assert.Equal(LocationPolicy.ReasonBlank, LocationPolicy.Refuse(At("   ")));
     }
 
-    [Fact]
+    [WindowsFact]
     public void Existence_is_not_part_of_the_decision()
     {
         // Truer now than when everything usable was local. A share is unreachable because the server

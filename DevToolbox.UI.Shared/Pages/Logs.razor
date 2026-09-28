@@ -1435,16 +1435,14 @@ else
                 null,
                 State.CurrentSplitFilter);
 
-            // Open the file location in Explorer (Blazor Hybrid/WinForms)
+            // Show the file in the platform's file manager — selected in Explorer on Windows.
             if (!string.IsNullOrWhiteSpace(filePath) && File.Exists(filePath))
             {
-                var psi = new System.Diagnostics.ProcessStartInfo
+                var shown = await SystemService.OpenInExplorerAsync(filePath);
+                if (!shown.Success)
                 {
-                    FileName = "explorer.exe",
-                    Arguments = $"/select,\"{filePath}\"",
-                    UseShellExecute = true
-                };
-                System.Diagnostics.Process.Start(psi);
+                    State.SetError($"The CSV was saved to {filePath}, but its folder could not be opened: {shown.Error}");
+                }
             }
         }
         catch (Exception ex)

@@ -1,0 +1,59 @@
+# Which program opens which kind of file, for every card on the Projects tab.
+#
+# The Linux default. It is copied into the config folder (~/.local/share/DevToolbox/Config) on
+# first run only if that folder does not already have an openHandlers.yaml — a file you already
+# have is yours, and an upgrade never replaces it. To take a newer shipped copy deliberately:
+# Settings -> Bundled Configuration -> Restore, then restart the app.
+#
+# The Open button picks, in order:
+#   1. the `openWith` on the workspace source the card came from (scanned cards only)
+#   2. the first handler below whose `match` fits
+#   3. the desktop's own association, through xdg-open
+#
+#   match            glob on the file or folder name; use a pattern containing / to match the
+#                    whole path instead and scope a rule to one tree
+#   type             Executable | Command
+#   executablePath   program name or full path; a bare name is looked up on PATH
+#   executableFrom   ask another program where it lives — first line of stdout is used.
+#                    Beats executablePath, which stays as the fallback.
+#   arguments        optional; {0} is the file path, {1} the line number. Leave unset
+#                    and the path is passed as a single correctly-quoted argument.
+#   command          for type Command: run by pwsh when it is installed, else by /bin/sh
+#
+# {1} is filled in when the Log Viewer opens a row by double-click; everywhere else it
+# resolves to 1. Which switch jumps to a line is the editor's business:
+#     VS Code     -g "{0}:{1}"
+#     Kate        --line {1} "{0}"
+#     gedit       +{1} "{0}"
+
+handlers:
+
+# Log files open at the line you double-clicked. Listed first: the first matching handler wins.
+- match: '*.txt'
+  name: VS Code
+  type: Executable
+  executablePath: code
+  arguments: -g "{0}:{1}"
+  icon: bi-file-earmark-text
+
+- match: '*.log'
+  name: VS Code
+  type: Executable
+  executablePath: code
+  arguments: -g "{0}:{1}"
+  icon: bi-file-earmark-text
+
+- match: '*.code-workspace'
+  name: VS Code
+  type: Executable
+  executablePath: code
+  icon: bi-window-stack
+
+# Everything else — folders, solutions, projects, any file — in VS Code too. There is no Visual
+# Studio on Linux, and VS Code with the C# Dev Kit is what opens a .sln here. Delete this rule to
+# let the desktop's own association decide instead.
+- match: '*'
+  name: VS Code
+  type: Executable
+  executablePath: code
+  icon: bi-code-slash
