@@ -233,8 +233,18 @@
     stamped on the Linux host and the command line too, and a new platform is a feature on the rule
     0.9.6 set. 0.9.11.0 rises above 0.9.10.2, which is what App Installer compares.
   -->
+  <!--
+    0.9.11.1 / beta.22: Halloween. Moonlight through drifting cloud, with now and then a wide
+    beam breaking through a gap; the background pumpkin redrawn with ridged lobes and a face cut
+    through the wall; and resting the pointer on a card sometimes sets off a haunting - a ghost,
+    a spider, a witch or a zombie. Stylesheet and decor script only.
+
+    The installer is built from Tyler's copy, first brought level with the share's
+    DevToolbox.Installer.zip (Install-DevToolbox.ps1 and TaskbarLayoutModification.xml were
+    behind it).
+  -->
   <PropertyGroup>
-    <VersionPrefix>0.9.11.0</VersionPrefix>
-    <VersionSuffix>beta.21</VersionSuffix>
+    <VersionPrefix>0.9.11.1</VersionPrefix>
+    <VersionSuffix>beta.22</VersionSuffix>
   </PropertyGroup>
 </Project>
