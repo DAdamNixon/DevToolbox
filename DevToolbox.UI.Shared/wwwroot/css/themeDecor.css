@@ -179,9 +179,10 @@
 
 
 /* ── positioned cards ────────────────────────────────────────────────────────────
-   Three themes hang something off a card — (Better)Christmas a garland outside its border,
-   Winter a sheet of ice over its surface, Easter a zigzag band round its bottom edge — and
-   all three need the card to be a positioning context. That is the one pair of rules in this file with a consequence outside it, so
+   Four themes hang something off a card — (Better)Christmas a garland outside its border,
+   Winter a sheet of ice over its surface, Easter a zigzag band round its bottom edge,
+   Halloween the moonlight along its top — and all four need the card to be a positioning
+   context. That is the one pair of rules in this file with a consequence outside it, so
    it is written once here rather than twice in two sections.
 
    Making a card positioned changes where it paints. A .ws-menu hanging below its own
@@ -200,7 +201,10 @@
 :root[data-theme="winter"] .glow-card,
 :root[data-theme="easter"] .modern-card,
 :root[data-theme="easter"] .workspace-card,
-:root[data-theme="easter"] .glow-card {
+:root[data-theme="easter"] .glow-card,
+:root[data-theme="halloween"] .modern-card,
+:root[data-theme="halloween"] .workspace-card,
+:root[data-theme="halloween"] .glow-card {
     position: relative;
 }
 
@@ -221,7 +225,10 @@
 :root[data-theme="winter"] .glow-card:has(.ws-menu),
 :root[data-theme="easter"] .modern-card:has(.ws-menu),
 :root[data-theme="easter"] .workspace-card:has(.ws-menu),
-:root[data-theme="easter"] .glow-card:has(.ws-menu) {
+:root[data-theme="easter"] .glow-card:has(.ws-menu),
+:root[data-theme="halloween"] .modern-card:has(.ws-menu),
+:root[data-theme="halloween"] .workspace-card:has(.ws-menu),
+:root[data-theme="halloween"] .glow-card:has(.ws-menu) {
     z-index: 20;
 }
 
@@ -838,6 +845,19 @@
    a little warmth bled through the thin skin around the mouth, which is the one radial
    gradient the whole body is filled with.
 
+   THE FACE IS CUT THROUGH A WALL, NOT PAINTED ON. With a 3D body, flat cut-outs read as
+   stickers. A real carved hole shows the thickness of the pumpkin: you look into it and
+   see a band of lit flesh on the side away from the centre, because the cut runs inward
+   along the curve and the back of the hole sits nearer the middle than the front. So each
+   feature is drawn twice — the front cut in a lit-flesh gradient, and the back opening in
+   the bright fire, as the *whole face* scaled 92% about the pumpkin's centre and clipped to
+   the front cut. One transform gives every feature the right wall for where it is: the
+   eyes and the corners of the grin, far from the centre, show the thickest walls; the
+   nose, nearly on it, shows a thin rim all round. The teeth get side walls the same way,
+   from a second mask scaled with the back opening, and every cut edge gets a lip of shadow
+   — a stroke at a third strength with half a pixel of blur, because a crisp one read as an
+   outline drawn round the hole rather than the edge of a cut.
+
    THE TEETH ARE A MASK, NOT SHAPES. Drawing dark tooth rectangles on top of a lit mouth
    was the obvious version and read as blocks pasted over the glow, because the bloom had
    lit the skin round the mouth and the pasted teeth were not lit with it. A tooth is where
@@ -845,8 +865,27 @@
    of it, and the bloom is taken from the masked shape too. The light now wraps round the
    teeth the way it does round the real thing.
 
-   The ribs are three pairs of meridians drawn as ellipse outlines, and the face is traced
-   from the reference rather than invented: an eye tilted into an oval, an eye like a
+   The one cold thing in it is a faint silver sheen on the upper-left of the dome: the
+   moonlight below falls on the pumpkin too, and it is the only place the two lights meet.
+
+   THE BODY IS SEVEN LOBES, NOT AN OVAL. The first version of this pumpkin was one smooth
+   ellipse with three pairs of meridian lines drawn on it, which read as a ball with stripes.
+   A real pumpkin is built from segments that each bulge, with grooves sunk between them, and
+   that is what makes its outline lumpy where the lobes crowd into the stem and the base.
+
+   So each lobe is a lens between a top pole and a bottom pole, bounded by two cubic curves,
+   and they are laid down from the outside in so every lobe overlaps the edge of the one
+   outside it. Each is drawn twice: once in the body gradient, which is one userSpaceOnUse
+   radial so the warmth bleeding through the skin round the face is continuous across the
+   lobes, and once with a groove overlay that is dark at both edges and faintly lit at the
+   crest — deep on the four lobes that turn away, shallow on the three that face you, which
+   is how grooves look on a real one and what stops them running like bars through the
+   face. The outermost lobes are thin slivers on purpose — the lobes on the far side of a
+   real pumpkin are foreshortened, and full-width ones stood out like saddlebags. The rim,
+   the top shade and the moon sheen are clipped to the union of the lobes, so none of them
+   can paint the old oval back into the gaps between the bumps.
+
+   The face is traced from the reference rather than invented: an eye tilted into an oval, an eye like a
    rounded D, a tall narrow nose, and a grin that turns up at both ends with three teeth
    hanging from the upper lip and four standing on the lower.
 
@@ -858,10 +897,212 @@
    is the candles on the footer instead. A carved pumpkin sitting still in the corner of a
    room is not a compromise; it is a carved pumpkin. */
 :root[data-theme="halloween"] .app-shell {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='214' viewBox='0 0 240 214'%3E%3Cdefs%3E%3CradialGradient id='skin' gradientUnits='userSpaceOnUse' cx='120' cy='130' r='112'%3E%3Cstop offset='0' stop-color='%238a3a0f'/%3E%3Cstop offset='.4' stop-color='%235a220a'/%3E%3Cstop offset='.76' stop-color='%232c0f05'/%3E%3Cstop offset='1' stop-color='%23120501'/%3E%3C/radialGradient%3E%3CradialGradient id='rim' cx='.34' cy='.52' r='.72'%3E%3Cstop offset='0' stop-color='%23f0842a' stop-opacity='0'/%3E%3Cstop offset='.8' stop-color='%23f0842a' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='%23f59032' stop-opacity='.8'/%3E%3C/radialGradient%3E%3ClinearGradient id='top' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23000' stop-opacity='.55'/%3E%3Cstop offset='.3' stop-color='%23000' stop-opacity='0'/%3E%3C/linearGradient%3E%3CradialGradient id='fire' cx='.5' cy='.62' r='.66'%3E%3Cstop offset='0' stop-color='%23fff7c6'/%3E%3Cstop offset='.35' stop-color='%23ffd362'/%3E%3Cstop offset='.72' stop-color='%23f5982c'/%3E%3Cstop offset='1' stop-color='%23c9551a'/%3E%3C/radialGradient%3E%3Cfilter id='bloom' x='-40%25' y='-40%25' width='180%25' height='180%25'%3E%3CfeGaussianBlur stdDeviation='6'/%3E%3C/filter%3E%3Cmask id='cut' maskUnits='userSpaceOnUse' x='0' y='0' width='240' height='214'%3E%3Crect width='240' height='214' fill='%23fff'/%3E%3Cg fill='%23000'%3E%3Crect x='72' y='128' width='14' height='27' rx='2.5'/%3E%3Crect x='98' y='132' width='14' height='27' rx='2.5'/%3E%3Crect x='139' y='132' width='13' height='26' rx='2.5'/%3E%3Crect x='79' y='163' width='14' height='24' rx='2.5'/%3E%3Crect x='100' y='168' width='14' height='24' rx='2.5'/%3E%3Crect x='120' y='168' width='14' height='24' rx='2.5'/%3E%3Crect x='142' y='161' width='14' height='24' rx='2.5'/%3E%3C/g%3E%3C/mask%3E%3Cg id='face'%3E%3Cellipse cx='66.5' cy='64.7' rx='15.5' ry='18.5' transform='rotate(22 66.5 64.7)'/%3E%3Cpath d='M155.8 55.1 Q171 57 175.6 64.6 Q179 72 176.8 80 Q174 87 168.2 89.5 Q159 91 150.9 88.3 L146 84.5 Q141.5 80 141 74.1 Q140.5 64 145.9 59.9 Q150 56 155.8 55.1Z'/%3E%3Cpath d='M113.8 94.2 L124.2 123.6 Q114 126.5 103.6 125.2Z'/%3E%3Cpath d='M45.9 128.6 Q50 133.5 54.5 135.7 Q66 138.8 76.8 140.2 Q95 144 111.4 147.6 Q121 149.2 131.1 149 Q147 148.2 160.8 146.2 Q173 143.8 183 140.4 Q187.5 138 190.4 134.5 Q190.5 140 188 145.2 Q180 152.5 170.6 159.4 Q161 166.5 150.9 171.3 Q138 177 126.2 180.7 Q116 182.5 106.4 180.7 Q94 178 84.2 173.6 Q73 167 64.4 159.4 Q57 150.5 52.1 140.4 Q48.5 134.5 45.9 128.6Z'/%3E%3C/g%3E%3C/defs%3E%3Cellipse cx='120' cy='116' rx='101' ry='91' fill='url(%23skin)'/%3E%3Cg fill='none' stroke='%23120501' stroke-opacity='.42' stroke-width='3'%3E%3Cellipse cx='120' cy='116' rx='74' ry='90'/%3E%3Cellipse cx='120' cy='116' rx='44' ry='90.5'/%3E%3Cellipse cx='120' cy='116' rx='15' ry='91'/%3E%3C/g%3E%3Cellipse cx='120' cy='116' rx='101' ry='91' fill='url(%23rim)'/%3E%3Cellipse cx='120' cy='116' rx='101' ry='91' fill='url(%23top)'/%3E%3Cpath d='M112 30 Q113 20 118 16 Q124 13 127 17 Q124 21 124 30 Z' fill='%231b0d06'/%3E%3Cellipse cx='119' cy='30' rx='22' ry='6' fill='%230e0502' fill-opacity='.6'/%3E%3Cg filter='url(%23bloom)'%3E%3Cg mask='url(%23cut)'%3E%3Cuse href='%23face' fill='%23ff8a1e' fill-opacity='.8'/%3E%3C/g%3E%3C/g%3E%3Cg mask='url(%23cut)'%3E%3Cuse href='%23face' fill='url(%23fire)'/%3E%3C/g%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='214' viewBox='0 0 240 214'%3E%3Cdefs%3E%3CradialGradient id='skin' gradientUnits='userSpaceOnUse' cx='120' cy='132' r='114'%3E%3Cstop offset='0' stop-color='%239a4412'/%3E%3Cstop offset='.38' stop-color='%2364270b'/%3E%3Cstop offset='.74' stop-color='%23321206'/%3E%3Cstop offset='1' stop-color='%23150602'/%3E%3C/radialGradient%3E%3ClinearGradient id='groove' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0' stop-color='%230a0301' stop-opacity='.72'/%3E%3Cstop offset='.2' stop-color='%230a0301' stop-opacity='.24'/%3E%3Cstop offset='.5' stop-color='%23ffa048' stop-opacity='.08'/%3E%3Cstop offset='.8' stop-color='%230a0301' stop-opacity='.24'/%3E%3Cstop offset='1' stop-color='%230a0301' stop-opacity='.72'/%3E%3C/linearGradient%3E%3CradialGradient id='rim' cx='.34' cy='.52' r='.72'%3E%3Cstop offset='0' stop-color='%23f0842a' stop-opacity='0'/%3E%3Cstop offset='.8' stop-color='%23f0842a' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='%23f59032' stop-opacity='.8'/%3E%3C/radialGradient%3E%3ClinearGradient id='top' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23000' stop-opacity='.5'/%3E%3Cstop offset='.28' stop-color='%23000' stop-opacity='0'/%3E%3Cstop offset='.84' stop-color='%23000' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='%23000' stop-opacity='.4'/%3E%3C/linearGradient%3E%3CradialGradient id='moon' cx='.36' cy='.06' r='.6'%3E%3Cstop offset='0' stop-color='%23b8c6ff' stop-opacity='.17'/%3E%3Cstop offset='.6' stop-color='%23b8c6ff' stop-opacity='.05'/%3E%3Cstop offset='1' stop-color='%23b8c6ff' stop-opacity='0'/%3E%3C/radialGradient%3E%3CradialGradient id='fire' cx='.5' cy='.62' r='.66'%3E%3Cstop offset='0' stop-color='%23fff7c6'/%3E%3Cstop offset='.35' stop-color='%23ffd362'/%3E%3Cstop offset='.72' stop-color='%23f5982c'/%3E%3Cstop offset='1' stop-color='%23c9551a'/%3E%3C/radialGradient%3E%3Cfilter id='bloom' x='-40%25' y='-40%25' width='180%25' height='180%25'%3E%3CfeGaussianBlur stdDeviation='6'/%3E%3C/filter%3E%3Cmask id='cut' maskUnits='userSpaceOnUse' x='0' y='0' width='240' height='214'%3E%3Crect width='240' height='214' fill='%23fff'/%3E%3Cg fill='%23000'%3E%3Crect x='72' y='128' width='14' height='27' rx='2.5'/%3E%3Crect x='98' y='132' width='14' height='27' rx='2.5'/%3E%3Crect x='139' y='132' width='13' height='26' rx='2.5'/%3E%3Crect x='79' y='163' width='14' height='24' rx='2.5'/%3E%3Crect x='100' y='168' width='14' height='24' rx='2.5'/%3E%3Crect x='120' y='168' width='14' height='24' rx='2.5'/%3E%3Crect x='142' y='161' width='14' height='24' rx='2.5'/%3E%3C/g%3E%3C/mask%3E%3CclipPath id='body'%3E%3Cpath d='M104 38 C-8 38 -8 199 104 199 C42.7 199 42.7 38 104 38Z'/%3E%3Cpath d='M136 38 C248 38 248 199 136 199 C197.3 199 197.3 38 136 38Z'/%3E%3Cpath d='M109 29 C3.7 29 3.7 202 109 202 C75.7 202 75.7 29 109 29Z'/%3E%3Cpath d='M131 29 C236.3 29 236.3 202 131 202 C164.3 202 164.3 29 131 29Z'/%3E%3Cpath d='M115 25 C37.7 25 37.7 204 115 204 C103 204 103 25 115 25Z'/%3E%3Cpath d='M125 25 C202.3 25 202.3 204 125 204 C137 204 137 25 125 25Z'/%3E%3Cpath d='M120 27 C80 27 80 204 120 204 C160 204 160 27 120 27Z'/%3E%3C/clipPath%3E%3Cg id='face'%3E%3Cellipse cx='66.5' cy='64.7' rx='15.5' ry='18.5' transform='rotate(22 66.5 64.7)'/%3E%3Cpath d='M155.8 55.1 Q171 57 175.6 64.6 Q179 72 176.8 80 Q174 87 168.2 89.5 Q159 91 150.9 88.3 L146 84.5 Q141.5 80 141 74.1 Q140.5 64 145.9 59.9 Q150 56 155.8 55.1Z'/%3E%3Cpath d='M113.8 94.2 L124.2 123.6 Q114 126.5 103.6 125.2Z'/%3E%3Cpath d='M45.9 128.6 Q50 133.5 54.5 135.7 Q66 138.8 76.8 140.2 Q95 144 111.4 147.6 Q121 149.2 131.1 149 Q147 148.2 160.8 146.2 Q173 143.8 183 140.4 Q187.5 138 190.4 134.5 Q190.5 140 188 145.2 Q180 152.5 170.6 159.4 Q161 166.5 150.9 171.3 Q138 177 126.2 180.7 Q116 182.5 106.4 180.7 Q94 178 84.2 173.6 Q73 167 64.4 159.4 Q57 150.5 52.1 140.4 Q48.5 134.5 45.9 128.6Z'/%3E%3C/g%3E%3ClinearGradient id='grooveSoft' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0' stop-color='%230a0301' stop-opacity='.34'/%3E%3Cstop offset='.22' stop-color='%230a0301' stop-opacity='.08'/%3E%3Cstop offset='.5' stop-color='%23ffa048' stop-opacity='.06'/%3E%3Cstop offset='.78' stop-color='%230a0301' stop-opacity='.08'/%3E%3Cstop offset='1' stop-color='%230a0301' stop-opacity='.34'/%3E%3C/linearGradient%3E%3CradialGradient id='pillow' cx='.5' cy='.5' r='.5'%3E%3Cstop offset='0' stop-color='%23ffa048' stop-opacity='.07'/%3E%3Cstop offset='.62' stop-color='%230a0301' stop-opacity='0'/%3E%3Cstop offset='.9' stop-color='%230a0301' stop-opacity='.3'/%3E%3Cstop offset='1' stop-color='%230a0301' stop-opacity='.6'/%3E%3C/radialGradient%3E%3CradialGradient id='pillowSoft' cx='.5' cy='.5' r='.5'%3E%3Cstop offset='0' stop-color='%23ffa048' stop-opacity='.05'/%3E%3Cstop offset='.7' stop-color='%230a0301' stop-opacity='0'/%3E%3Cstop offset='.94' stop-color='%230a0301' stop-opacity='.14'/%3E%3Cstop offset='1' stop-color='%230a0301' stop-opacity='.3'/%3E%3C/radialGradient%3E%3CradialGradient id='wall' gradientUnits='userSpaceOnUse' cx='120' cy='150' r='112'%3E%3Cstop offset='0' stop-color='%23f29a3a'/%3E%3Cstop offset='.55' stop-color='%23d3701f'/%3E%3Cstop offset='1' stop-color='%239a3c0e'/%3E%3C/radialGradient%3E%3Cmask id='cutIn' maskUnits='userSpaceOnUse' x='0' y='0' width='240' height='214'%3E%3Crect width='240' height='214' fill='%23fff'/%3E%3Cg fill='%23000' transform='translate(120 116) scale(.92) translate(-120 -116)'%3E%3Crect x='72' y='128' width='14' height='27' rx='2.5'/%3E%3Crect x='98' y='132' width='14' height='27' rx='2.5'/%3E%3Crect x='139' y='132' width='13' height='26' rx='2.5'/%3E%3Crect x='79' y='163' width='14' height='24' rx='2.5'/%3E%3Crect x='100' y='168' width='14' height='24' rx='2.5'/%3E%3Crect x='120' y='168' width='14' height='24' rx='2.5'/%3E%3Crect x='142' y='161' width='14' height='24' rx='2.5'/%3E%3C/g%3E%3C/mask%3E%3CclipPath id='faceclip'%3E%3Cellipse cx='66.5' cy='64.7' rx='15.5' ry='18.5' transform='rotate(22 66.5 64.7)'/%3E%3Cpath d='M155.8 55.1 Q171 57 175.6 64.6 Q179 72 176.8 80 Q174 87 168.2 89.5 Q159 91 150.9 88.3 L146 84.5 Q141.5 80 141 74.1 Q140.5 64 145.9 59.9 Q150 56 155.8 55.1Z'/%3E%3Cpath d='M113.8 94.2 L124.2 123.6 Q114 126.5 103.6 125.2Z'/%3E%3Cpath d='M45.9 128.6 Q50 133.5 54.5 135.7 Q66 138.8 76.8 140.2 Q95 144 111.4 147.6 Q121 149.2 131.1 149 Q147 148.2 160.8 146.2 Q173 143.8 183 140.4 Q187.5 138 190.4 134.5 Q190.5 140 188 145.2 Q180 152.5 170.6 159.4 Q161 166.5 150.9 171.3 Q138 177 126.2 180.7 Q116 182.5 106.4 180.7 Q94 178 84.2 173.6 Q73 167 64.4 159.4 Q57 150.5 52.1 140.4 Q48.5 134.5 45.9 128.6Z'/%3E%3C/clipPath%3E%3Cfilter id='lip' x='-10%25' y='-10%25' width='120%25' height='120%25'%3E%3CfeGaussianBlur stdDeviation='.55'/%3E%3C/filter%3E%3C/defs%3E%3Cpath d='M104 38 C-8 38 -8 199 104 199 C42.7 199 42.7 38 104 38Z' fill='url(%23skin)'/%3E%3Cpath d='M104 38 C-8 38 -8 199 104 199 C42.7 199 42.7 38 104 38Z' fill='url(%23groove)' stroke='%230c0401' stroke-opacity='.5' stroke-width='1.1'/%3E%3Cpath d='M136 38 C248 38 248 199 136 199 C197.3 199 197.3 38 136 38Z' fill='url(%23skin)'/%3E%3Cpath d='M136 38 C248 38 248 199 136 199 C197.3 199 197.3 38 136 38Z' fill='url(%23groove)' stroke='%230c0401' stroke-opacity='.5' stroke-width='1.1'/%3E%3Cpath d='M109 29 C3.7 29 3.7 202 109 202 C75.7 202 75.7 29 109 29Z' fill='url(%23skin)'/%3E%3Cpath d='M109 29 C3.7 29 3.7 202 109 202 C75.7 202 75.7 29 109 29Z' fill='url(%23groove)' stroke='%230c0401' stroke-opacity='.5' stroke-width='1.1'/%3E%3Cpath d='M131 29 C236.3 29 236.3 202 131 202 C164.3 202 164.3 29 131 29Z' fill='url(%23skin)'/%3E%3Cpath d='M131 29 C236.3 29 236.3 202 131 202 C164.3 202 164.3 29 131 29Z' fill='url(%23groove)' stroke='%230c0401' stroke-opacity='.5' stroke-width='1.1'/%3E%3Cpath d='M115 25 C37.7 25 37.7 204 115 204 C103 204 103 25 115 25Z' fill='url(%23skin)'/%3E%3Cpath d='M115 25 C37.7 25 37.7 204 115 204 C103 204 103 25 115 25Z' fill='url(%23grooveSoft)' stroke='%230c0401' stroke-opacity='.14' stroke-width='1.1'/%3E%3Cpath d='M125 25 C202.3 25 202.3 204 125 204 C137 204 137 25 125 25Z' fill='url(%23skin)'/%3E%3Cpath d='M125 25 C202.3 25 202.3 204 125 204 C137 204 137 25 125 25Z' fill='url(%23grooveSoft)' stroke='%230c0401' stroke-opacity='.14' stroke-width='1.1'/%3E%3Cpath d='M120 27 C80 27 80 204 120 204 C160 204 160 27 120 27Z' fill='url(%23skin)'/%3E%3Cpath d='M120 27 C80 27 80 204 120 204 C160 204 160 27 120 27Z' fill='url(%23grooveSoft)' stroke='%230c0401' stroke-opacity='.14' stroke-width='1.1'/%3E%3Cg clip-path='url(%23body)'%3E%3Crect x='19' y='22' width='202' height='183' fill='url(%23rim)'/%3E%3Crect x='19' y='22' width='202' height='183' fill='url(%23top)'/%3E%3Crect x='19' y='22' width='202' height='183' fill='url(%23moon)'/%3E%3C/g%3E%3Cellipse cx='120' cy='30' rx='16' ry='4.6' fill='%230a0301' fill-opacity='.75'/%3E%3Cpath d='M113.4 32 Q112 21 117 13.5 Q121 7.5 128.5 8.5 L129.7 12.8 Q124.7 13.6 122.5 18.6 Q120.1 24.6 122.8 32Z' fill='%232b1b0d'/%3E%3Cpath d='M117 13.5 Q121 7.5 128.5 8.5 L129.1 10.4 Q122.5 10.4 119.1 15.6Z' fill='%236e5a44' fill-opacity='.55'/%3E%3Cg filter='url(%23bloom)'%3E%3Cg mask='url(%23cut)'%3E%3Cuse href='%23face' fill='%23ff8a1e' fill-opacity='.75'/%3E%3C/g%3E%3C/g%3E%3Cg mask='url(%23cut)'%3E%3Cuse href='%23face' fill='url(%23wall)'/%3E%3C/g%3E%3Cg clip-path='url(%23faceclip)'%3E%3Cg mask='url(%23cutIn)'%3E%3Cuse href='%23face' fill='url(%23fire)' transform='translate(120 116) scale(.92) translate(-120 -116)'/%3E%3C/g%3E%3C/g%3E%3Cg mask='url(%23cut)'%3E%3Cuse href='%23face' fill='none' stroke='%23140501' stroke-opacity='.34' stroke-width='1.3' filter='url(%23lip)'/%3E%3C/g%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 2.5rem bottom 2rem;
     background-size: auto min(40vh, 320px);
+}
+
+
+/* ── moonlight ───────────────────────────────────────────────────────────────────
+   Light rather than a moon. There is no disc anywhere on screen — a moon in a corner
+   would have to share it with a cobweb and a nav bar — only what moonlight does: a cold
+   silver wash falling from just above the top of the page, a thin cool edge along the top
+   of every card, cloud shadows drifting through it, and now and then a wide column of it
+   breaking through a gap in the cloud. The pumpkin and the candles light
+   things warm from below; this lights them cold from above, and the two together are what
+   make the room read as a room at night.
+
+   IN FRONT OF THE CARDS, NOT BEHIND THEM, and that was learned the hard way. The first
+   version lived under everything, on body::before and body::after at z-index -1, lighting
+   the ground between the cards — and on a dashboard the cards *are* the view, so the only
+   ground left to light was a few 8px gaps. It measured correctly and could not be seen.
+   Light falls on whatever is there, so now the wash and the clouds are the two
+   pseudo-elements of the prop layer: over the cards, under the cobwebs and the hauntings
+   (z-index -1 inside #theme-decor, which is its own stacking context), and under the nav,
+   which is 80% opaque and gets its share through its own translucency.
+
+   SUBTLE IS STILL A NUMBER, just a larger one. The wash is 15% of a pale blue at its
+   brightest, just under the nav, gone by two thirds of the way down: enough that the top of
+   the page is visibly cooler than the bottom, not enough to read as a filter. Being in
+   front means it tints what it falls on — an orange button under it goes a shade dustier,
+   which is what moonlight does to orange — and text keeps well over 10:1 throughout.
+
+   THE CLOUDS AND THE LIGHT ARE ON ONE CLOCK. The shadow layer drifts one tile width, 100vw,
+   every 120s; the wash dims three times in the same 120s. Both pseudo-elements are created
+   with the layer, at the same instant, so they stay in step for as long as the window is
+   open, and the dips are placed at the moments a shadow crosses x = 62vw near the top of
+   the window — under the moon. When a cloud passes over, the light fades; when it has gone,
+   the light comes back. Two compositor-only animations, a translate and an opacity, and no
+   JavaScript.
+
+   With motion off both are still there and simply hold still: moonlight, a couple of
+   clouds, no weather. */
+#theme-decor[data-decor="halloween"]::before,
+#theme-decor[data-decor="halloween"]::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: -1;
+    pointer-events: none;
+}
+
+/* The wash. An ellipse centred just under the nav, a little right of centre — away from
+   the candles, and not over the pumpkin — plus a faint straight fall-off, so the whole top
+   of the page is a shade cooler than the bottom rather than only the patch under the moon. */
+#theme-decor[data-decor="halloween"]::before {
+    left: 0;
+    right: 0;
+    background-image:
+        radial-gradient(ellipse 72vw 78vh at 62% 2%,
+            rgb(176 194 255 / 0.15) 0%,
+            rgb(176 194 255 / 0.07) 42%,
+            rgb(176 194 255 / 0) 100%),
+        linear-gradient(180deg,
+            rgb(176 194 255 / 0.05) 0%,
+            rgb(176 194 255 / 0) 62%);
+}
+
+/* The clouds' shadows. Twice the window's width, one tile per window width, repeating, so
+   a translate of exactly 100vw brings the layer back to where it started and the loop has
+   no seam — provided no shadow reaches past its own tile, which is the constraint on
+   editing these. Each fades out at 70% of its radius, so a shadow at p with a horizontal
+   radius r needs p ± 0.7r inside 0–100; a larger one at 85% was tried first and put a hard
+   vertical cut in the sky once per window width. Three shadows, at 20%, 55% and 82% across
+   the tile, of different sizes and depths, so they are three clouds rather than one drawn
+   three times. They sit in the top third, where the light is: a shadow only means
+   something where there was moonlight to block. */
+#theme-decor[data-decor="halloween"]::after {
+    left: -100vw;
+    width: 200vw;
+    background-image:
+        radial-gradient(ellipse 26vw 24vh at 20% 16%, rgb(6 3 12 / 0.24), rgb(6 3 12 / 0) 70%),
+        radial-gradient(ellipse 22vw 18vh at 55% 10%, rgb(6 3 12 / 0.2), rgb(6 3 12 / 0) 70%),
+        radial-gradient(ellipse 24vw 28vh at 82% 22%, rgb(6 3 12 / 0.17), rgb(6 3 12 / 0) 70%);
+    background-size: 100vw 100%;
+    background-repeat: repeat-x;
+}
+
+@keyframes hw-clouds-drift {
+    from { translate: 0 0; }
+    to   { translate: 100vw 0; }
+}
+
+/* The dips, placed from the drift: a shadow whose tile position is p crosses x = 62vw at
+   (162 − p) / 100 of the cycle, modulo 1 — a fraction, so it holds whatever the cycle's
+   length. For the three shadows that is 7%, 42% and 80%, and each dip is centred on its
+   crossing and about as long as the shadow takes to pass. The deepest dip belongs to the darkest cloud. Move a
+   shadow and its dip has to move with it, by that formula. */
+@keyframes hw-moonlight {
+    0%        { opacity: 0.9; }
+    7%        { opacity: 0.55; }
+    16%, 33%  { opacity: 1; }
+    42%       { opacity: 0.45; }
+    52%, 71%  { opacity: 1; }
+    80%       { opacity: 0.62; }
+    90%, 100% { opacity: 0.95; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    :root[data-fx-motion="on"] #theme-decor[data-decor="halloween"]::before {
+        animation: hw-moonlight 120s ease-in-out infinite;
+    }
+
+    :root[data-fx-motion="on"] #theme-decor[data-decor="halloween"]::after {
+        animation: hw-clouds-drift 120s linear infinite;
+    }
+}
+
+/* ── moonbeams: now and then, a gap in the cloud ───────────────────────────────────
+   Every so often the cloud thins somewhere, a wide column of moonlight comes straight down
+   through it, holds for a moment, and closes again. Most of the time there is no beam at
+   all.
+
+   RARE, BRIEF AND FAINT, and each of those was a correction. The beams were first a fan of
+   narrow shafts from a point, which read as a stage spotlight; then permanent columns
+   drifting with the clouds, which were right in shape but never went away, and light that
+   never changes stops being weather and becomes decoration. So now:
+
+     wide     18vw to 24vw, straight down, a bell across the width with no edge of its own
+     faint    10% at the brightest point of the brightest column, fading out down the page
+              under a vertical mask on the wrapper
+     rare     each column has its own cycle — 53s, 67s and 83s, none a multiple of another —
+              and is visible for about a tenth of it, so on average something appears every
+              twenty-odd seconds and no pattern ever repeats inside a working session
+     brief    about three seconds to open, three to hold, and closing in half that, because
+              a gap in cloud shuts faster than it opens
+
+   The columns are their own elements in the prop layer rather than a layer of the cloud
+   gradient, because a background layer cannot fade on its own. They sit at z-index -1 in
+   #theme-decor's stacking context — after the wash and before the cloud shadows in paint
+   order — so a passing cloud still darkens a beam it drifts across.
+
+   With motion off there are no beams at all: a beam that cannot open and close is a
+   permanent stripe, which is exactly what this replaced. */
+#theme-decor[data-decor="halloween"] .decor-moonbeams {
+    inset: 0;
+    z-index: -1;
+    -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 12%, transparent 78%);
+            mask-image: linear-gradient(180deg, #000 0%, #000 12%, transparent 78%);
+}
+
+#theme-decor[data-decor="halloween"] .decor-moonbeams > b {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    opacity: 0;
+    background-image: linear-gradient(90deg,
+        transparent 0%,
+        rgb(198 212 255 / 0.034) 24%,
+        rgb(198 212 255 / var(--beam)) 50%,
+        rgb(198 212 255 / 0.034) 76%,
+        transparent 100%);
+}
+
+#theme-decor[data-decor="halloween"] .decor-moonbeams > b:nth-child(1) { left: 9%;  width: 20vw; --beam: 0.095; }
+#theme-decor[data-decor="halloween"] .decor-moonbeams > b:nth-child(2) { left: 38%; width: 24vw; --beam: 0.1; }
+#theme-decor[data-decor="halloween"] .decor-moonbeams > b:nth-child(3) { left: 68%; width: 18vw; --beam: 0.088; }
+
+/* The visible window is the last tenth of each cycle: dark until 88%, open by 92%, held to
+   96%, shut by 98%. A slight drift while it is open keeps it from looking pasted on. */
+@keyframes hw-moonbeam {
+    0%, 88%   { opacity: 0; translate: 0 0; }
+    92%       { opacity: 1; }
+    96%       { opacity: 1; }
+    98%, 100% { opacity: 0; translate: 1.5vw 0; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    :root[data-fx-motion="on"] #theme-decor[data-decor="halloween"] .decor-moonbeams > b:nth-child(1) {
+        animation: hw-moonbeam 53s ease-in-out -9s infinite;
+    }
+
+    :root[data-fx-motion="on"] #theme-decor[data-decor="halloween"] .decor-moonbeams > b:nth-child(2) {
+        animation: hw-moonbeam 67s ease-in-out -40s infinite;
+    }
+
+    :root[data-fx-motion="on"] #theme-decor[data-decor="halloween"] .decor-moonbeams > b:nth-child(3) {
+        animation: hw-moonbeam 83s ease-in-out -61s infinite;
+    }
+}
+
+/* The edge the moon catches on every card. A 1px line just inside the top border and a
+   fall-off under it gone within 30px. It does not dim with the clouds: the cards are drawn
+   and re-rendered at unrelated moments, so an animation on each would start out of step
+   with the sky and with each other, and thirty cards dimming at thirty different times is a
+   flicker, not weather. The cloud shadows are in front of the cards now, so a cloud passing
+   over darkens the edges beneath it along with everything else. */
+:root[data-theme="halloween"] .modern-card::before,
+:root[data-theme="halloween"] .workspace-card::before,
+:root[data-theme="halloween"] .glow-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background-image: linear-gradient(180deg, rgb(180 198 255 / 0.06), rgb(180 198 255 / 0) 30px);
+    box-shadow: inset 0 1px 0 rgb(196 210 255 / 0.22);
 }
 
 

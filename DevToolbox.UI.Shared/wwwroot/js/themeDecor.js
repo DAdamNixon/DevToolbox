@@ -5,8 +5,8 @@
 // nothing. This one builds *props* — things that sit in a particular place, and in four
 // cases things you can poke:
 //
-//   halloween        cobwebs in the corners of the content, the cauldron on Settings,
-//                    and a haunting when the pointer rests on a card
+//   halloween        the occasional moonbeam, cobwebs in the corners of the content, the
+//                    cauldron on Settings, and a haunting when the pointer rests on a card
 //   thanksgiving     the cornucopia, and the turkey it fires
 //   easter           the grass along the footer, and the eggs hidden in it
 //   fourth-of-july   the flag on its pole, and the fireworks a click sets off
@@ -86,6 +86,15 @@
        backdrop blur and sits at z-30 — above this layer — so a web in the true top-left
        corner would either be smeared by that blur or drawn over the brand mark. The
        content's corners are unambiguous and nothing has to be moved out of the way. */
+    // The moonbeams: three columns that each open briefly on their own long cycle — see
+    // "moonbeams" in css/themeDecor.css. Built first so the cobwebs and the hauntings are
+    // drawn over them; the stylesheet puts them under the cloud shadows too.
+    function buildMoonbeams(host) {
+        var beams = el('i', 'decor-moonbeams');
+        for (var i = 0; i < 3; i++) { beams.appendChild(el('b')); }
+        host.appendChild(beams);
+    }
+
     function buildWebs(host) {
         // The top two only. Four was the first version and it read as an effect applied to
         // the window rather than as cobwebs in a room — and the bottom pair fought the
@@ -545,7 +554,7 @@
     /* ── building and tearing down ──────────────────────────────────────────────── */
 
     var BUILD = {
-        halloween: buildWebs,
+        halloween: function (host) { buildMoonbeams(host); buildWebs(host); },
         thanksgiving: function (host) { host.appendChild(el('i', 'decor-horn')); },
         easter: buildTufts,
         'fourth-of-july': buildFlag
