@@ -448,12 +448,15 @@ public class PowerShellService
 
         // BeginStop rather than Stop: Stop blocks until the pipeline has unwound, and the thread that
         // cancels is the UI's. PowerShell stops a native program it is waiting on as part of stopping.
+        // It can also lose the request entirely, which is what EnsureStopEndsRunAsync is for.
         using var registration = cancellationToken.Register(() => ps.BeginStop(null, null));
 
         var outcome = ScriptRunOutcome.Completed;
         try
         {
-            await ps.InvokeAsync<PSObject, PSObject>(null, output);
+            var invocation = ps.InvokeAsync<PSObject, PSObject>(null, output);
+            await EnsureStopEndsRunAsync(invocation, runspace, cancellationToken);
+            await invocation;
         }
         catch (PipelineStoppedException)
         {
@@ -474,6 +477,62 @@ public class PowerShellService
         }
 
         return cancellationToken.IsCancellationRequested ? ScriptRunOutcome.Stopped : outcome;
+    }
+
+    /// <summary>
+    /// How long a stop gets to end a run by itself before <see cref="EnsureStopEndsRunAsync"/> steps
+    /// in, and how long between its attempts after that. A stop that works takes milliseconds, a
+    /// native program included; the rest is room for a script's own finally blocks, which the stop
+    /// lets run.
+    /// </summary>
+    private static readonly TimeSpan StopGrace = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// Completes when <paramref name="invocation"/> has, and makes sure that a stop ends it.
+    /// <para>
+    /// PowerShell can lose a stop request. At the end of every statement it runs the pipeline's
+    /// clean {} blocks with the "stopping" flag switched off, then puts back the value it read
+    /// beforehand, so a stop that lands in between is overwritten and a script in a loop carries on
+    /// forever. PowerShell still considers the run to be stopping, so BeginStop again does nothing.
+    /// (PipelineProcessor.Clean in System.Management.Automation 7.6.5, unchanged on master.) A
+    /// stop during a clean block is always lost; one that lands just as a statement ends is lost
+    /// only sometimes, and the Stopping_ends_the_run test cancels at exactly that moment.
+    /// </para>
+    /// <para>
+    /// So a run still going after <see cref="StopGrace"/> is ended through the debugger: step mode
+    /// breaks at the next statement, on the pipeline's own thread where nothing can race it, and
+    /// answering Stop throws the same TerminateException as the debugger's own q command. Finally
+    /// blocks still run. A clean block swallows even that exception, and the script carries on
+    /// after it, so step mode is set again every <see cref="StopGrace"/> until the run has ended.
+    /// Under a system lockdown policy (WDAC, AppLocker) PowerShell switches its debugger off;
+    /// there, a lost stop stays lost, as it was before.
+    /// </para>
+    /// </summary>
+    private static async Task EnsureStopEndsRunAsync(Task invocation, Runspace runspace, CancellationToken cancellationToken)
+    {
+        var stopRequested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using (cancellationToken.Register(() => stopRequested.TrySetResult()))
+        {
+            if (await Task.WhenAny(invocation, stopRequested.Task) == invocation) return;
+        }
+
+        // Nothing breaks into the debugger until step mode is set below, so subscribing now changes
+        // nothing about a stop that works.
+        var debugger = runspace.Debugger;
+        debugger.DebuggerStop += (_, e) => e.ResumeAction = DebuggerResumeAction.Stop;
+
+        while (await Task.WhenAny(invocation, Task.Delay(StopGrace)) != invocation)
+        {
+            try
+            {
+                debugger.SetDebuggerStepMode(true);
+            }
+            catch (PSInvalidOperationException)
+            {
+                // Debugging is off for this runspace, so there is no next statement to stop at.
+                return;
+            }
+        }
     }
 
     /// <summary>

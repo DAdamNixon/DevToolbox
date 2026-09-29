@@ -17,10 +17,10 @@ namespace DevToolbox.Tests;
 /// </summary>
 public sealed class ScriptStreamingTests : IDisposable
 {
-    // Generous on purpose, including for Stop. PowerShell hands a stop request to the thread pool,
-    // and with the rest of the suite opening runspaces and native processes in parallel that pool
-    // can be starved for seconds: a 10s limit on Stop failed once that way, right after a build.
-    // Against a script that would otherwise loop forever, 30s still proves the point.
+    // Generous on purpose: a runspace or a native program can be slow to start while the rest of the
+    // suite runs in parallel. Stop is not what needs it. The Stop timeouts once put down to a starved
+    // thread pool were PowerShell losing the stop outright, which no wait outlasts; see
+    // Stopping_during_a_clean_block_still_ends_the_run.
     private static readonly TimeSpan Patience = TimeSpan.FromSeconds(30);
 
     /// <summary>A file the script waits for, so a test can hold it mid-run without sleeping.</summary>
@@ -162,6 +162,9 @@ public sealed class ScriptStreamingTests : IDisposable
     [Fact]
     public async Task Stopping_ends_the_run_and_says_so()
     {
+        // Cancels the moment 'started' arrives, which is while Write-Host is still finishing: the one
+        // window in which PowerShell can lose a stop by chance. This failed about one run in four,
+        // mostly as the first test in the class, before PowerShellService learned to notice.
         using var cts = new CancellationTokenSource();
         var recorder = new Recorder();
         var run = Run("Write-Host 'started'; while ($true) { Start-Sleep -Milliseconds 50 }", recorder, cts.Token);
@@ -170,6 +173,27 @@ public sealed class ScriptStreamingTests : IDisposable
         cts.Cancel();
 
         Assert.Equal(ScriptRunOutcome.Stopped, await run.WaitAsync(Patience));
+    }
+
+    [Fact]
+    public async Task Stopping_during_a_clean_block_still_ends_the_run()
+    {
+        // The same lost stop, every time rather than by chance. PowerShell runs clean blocks with its
+        // "stopping" flag switched off and then puts back the value it read before, so a stop that
+        // arrives during one is overwritten and the loop after it would run forever. The finally is
+        // there to show that ending it anyway does not skip the script's own cleanup.
+        using var cts = new CancellationTokenSource();
+        var recorder = new Recorder();
+        var run = Run(
+            $"& {{ end {{ }} clean {{ Write-Host 'cleaning'; {WaitForRelease} }} }}; " +
+            "try { while ($true) { Start-Sleep -Milliseconds 50 } } finally { Write-Host 'finally ran' }",
+            recorder, cts.Token);
+
+        await recorder.Seen("cleaning").WaitAsync(Patience);
+        cts.Cancel();
+
+        Assert.Equal(ScriptRunOutcome.Stopped, await run.WaitAsync(Patience));
+        Assert.Contains(recorder.Lines, l => l.Text == "finally ran");
     }
 
     [Fact]
