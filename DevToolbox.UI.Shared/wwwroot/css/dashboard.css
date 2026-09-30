@@ -4024,6 +4024,301 @@ tr.log-row-expanded td {
     font-size: 0.8125rem;
 }
 
+/* ── Log Viewer: the loading drawer ──────────────────────────────────────────
+   A load's progress while its rows are already streaming into the grid. Folded it
+   is one line and a bar; unfolded it adds the files open right now. It sits at the
+   top of the results card, as its first flex child in full screen, so the scroller
+   below still takes whatever height is left. */
+.log-ingest-drawer {
+    position: relative;
+    flex: none;
+    margin-bottom: 0.75rem;
+    border: 1px solid rgb(var(--c-border));
+    border-radius: 0.5rem;
+    background-color: rgb(var(--c-surface-hover) / 0.35);
+    container-type: inline-size;
+}
+
+/* One line, always: a summary that wrapped at narrower widths changed the drawer's
+   height, and with it where every row below sat. What does not fit gives way — the
+   headline truncates, and the estimate drops out first (below). */
+.log-ingest-summary {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 0.875rem;
+    padding: 0.3rem 0.4rem 0.3rem 0.75rem;
+    font-size: 0.8125rem;
+    white-space: nowrap;
+}
+
+.log-ingest-headline {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: rgb(var(--c-text));
+}
+
+@container (max-width: 40rem) {
+    .log-ingest-eta {
+        display: none;
+    }
+}
+
+.log-ingest-error {
+    padding: 0.3rem 0.75rem;
+    border-top: 1px solid rgb(var(--c-border));
+    color: rgb(var(--c-warning));
+    font-size: 0.75rem;
+}
+
+.log-ingest-spinner {
+    flex: none;
+    width: 0.875rem;
+    height: 0.875rem;
+    border-radius: 9999px;
+    border-bottom: 2px solid rgb(var(--c-accent-blue));
+    animation: spin 1s linear infinite;
+}
+
+/* Figures that tick up several times a second; tabular so the line does not jitter. */
+.log-ingest-meta {
+    color: rgb(var(--c-text-muted));
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.log-ingest-meta.is-warning {
+    color: rgb(var(--c-warning));
+}
+
+.log-ingest-stalled {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.05rem 0.5rem;
+    border: 1px solid rgb(var(--c-warning) / 0.5);
+    border-radius: 9999px;
+    background-color: rgb(var(--c-warning) / 0.12);
+    color: rgb(var(--c-warning));
+    font-size: 0.75rem;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.log-ingest-stalled:hover {
+    background-color: rgb(var(--c-warning) / 0.22);
+}
+
+.log-ingest-actions {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-left: auto;
+}
+
+.log-ingest-actions button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    color: rgb(var(--c-text-muted));
+}
+
+.log-ingest-actions button:hover:not(:disabled) {
+    background-color: rgb(var(--c-surface-hover));
+    color: rgb(var(--c-text));
+}
+
+.log-ingest-actions button.is-danger:hover:not(:disabled) {
+    color: rgb(var(--c-danger));
+}
+
+.log-ingest-actions button:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.log-ingest-bar {
+    height: 3px;
+    background-color: rgb(var(--c-border) / 0.6);
+    overflow: hidden;
+}
+
+.log-ingest-bar > div {
+    height: 100%;
+    background-color: rgb(var(--c-accent-blue));
+    transition: width 0.2s ease-out;
+}
+
+/* No size to measure — before the first report, and during the final query. */
+.log-ingest-bar > div.is-indeterminate {
+    width: 33%;
+    animation: log-ingest-sweep 1.4s ease-in-out infinite;
+}
+
+@keyframes log-ingest-sweep {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(300%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .log-ingest-bar > div.is-indeterminate {
+        animation: none;
+        width: 100%;
+        opacity: 0.4;
+    }
+}
+
+/* Dropped over the grid rather than pushing it down: opening the file list to skip
+   one must not move the row someone was reading. Above the sticky table header (2). */
+.log-ingest-detail {
+    position: absolute;
+    top: calc(100% + 0.25rem);
+    left: 0;
+    right: 0;
+    z-index: 6;
+    max-height: 12rem;
+    overflow: auto;
+    padding: 0.25rem;
+    border: 1px solid rgb(var(--c-border));
+    border-radius: 0.5rem;
+    background-color: rgb(var(--c-surface));
+    box-shadow: 0 10px 25px -3px rgb(0 0 0 / 0.35);
+    font-size: 0.8125rem;
+}
+
+.log-ingest-detail[hidden] {
+    display: none;
+}
+
+.log-ingest-note {
+    padding: 0.3rem 0.75rem;
+    color: rgb(var(--c-text-muted));
+}
+
+/* One open file. Shared with the big loading card. */
+.log-ingest-file {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.3rem 0.75rem;
+    border-radius: 0.375rem;
+    color: rgb(var(--c-text-muted));
+}
+
+.log-ingest-file > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.log-ingest-file.is-stalled {
+    background-color: rgb(var(--c-warning) / 0.1);
+    color: rgb(var(--c-warning));
+}
+
+.log-ingest-file button {
+    flex: none;
+    padding: 0.1rem 0.5rem;
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    color: rgb(var(--c-warning));
+}
+
+.log-ingest-file button:hover {
+    background-color: rgb(var(--c-warning) / 0.15);
+}
+
+/* The drawer takes its height out of the page, so while it shows the table gives
+   the same back rather than pushing the pagination below the fold. Full screen
+   flexes instead and needs none of this. The same for the outcome line after. */
+.log-results-card.has-banner:not(.is-fullscreen) .log-results-scroll {
+    max-height: calc(100dvh - 30.75rem);
+}
+
+/* In full screen the drawer is the first thing in the card, and the filters
+   raised over the results with Ctrl+F would sit on top of it — Cancel and Skip
+   included. Below it instead. */
+.log-filter-card.is-floating.is-below-banner {
+    top: 4.75rem;
+}
+
+/* ── Log Viewer: how the last load ended ─────────────────────────────────────
+   Where the drawer was, inside the results card, so full screen shows it too —
+   a partial or cancelled load must not look complete there. Dismissible. */
+.log-outcome {
+    flex: none;
+    margin-bottom: 0.75rem;
+    border: 1px solid rgb(var(--c-border));
+    border-radius: 0.5rem;
+    font-size: 0.8125rem;
+}
+
+.log-outcome.is-partial {
+    border-color: rgb(var(--c-warning) / 0.45);
+    background-color: rgb(var(--c-warning) / 0.06);
+}
+
+.log-outcome-line {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0.4rem 0.3rem 0.75rem;
+}
+
+.log-outcome-line > i {
+    flex: none;
+}
+
+.log-outcome.is-partial .log-outcome-line > i {
+    color: rgb(var(--c-warning));
+}
+
+.log-outcome-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: rgb(var(--c-text));
+}
+
+.log-outcome-line button {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    color: rgb(var(--c-text-muted));
+}
+
+.log-outcome-line button:hover {
+    background-color: rgb(var(--c-surface-hover));
+    color: rgb(var(--c-text));
+}
+
+.log-outcome-files {
+    max-height: 10rem;
+    overflow: auto;
+    margin: 0;
+    padding: 0.25rem 0.75rem 0.5rem 2rem;
+    border-top: 1px solid rgb(var(--c-border));
+    color: rgb(var(--c-text-muted));
+    list-style: disc;
+}
+
+/* While a query replaces the rows the old ones stay, dimmed, instead of the
+   whole grid giving way to a spinner card and back. */
+.log-results-frame.is-busy {
+    opacity: 0.55;
+    transition: opacity 0.15s ease-out 0.15s;
+}
+
 /* ── Log Viewer: the source card's bottom lip ────────────────────────────────
    The whole bottom edge is the expand/collapse control, which replaces a Collapse
    button that sat among the search actions and read like one of them. Negative

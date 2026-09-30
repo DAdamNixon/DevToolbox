@@ -17,8 +17,38 @@ namespace DevToolbox.Services.Interfaces
         /// pressed during it would otherwise appear to do nothing.
         /// </para>
         /// </summary>
-        Task InsertLogLinesAsync(string tableName, IEnumerable<Dictionary<string, string>> lines, CancellationToken cancellationToken = default);
-        Task<(IEnumerable<Dictionary<string, string>> Results, int TotalCount)> SearchLogsAsync(string tableName, LogQuery query);
+        /// <returns>
+        /// The rowids the batch was given — contiguous, since one writer inserts each batch in one
+        /// transaction — so a skipped file's rows can later be purged by range.
+        /// </returns>
+        Task<LogRowRange> InsertLogLinesAsync(string tableName, IEnumerable<Dictionary<string, string>> lines, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Adds columns to an existing table. The ingest calls it for an overflow column the first
+        /// time a line needs one; in SQLite it changes only the schema, whatever the row count.
+        /// </summary>
+        Task AddColumnsAsync(string tableName, IEnumerable<string> columns);
+
+        /// <summary>
+        /// A page of <paramref name="query"/>, and its total unless <see cref="LogQuery.IncludeCount"/>
+        /// is false (then 0). Keyword mode returns columns in
+        /// <see cref="LogProvenanceColumns.InDisplayOrder"/>; SQL mode in whatever order the query
+        /// projects. Cancelling <paramref name="cancellationToken"/> interrupts a running statement.
+        /// </summary>
+        Task<(IEnumerable<Dictionary<string, string>> Results, int TotalCount)> SearchLogsAsync(string tableName, LogQuery query, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// How many rows <paramref name="query"/> matches, without reading any of them — the count a
+        /// search would report, for callers that need nothing else.
+        /// </summary>
+        Task<int> CountLogsAsync(string tableName, LogQuery query, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Reads what arrived after <see cref="LogLiveRequest.AfterRowid"/> — count, per-group
+        /// counts and a page of rows — in one read transaction, so all of it describes the same
+        /// moment of a table that is still being written. See <see cref="LogLiveRequest"/>.
+        /// </summary>
+        Task<LogLiveSlice> ReadLiveSliceAsync(string tableName, LogLiveRequest request, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Row counts per distinct value of <paramref name="column"/>, honouring the
@@ -50,5 +80,12 @@ namespace DevToolbox.Services.Interfaces
         /// already committed before the skip was noticed.
         /// </summary>
         Task DeleteRowsForFileAsync(string tableName, string column, string value, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Deletes the rows in <paramref name="ranges"/>, in one transaction, and returns how many
+        /// went. The purge the ingest actually uses: a range delete walks only the file's own rows,
+        /// where <see cref="DeleteRowsForFileAsync"/> has to scan the table for an unindexed path.
+        /// </summary>
+        Task<int> DeleteRowRangesAsync(string tableName, IReadOnlyList<LogRowRange> ranges, CancellationToken cancellationToken = default);
     }
 }

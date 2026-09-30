@@ -128,6 +128,7 @@ internal sealed class LogEnvironment : IDisposable
     }
 }
 
+[Collection(LoadLockCollection.Name)]
 public sealed class LogViewerServiceTests
 {
     private static readonly DateTime Day = new(2026, 8, 21, 12, 0, 0);

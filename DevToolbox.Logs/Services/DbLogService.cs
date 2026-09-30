@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Channels;
@@ -256,82 +257,29 @@ namespace DevToolbox.Services.Services
             return names;
         }
 
-        private async Task<List<string>> GetAllColumnsFromFilesAsync(
-            List<(string LocationName, string FilePath, long Length)> taggedFiles,
-            LogTemplate template,
-            LogIngestProgressReporter reporter,
-            LogIngestControl control,
-            CancellationToken cancellationToken = default)
+        /// <summary>
+        /// The columns a new table starts with: the template's, then provenance. Overflow columns
+        /// (<c>Message1</c>, …) are not guessed up front any more — the writer adds each the first
+        /// time a line needs it (see <see cref="IngestFilesAsync"/>).
+        /// <para>
+        /// This used to be a Scanning pass that opened every file and read up to 1000 lines of it,
+        /// before a single row could be stored. For many small files over SMB that pass was most of
+        /// the wait, every file was opened twice, and a line past the sample with more fields than
+        /// any before it named a column the table lacked — the insert failed and the load hung
+        /// behind it. Adding a column in SQLite changes only the schema, so doing it on demand costs
+        /// nothing, and rows can reach the table (and the Log Viewer's grid) from the first file on.
+        /// </para>
+        /// </summary>
+        private static List<string> StartingColumns(IEnumerable<string> templateColumns)
         {
-            var baseColumns = await ResolveColumnsAsync(template);
-            int maxMessageColumns = 0;
+            var columns = new List<string>(templateColumns);
 
-            foreach (var tf in taggedFiles)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
+            // Refused before anything is dropped. The editor refuses these too, but a template can be
+            // edited by hand, and one that got through would have purges delete the wrong rows.
+            if (columns.FirstOrDefault(LogTemplateValidator.IsReservedByDatabase) is { } reserved)
+                throw new InvalidOperationException(
+                    $"The template's column \"{reserved}\" is a name the database keeps for itself. Rename it in the template.");
 
-                var fileKey = tf.FilePath;
-                var fileName = Path.GetFileName(tf.FilePath);
-
-                if (control.IsSkipped(fileKey))
-                {
-                    var reason = DescribeSkip(await control.WaitForAbandonAsync(fileKey), control);
-                    reporter.FileSkipped(fileKey, fileName, tf.LocationName, reason);
-                    continue;
-                }
-
-                reporter.FileOpening(fileKey, fileName, tf.LocationName, tf.Length);
-
-                var extra = await RunAbandonableAsync(fileKey, fileName, tf.LocationName, control, reporter, async token =>
-                {
-                    try
-                    {
-                        // Off the calling async chain: the open itself is a synchronous call and,
-                        // against a dead server, can block a thread for as long as the read would.
-                        // Running it on a pool thread is what lets this race against abandonment at
-                        // all — inline, a blocked open would never even reach the WhenAny below.
-                        using var fs = await Task.Run(() => FileOpener(tf.FilePath), token);
-                        using var reader = new StreamReader(fs);
-
-                        // Only sample first few lines to determine columns, not the entire file
-                        const int maxSampleLines = 1000;
-                        int lineCount = 0;
-                        int extraHere = 0;
-
-                        string? line;
-                        while (lineCount < maxSampleLines && (line = await reader.ReadLineAsync(token)) != null)
-                        {
-                            if (control.IsSkipped(fileKey)) return 0;
-                            reporter.FileBytesRead(fileKey, fs.Position);
-
-                            var parts = SplitLine(line, template.Delimiter);
-                            int extraCols = parts.Length - baseColumns.Count;
-                            if (extraCols > extraHere)
-                                extraHere = extraCols;
-                            lineCount++;
-                        }
-
-                        // An orphan that wakes after a skip must not flip the slot back to Done.
-                        if (control.IsSkipped(fileKey)) return 0;
-                        reporter.FileDone(fileKey);
-                        return extraHere;
-                    }
-                    catch (Exception ex)
-                    {
-                        if (!control.IsSkipped(fileKey))
-                            reporter.FileFailed(fileKey, fileName, tf.LocationName, $"failed: {ex.Message}");
-                        return 0;
-                    }
-                }, cancellationToken);
-
-                if (extra > maxMessageColumns)
-                    maxMessageColumns = extra;
-            }
-
-            var columns = new List<string>(baseColumns);
-            for (int i = 1; i <= maxMessageColumns; i++)
-                columns.Add(LogOverflowColumns.Name(i));
-            
             // Provenance columns: Location precedes SourceFile, Sequence follows it.
             columns.Add(LogProvenanceColumns.Location);
             columns.Add(LogProvenanceColumns.SourceFile);
@@ -370,6 +318,7 @@ namespace DevToolbox.Services.Services
             reporter.EnterPhase(LogIngestPhase.Listing);
 
             await _loadSemaphore.WaitAsync(cancellationToken);
+            List<MatchedFile>? files = null;
             try
             {
                 var templateEntries = await GetAvailableLogFileTemplatesAsync();
@@ -381,36 +330,63 @@ namespace DevToolbox.Services.Services
                 if (template == null)
                     throw new InvalidOperationException($"Template file '{templateEntry.File}' could not be loaded.");
 
-                var taggedFiles = EnumerateMatchingFiles(
+                files = EnumerateMatchingFiles(
                     logFile, locations, startDate, endDate, template, reporter, cancellationToken);
 
-                reporter.EnterPhase(LogIngestPhase.Scanning);
+                // Resolved once for the whole load, not once per file — it reads YAML.
+                var templateColumns = await ResolveColumnsAsync(template);
+                var columns = StartingColumns(templateColumns);
 
-                // Scanning is measured in files, not bytes: it reads only the head of
-                // each one, so a byte total would make the bar crawl and stop.
-                reporter.SetTotals(taggedFiles.Count, bytesTotal: 0);
-
-                // Determine columns (works with an empty file set: template + provenance columns).
-                var columns = await GetAllColumnsFromFilesAsync(taggedFiles, template, reporter, control, cancellationToken);
+                // The last moment a Cancel leaves the previous search's table standing. Past here it
+                // is gone, and whatever a caller was showing from it goes with it — which is exactly
+                // what TableDropped tells them.
+                cancellationToken.ThrowIfCancellationRequested();
 
                 // Always recreate so each Search reflects the current selection.
+                control.MarkTableDropped();
                 if (await _logStorage.TableExistsAsync(TableName))
                     await _logStorage.DropTableAsync(TableName);
                 await _logStorage.EnsureTableAsync(TableName, columns);
+                control.MarkTableReady(TableName);
 
                 reporter.EnterPhase(LogIngestPhase.Ingesting);
-                reporter.SetTotals(taggedFiles.Count, taggedFiles.Sum(f => f.Length));
-                await IngestFilesAsync(taggedFiles, template, TableName, columns, reporter, control, cancellationToken);
+                reporter.SetTotals(files.Count, files.Sum(f => f.Length));
+                await IngestFilesAsync(files, template, templateColumns, TableName, columns, reporter, control, cancellationToken);
+
+                // SkipAll without the token — the control's documented half of a Cancel — finishes
+                // normally; its files still need the cut-short / never-read account.
+                if (control.AllSkipped)
+                    reporter.CancelOutstanding(Outstanding(files));
 
                 var notIngested = reporter.GetNotIngested();
                 reporter.Complete(LogIngestPhase.Querying);
 
                 return new LogPrepareResult { TableName = TableName, NotIngested = notIngested };
             }
+            catch (OperationCanceledException ex) when (cancellationToken.IsCancellationRequested && ex is not LogIngestCancelledException)
+            {
+                // A cancelled load keeps what it read, and the Log Viewer goes on showing it — so say
+                // which files those rows are complete for and which they are not.
+                if (files is not null)
+                    reporter.CancelOutstanding(Outstanding(files));
+                reporter.Flush();
+
+                var result = new LogPrepareResult { TableName = TableName, NotIngested = reporter.GetNotIngested() };
+                throw new LogIngestCancelledException(result, control.TableDropped, ex);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // The table is shown as far as the load got, so the count shown with it must be too.
+                reporter.Flush();
+                throw;
+            }
             finally
             {
                 _loadSemaphore.Release();
             }
+
+            static IEnumerable<(string, string, string, long)> Outstanding(List<MatchedFile> files) =>
+                files.Select(f => (f.FilePath, Path.GetFileName(f.FilePath), f.LocationName, f.Length));
         }
 
         /// <summary>
@@ -457,9 +433,12 @@ namespace DevToolbox.Services.Services
         {
             SkipReason.Manual => "stalled — skipped by you",
             SkipReason.Auto => $"stalled — auto-skipped after {control.AutoSkipTimeoutSeconds}s",
-            SkipReason.Cancelled => "not read — search cancelled",
+            SkipReason.Cancelled => LogIngestProgressReporter.CancelledBeforeReading,
             _ => "not read"
         };
+
+        /// <summary>A file to ingest, with what the directory walk already told us about it.</summary>
+        private readonly record struct MatchedFile(string LocationName, string FilePath, long Length, DateTime Written, int LocationIndex);
 
         /// <summary>
         /// Finds the files to ingest, tagged with their location name and size.
@@ -476,8 +455,15 @@ namespace DevToolbox.Services.Services
         /// Sizes are captured here rather than re-read later, because a second stat
         /// of every file over a slow share costs as much as the walk itself.
         /// </para>
+        /// <para>
+        /// Oldest first across every location, then location order, then path — not location by
+        /// location. Rows reach the table in roughly the order the files are read, and the Log
+        /// Viewer shows them in that order while a load is still running; ingesting the earliest
+        /// file from each location first makes that order close to the date-ascending sort the
+        /// templates finish on, instead of all of one server before any of the next.
+        /// </para>
         /// </summary>
-        private static List<(string LocationName, string FilePath, long Length)> EnumerateMatchingFiles(
+        private static List<MatchedFile> EnumerateMatchingFiles(
             string logFile,
             IReadOnlyList<LogLocation> locations,
             DateTime startDate,
@@ -486,17 +472,17 @@ namespace DevToolbox.Services.Services
             LogIngestProgressReporter reporter,
             CancellationToken cancellationToken)
         {
-            var taggedFiles = new List<(string LocationName, string FilePath, long Length)>();
+            var matched = new List<MatchedFile>();
 
-            foreach (var loc in locations)
+            for (var locationIndex = 0; locationIndex < locations.Count; locationIndex++)
             {
+                var loc = locations[locationIndex];
                 cancellationToken.ThrowIfCancellationRequested();
                 if (string.IsNullOrWhiteSpace(loc.Path) || !Directory.Exists(loc.Path))
                     continue; // Tolerate missing/offline locations.
 
                 reporter.FileStarted(loc.Name);
 
-                var matchedHere = new List<(string Path, long Length)>();
                 IEnumerable<System.IO.FileInfo> entries;
                 try
                 {
@@ -523,10 +509,11 @@ namespace DevToolbox.Services.Services
 
                     var keep = false;
                     long length = 0;
+                    var written = DateTime.MinValue;
                     try
                     {
-                        var written = info.LastWriteTime.Date;
-                        if (written >= startDate.Date && written <= endDate.Date)
+                        written = info.LastWriteTime;
+                        if (written.Date >= startDate.Date && written.Date <= endDate.Date)
                         {
                             keep = true;
                             length = info.Length;
@@ -541,65 +528,130 @@ namespace DevToolbox.Services.Services
                     }
 
                     reporter.ItemExamined(keep);
-                    if (keep) matchedHere.Add((info.FullName, length));
+                    if (keep) matched.Add(new MatchedFile(loc.Name, info.FullName, length, written, locationIndex));
                 }
-
-                foreach (var f in matchedHere.OrderBy(f => f.Path, StringComparer.OrdinalIgnoreCase))
-                    taggedFiles.Add((loc.Name, f.Path, f.Length));
             }
 
-            return taggedFiles;
+            return matched
+                .OrderBy(f => f.Written)
+                .ThenBy(f => f.LocationIndex)
+                .ThenBy(f => f.FilePath, StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
 
-        /// <summary>A parsed batch, carrying the file it came from — what lets the writer purge a skip (D4).</summary>
+        /// <summary>
+        /// A parsed batch, carrying the file it came from — what lets the writer purge a skip (D4).
+        /// An empty batch is a purge request: a file skipped on its own sends one as it stops, so its
+        /// committed rows leave the table while the load is still running rather than at the end.
+        /// </summary>
         private readonly record struct LogBatch(string FileKey, List<Dictionary<string, string>> Rows);
+
+        private static readonly List<Dictionary<string, string>> PurgeRequest = new();
 
         // Parses files in parallel and inserts on a single writer to respect SQLite's single-writer model.
         private async Task IngestFilesAsync(
-            List<(string LocationName, string FilePath, long Length)> taggedFiles,
+            List<MatchedFile> files,
             LogTemplate template,
+            List<string> templateColumns,
             string tableName,
             List<string> columns,
             LogIngestProgressReporter reporter,
             LogIngestControl control,
             CancellationToken cancellationToken)
         {
-            if (taggedFiles.Count == 0)
+            if (files.Count == 0)
                 return;
 
             var channel = Channel.CreateBounded<LogBatch>(
                 new BoundedChannelOptions(8) { SingleReader = true, SingleWriter = false });
 
+            // The parsers get a token of their own, linked to the caller's, so a writer that fails can
+            // stop them. Otherwise they fill the bounded channel and wait in WriteAsync forever — the
+            // token never cancels — and the load hangs with every healthy file showing as stalled.
+            using var parseCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var parseToken = parseCts.Token;
+
+            // Writer-only state; read again below only once the writer has finished.
+            var known = new HashSet<string>(columns, StringComparer.OrdinalIgnoreCase);
+            var committed = new Dictionary<string, List<LogRowRange>>(StringComparer.Ordinal);
+            var purged = new HashSet<string>(StringComparer.Ordinal);
+
+            // D4: a file skipped on its own contributes zero rows. By rowid range, so the cost is the
+            // file's rows rather than a scan of the table for an unindexed path — and nothing at all for
+            // the usual stall, a file that never committed a batch.
+            async Task PurgeAsync(string fileKey, CancellationToken token)
+            {
+                if (purged.Contains(fileKey)) return;
+                if (committed.TryGetValue(fileKey, out var ranges))
+                {
+                    var deleted = await _logStorage.DeleteRowRangesAsync(tableName, ranges, token);
+                    reporter.RowsPurged(fileKey, deleted);
+                }
+
+                // Only once the delete has gone through: one a Cancel interrupts leaves the ranges
+                // where the sweep below will find them.
+                committed.Remove(fileKey);
+                purged.Add(fileKey);
+            }
+
             var writerTask = Task.Run(async () =>
             {
-                // Purged at most once per file: a skip decided mid-stream can leave several more
-                // batches from the same file already queued behind it in the channel.
-                var purged = new HashSet<string>(StringComparer.Ordinal);
-
-                await foreach (var item in channel.Reader.ReadAllAsync(cancellationToken))
+                try
                 {
-                    if (control.IsSkipped(item.FileKey))
+                    await foreach (var item in channel.Reader.ReadAllAsync(cancellationToken))
                     {
-                        // The single writer is the second and final check in the row-leak guard: the
-                        // parser already stops adding to a skipped file's batch, but a batch built
-                        // just before the skip can already be in flight here.
-                        if (purged.Add(item.FileKey))
-                            await _logStorage.DeleteRowsForFileAsync(tableName, SourcePathColumn, item.FileKey, cancellationToken);
-                        continue;
+                        if (control.ShouldPurge(item.FileKey))
+                        {
+                            // The single writer is the second and final check in the row-leak guard: the
+                            // parser already stops adding to a skipped file's batch, but a batch built
+                            // just before the skip can already be in flight here.
+                            await PurgeAsync(item.FileKey, cancellationToken);
+                            continue;
+                        }
+
+                        // Stopped by a Cancel rather than skipped on its own: what it committed stays —
+                        // a cancelled load keeps what it read — but nothing more is stored for it. A file
+                        // that had already read to its end is complete, so its queued rows still go in.
+                        if (item.Rows.Count == 0 || (control.IsSkipped(item.FileKey) && !control.IsFinished(item.FileKey)))
+                            continue;
+
+                        // A field beyond any line seen so far gets its column now, before the insert
+                        // that needs it. Rows carry Message1..n contiguously, so the new names arrive
+                        // in ascending order.
+                        List<string>? added = null;
+                        foreach (var row in item.Rows)
+                            foreach (var key in row.Keys)
+                                if (known.Add(key))
+                                    (added ??= new()).Add(key);
+                        if (added is not null)
+                            await _logStorage.AddColumnsAsync(tableName, added);
+
+                        var range = await _logStorage.InsertLogLinesAsync(tableName, item.Rows, cancellationToken);
+                        if (range.Count > 0)
+                        {
+                            if (!committed.TryGetValue(item.FileKey, out var ranges))
+                                committed[item.FileKey] = ranges = new List<LogRowRange>();
+                            ranges.Add(range);
+                        }
+
+                        // Counted here rather than at parse time so the figure means rows
+                        // actually committed, not rows queued.
+                        reporter.AddRows(item.FileKey, item.Rows.Count);
                     }
-
-                    await _logStorage.InsertLogLinesAsync(tableName, item.Rows, cancellationToken);
-
-                    // Counted here rather than at parse time so the figure means rows
-                    // actually committed, not rows queued.
-                    reporter.AddRows(item.Rows.Count);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // Nothing will drain the channel from here on, so stop the parsers rather than
+                    // leave them blocked on it; the failure itself is rethrown to the prepare below.
+                    parseCts.Cancel();
+                    throw;
                 }
             }, cancellationToken);
 
             int maxParallelism = Math.Max(1, Math.Min(Environment.ProcessorCount, 4));
             using var throttler = new SemaphoreSlim(maxParallelism);
 
-            var parseTasks = taggedFiles.Select(async tf =>
+            var parseTasks = files.Select(async tf =>
             {
                 var fileKey = tf.FilePath;
                 var fileName = Path.GetFileName(tf.FilePath);
@@ -611,15 +663,15 @@ namespace DevToolbox.Services.Services
                     return;
                 }
 
-                await throttler.WaitAsync(cancellationToken);
+                await throttler.WaitAsync(parseToken);
                 try
                 {
                     reporter.FileOpening(fileKey, fileName, tf.LocationName, tf.Length);
                     await RunAbandonableAsync<object?>(fileKey, fileName, tf.LocationName, control, reporter, async token =>
                     {
-                        await ParseFileToChannelAsync(fileKey, tf.LocationName, template, columns, channel.Writer, reporter, control, token);
+                        await ParseFileToChannelAsync(fileKey, tf.LocationName, template, templateColumns, channel.Writer, reporter, control, token);
                         return null;
-                    }, cancellationToken);
+                    }, parseToken);
                 }
                 finally
                 {
@@ -627,25 +679,89 @@ namespace DevToolbox.Services.Services
                     // abandoned — the orphan an abandonment leaves behind holds no worker slot.
                     throttler.Release();
                 }
+
+                // Skipped on its own: ask the writer to take back what it already committed now, while
+                // the rows may be on screen, not only at the end. After the slot is released, so a full
+                // channel never holds one; the sweep below covers a request that cannot be sent.
+                if (control.ShouldPurge(fileKey))
+                {
+                    try
+                    {
+                        await channel.Writer.WriteAsync(new LogBatch(fileKey, PurgeRequest), parseToken);
+                    }
+                    catch (Exception ex) when (ex is OperationCanceledException or ChannelClosedException)
+                    {
+                    }
+                }
             }).ToList();
 
+            Exception? parseFailure = null;
             try
             {
                 await Task.WhenAll(parseTasks);
             }
-            finally
+            catch (Exception ex)
             {
-                channel.Writer.Complete();
+                parseFailure = ex;
             }
 
-            await writerTask;
+            channel.Writer.TryComplete();
+
+            // Never return while the writer is still going. A cancel used to throw out of the WhenAll
+            // above and leave it committing behind the caller's back; now whoever catches that cancel
+            // can query the table and see all there is going to be.
+            Exception? writerFailure = null;
+            try
+            {
+                await writerTask;
+            }
+            catch (Exception ex)
+            {
+                writerFailure = ex;
+            }
+
+            // Every committed row of a file skipped on its own comes out, Cancel or not (D4). The
+            // purge request above only made it prompt; one still queued when the writer stopped, or
+            // never sent, is caught here. CancellationToken.None: this is the contract, not work a
+            // Cancel should be able to interrupt.
+            var writerFailed = writerFailure is not null and not OperationCanceledException;
+            foreach (var fileKey in committed.Keys.ToList())
+            {
+                if (!control.ShouldPurge(fileKey)) continue;
+
+                if (!writerFailed)
+                {
+                    await PurgeAsync(fileKey, CancellationToken.None);
+                    continue;
+                }
+
+                // After a writer failure the table is shown as far as it got, so a skipped file's rows
+                // still have to go — but on a table that may have just failed a write, this is best
+                // effort, and the failure below is the one to report.
+                try
+                {
+                    await PurgeAsync(fileKey, CancellationToken.None);
+                }
+                catch (Exception)
+                {
+                }
+            }
+
+            // A real writer failure is what happened, whatever the parsers did because of it.
+            if (writerFailed)
+                ExceptionDispatchInfo.Capture(writerFailure!).Throw();
+
+            if (parseFailure is not null)
+                ExceptionDispatchInfo.Capture(parseFailure).Throw();
+            if (writerFailure is not null)
+                ExceptionDispatchInfo.Capture(writerFailure).Throw();
         }
 
         private async Task ParseFileToChannelAsync(
             string filePath,
             string locationName,
             LogTemplate template,
-            List<string> allColumns,
+            List<string> templateColumns,
             ChannelWriter<LogBatch> writer,
             LogIngestProgressReporter reporter,
             LogIngestControl control,
@@ -658,12 +774,12 @@ namespace DevToolbox.Services.Services
 
             try
             {
-                // See the matching comment in GetAllColumnsFromFilesAsync: the open must not run
-                // inline, or a blocked open could never be raced against abandonment at all.
+                // The open must not run inline: it is a synchronous call and, against a dead server,
+                // can block a thread for as long as the read would. On a pool thread it can be raced
+                // against abandonment at all — inline, a blocked open would never reach the WhenAny.
                 using var fs = await Task.Run(() => FileOpener(filePath), cancellationToken);
                 using var reader = new StreamReader(fs);
 
-                var templateColumns = await ResolveColumnsAsync(template);
                 string sourceFileName = fileName;
                 long sequence = 0;
                 string? line;
@@ -684,7 +800,7 @@ namespace DevToolbox.Services.Services
                     try
                     {
                         var parts = SplitLine(line, template.Delimiter);
-                        var dict = new Dictionary<string, string>(allColumns.Count);
+                        var dict = new Dictionary<string, string>(templateColumns.Count + 4);
 
                         for (int i = 0; i < templateColumns.Count; i++)
                             dict[templateColumns[i]] = parts.Length > i ? parts[i] : "";
@@ -698,32 +814,46 @@ namespace DevToolbox.Services.Services
                         dict[SourcePathColumn] = filePath;
 
                         batch.Add(dict);
-
-                        if (batch.Count >= baseBatchSize)
-                        {
-                            await writer.WriteAsync(new LogBatch(fileKey, batch), cancellationToken);
-                            batch = new List<Dictionary<string, string>>(baseBatchSize);
-                        }
                     }
                     catch (Exception ex) when (!(ex is OperationCanceledException))
                     {
                         // Log the problematic line but continue processing
                         continue;
                     }
+
+                    // Outside the per-line catch: a failed hand-off (a cancel, a closed channel) is not a
+                    // bad line to step over. Swallowed there, it left the batch growing without bound.
+                    if (batch.Count >= baseBatchSize)
+                    {
+                        reporter.BatchSent(fileKey);
+                        await writer.WriteAsync(new LogBatch(fileKey, batch), cancellationToken);
+                        batch = new List<Dictionary<string, string>>(baseBatchSize);
+                    }
                 }
 
                 if (batch.Count > 0 && !control.IsSkipped(fileKey))
+                {
+                    reporter.BatchSent(fileKey);
                     await writer.WriteAsync(new LogBatch(fileKey, batch), cancellationToken);
+                }
 
-                if (control.IsSkipped(fileKey))
+                // Sealed as finished unless a skip got in first; after this a Skip is too late to
+                // take a complete file's rows back out.
+                if (control.TryMarkFinished(fileKey))
+                {
+                    reporter.FileDone(fileKey);
+                }
+                else
                 {
                     var reason = DescribeSkip(await control.WaitForAbandonAsync(fileKey), control);
                     reporter.FileSkipped(fileKey, fileName, locationName, reason);
                 }
-                else
-                {
-                    reporter.FileDone(fileKey);
-                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && !control.IsSkipped(fileKey))
+            {
+                // The load was cancelled, or its writer failed, with this file mid-read. Not a failure of
+                // the file: the prepare accounts for it as cut short (CancelOutstanding) or rethrows the
+                // writer's error, and a "failed: The operation was canceled" here would say otherwise.
             }
             catch (Exception ex)
             {
@@ -744,7 +874,11 @@ namespace DevToolbox.Services.Services
             {
                 Page = pageNumber,
                 PageSize = pageSize,
-                Filters = split?.ToFilters()
+                Filters = split?.ToFilters(),
+
+                // Rows only: CountLogEntriesAsync is the count, and running a second one here — a full
+                // pass whenever a keyword filter is on — bought a number nobody read.
+                IncludeCount = false
             };
             ApplyCriteria(query, criteria);
             if (query.RawQuery == null)
@@ -752,8 +886,12 @@ namespace DevToolbox.Services.Services
 
             try
             {
-                var (results, _) = await _logStorage.SearchLogsAsync(tableName, query);
+                var (results, _) = await _logStorage.SearchLogsAsync(tableName, query, cancellationToken);
                 return results.ToList();
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -770,12 +908,35 @@ namespace DevToolbox.Services.Services
 
             try
             {
-                var (_, totalCount) = await _logStorage.SearchLogsAsync(tableName, query);
-                return totalCount;
+                // A count, and only a count. This went through SearchLogsAsync with no page size, which
+                // also read every matching row into memory to throw away — on a table of a million rows,
+                // a gigabyte or more on every filter keystroke.
+                return await _logStorage.CountLogsAsync(tableName, query, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
                 throw ToUserFacing(ex, query, "Failed to count log entries");
+            }
+        }
+
+        public async Task<LogLiveSlice> ReadLiveSliceAsync(
+            string tableName, LogLiveRequest request, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                return await _logStorage.ReadLiveSliceAsync(tableName, request, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException("Failed to read the rows loaded so far", ex);
             }
         }
 
@@ -792,6 +953,12 @@ namespace DevToolbox.Services.Services
             try
             {
                 return await _logStorage.GetGroupCountsAsync(tableName, column, query, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                // A cancel is a cancel, not "failed to group": the statement is interrupted now,
+                // and wrapped here it came out as an error banner for a query nobody wanted any more.
+                throw;
             }
             catch (Exception ex)
             {
@@ -860,6 +1027,10 @@ namespace DevToolbox.Services.Services
             {
                 query.Sort = requested;
                 query.InsertionOrder = true;
+
+                // Its columns as they are: a keyword collapse wrote them in display order already, and a
+                // SQL collapse in the order its SELECT chose, which moving provenance to the end would undo.
+                query.PhysicalColumnOrder = true;
             }
             else
             {
@@ -886,6 +1057,10 @@ namespace DevToolbox.Services.Services
             try
             {
                 return await _logStorage.CreateTableFromQueryAsync(sourceTable, ResultsTableName, query, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -931,12 +1106,12 @@ namespace DevToolbox.Services.Services
             {
                 // Exports what is on screen, so a CSV taken from a split tab holds
                 // that tab's rows rather than the whole result set.
-                var query = new LogQuery { Filters = split?.ToFilters() };
+                var query = new LogQuery { Filters = split?.ToFilters(), IncludeCount = false };
                 ApplyCriteria(query, criteria);
                 if (query.RawQuery == null)
                     await ResolveResultsOrTemplateSortAsync(query, tableName, sortColumns, templateName);
 
-                var (results, _) = await _logStorage.SearchLogsAsync(tableName, query);
+                var (results, _) = await _logStorage.SearchLogsAsync(tableName, query, cancellationToken);
 
                 // Use a temp file if outputPath is not provided
                 if (string.IsNullOrWhiteSpace(outputPath))

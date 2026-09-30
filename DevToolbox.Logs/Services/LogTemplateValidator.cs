@@ -21,6 +21,18 @@ namespace DevToolbox.Services.Services
         private static readonly char[] IllegalInColumnName = { '[', ']' };
 
         /// <summary>
+        /// SQLite's names for a row's own id. A column declared with one of them takes the name over,
+        /// and the ingest addresses rows by rowid — to purge a skipped file's rows and to read only
+        /// what arrived since the last refresh — so a template column called RowId would have those
+        /// compare against the log's text instead.
+        /// </summary>
+        internal static bool IsReservedByDatabase(string? column) =>
+            column is not null &&
+            (string.Equals(column.Trim(), "rowid", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(column.Trim(), "oid", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(column.Trim(), "_rowid_", StringComparison.OrdinalIgnoreCase));
+
+        /// <summary>
         /// Every problem with <paramref name="template"/>, in the order they appear in the form.
         /// Empty means it can be saved.
         /// </summary>
@@ -91,6 +103,9 @@ namespace DevToolbox.Services.Services
 
                 if (LogOverflowColumns.IsGeneratedName(column))
                     yield return $"\"{column}\" clashes with the extra columns generated for overlong rows. Pick another name.";
+
+                if (IsReservedByDatabase(column))
+                    yield return $"\"{column}\" is a name the database keeps for itself. Pick another name.";
 
                 if (column.IndexOfAny(IllegalInColumnName) >= 0)
                     yield return $"\"{column}\" cannot contain [ or ].";

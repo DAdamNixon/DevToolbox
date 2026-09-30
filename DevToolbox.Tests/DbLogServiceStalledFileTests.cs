@@ -10,6 +10,7 @@ namespace DevToolbox.Tests;
 /// sits on a real, uncancellable I/O call — and proves the fix: a stalled file can be abandoned
 /// while its read is still blocked, and the search finishes without it.
 /// </summary>
+[Collection(LoadLockCollection.Name)]
 public sealed class DbLogServiceStalledFileTests : IDisposable
 {
     private readonly TempDirectory _config = new("stall-config");

@@ -15,7 +15,7 @@
     the card's id because there can be two of these on the page.
 *@
 
-<div id="@CardId" class="modern-card log-card-compact mb-4 log-filter-card @(Floating ? "is-floating" : null)">
+<div id="@CardId" class="modern-card log-card-compact mb-4 log-filter-card @(Floating ? "is-floating" : null) @(Floating && BelowBanner ? "is-below-banner" : null)">
     @if (Floating)
     {
         <div class="log-filter-floating-head">
@@ -171,6 +171,12 @@
 
     [Parameter] public bool Floating { get; set; }
     [Parameter] public string FloatingLabel { get; set; } = "Filters";
+
+    /// <summary>
+    /// Floating, sit below the loading drawer or outcome line at the top of the full-screen results
+    /// instead of over it — those carry Cancel and Skip, which the raised filters must not cover.
+    /// </summary>
+    [Parameter] public bool BelowBanner { get; set; }
 
     /// <summary>Rendered last, inside the card — where a bottom-edge lip has to sit for its negative margins to meet the card's edges.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }

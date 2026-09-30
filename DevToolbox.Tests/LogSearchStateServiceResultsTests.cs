@@ -18,6 +18,7 @@ namespace DevToolbox.Tests;
 /// and collapse logic under test, not ingestion.
 /// </para>
 /// </summary>
+[Collection(LoadLockCollection.Name)]
 public sealed class LogSearchStateServiceResultsTests : IDisposable
 {
     private readonly TempDirectory _config = new("state-results-config");

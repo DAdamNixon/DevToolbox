@@ -47,6 +47,49 @@ namespace DevToolbox.Services.Services
             new(_readOnly ? $"Data Source={_dbPath};Mode=ReadOnly" : $"Data Source={_dbPath}");
 
         /// <summary>
+        /// Makes <paramref name="token"/> stop a statement running on <paramref name="conn"/>.
+        /// <para>
+        /// Microsoft.Data.Sqlite looks at a token only before a statement starts — its
+        /// <c>SqliteCommand.Cancel</c> does nothing — so a count over millions of rows ran to the end
+        /// whatever the caller did, and a Cancel pressed during one looked ignored. <c>sqlite3_interrupt</c>
+        /// makes the running statement fail with SQLITE_INTERRUPT, which <see cref="IsInterrupt"/> turns
+        /// back into a cancellation.
+        /// </para>
+        /// <para>
+        /// Declare the registration after the connection, so it is disposed first: interrupting a
+        /// connection that is closing is undefined, and disposing a registration waits out a callback
+        /// already running.
+        /// </para>
+        /// </summary>
+        private static CancellationTokenRegistration InterruptOn(SqliteConnection conn, CancellationToken token) =>
+            token.CanBeCanceled
+                ? token.Register(static state =>
+                {
+                    if (((SqliteConnection)state!).Handle is { } handle)
+                        SQLitePCL.raw.sqlite3_interrupt(handle);
+                }, conn)
+                : default;
+
+        private static bool IsInterrupt(SqliteException ex, CancellationToken token) =>
+            ex.SqliteErrorCode == 9 /* SQLITE_INTERRUPT */ && token.IsCancellationRequested;
+
+        /// <summary>A table's own column order, for one already in the order to show — see <see cref="LogQuery.PhysicalColumnOrder"/>.</summary>
+        private static string PhysicalList(IEnumerable<string> physicalColumns)
+        {
+            var list = physicalColumns.ToList();
+            return list.Count == 0 ? "*" : string.Join(", ", list.Select(c => $"[{c}]"));
+        }
+
+        /// <summary>A keyword query's column list, provenance last — see <see cref="LogProvenanceColumns.InDisplayOrder"/>.</summary>
+        private static string SelectList(IEnumerable<string> physicalColumns)
+        {
+            var ordered = LogProvenanceColumns.InDisplayOrder(physicalColumns);
+
+            // No columns means no such table; let the statement say so rather than failing on "SELECT FROM".
+            return ordered.Count == 0 ? "*" : string.Join(", ", ordered.Select(c => $"[{c}]"));
+        }
+
+        /// <summary>
         /// Refuses a write on a read-only instance, naming the member rather than the file — the
         /// path is not the caller's business and can contain a user name.
         /// </summary>
@@ -136,18 +179,26 @@ namespace DevToolbox.Services.Services
 
             using var conn = GetConnection();
             await conn.OpenAsync(cancellationToken);
+            using var interrupt = InterruptOn(conn, cancellationToken);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = sql;
             cmd.Parameters.AddRange(parameters.ToArray());
 
-            using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
+            try
             {
-                groups.Add(new LogSplitGroup
+                using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
                 {
-                    Value = reader.IsDBNull(0) ? "" : reader.GetValue(0).ToString() ?? "",
-                    Count = reader.IsDBNull(1) ? 0 : Convert.ToInt32(reader.GetValue(1))
-                });
+                    groups.Add(new LogSplitGroup
+                    {
+                        Value = reader.IsDBNull(0) ? "" : reader.GetValue(0).ToString() ?? "",
+                        Count = reader.IsDBNull(1) ? 0 : Convert.ToInt32(reader.GetValue(1))
+                    });
+                }
+            }
+            catch (SqliteException ex) when (IsInterrupt(ex, cancellationToken))
+            {
+                throw new OperationCanceledException(cancellationToken);
             }
 
             return groups;
@@ -178,12 +229,12 @@ namespace DevToolbox.Services.Services
             return await reader.ReadAsync();
         }
 
-        public async Task InsertLogLinesAsync(string tableName, IEnumerable<Dictionary<string, string>> lines, CancellationToken cancellationToken = default)
+        public async Task<LogRowRange> InsertLogLinesAsync(string tableName, IEnumerable<Dictionary<string, string>> lines, CancellationToken cancellationToken = default)
         {
             GuardWritable(nameof(InsertLogLinesAsync));
 
             var logLines = lines as IList<Dictionary<string, string>> ?? lines.ToList();
-            if (logLines.Count == 0) return;
+            if (logLines.Count == 0) return default;
 
             // Union of keys across the batch keeps the prepared command stable.
             var columns = logLines.SelectMany(d => d.Keys).Distinct().ToList();
@@ -221,9 +272,45 @@ namespace DevToolbox.Services.Services
                 await cmd.ExecuteNonQueryAsync(cancellationToken);
             }
 
+            // Inside the transaction, so nothing else can have inserted in between: with one writer
+            // and one transaction per batch, the batch's rowids run unbroken up to this one.
+            long last;
+            using (var lastCmd = conn.CreateCommand())
+            {
+                lastCmd.Transaction = tx;
+                lastCmd.CommandText = "SELECT last_insert_rowid();";
+                last = Convert.ToInt64(await lastCmd.ExecuteScalarAsync(CancellationToken.None));
+            }
+
             // Not passing the token: once the rows are written, rolling back on a
-            // late cancellation would waste the work for no benefit. The table is
-            // dropped and rebuilt by the next search anyway.
+            // late cancellation would waste the work for no benefit. A cancelled load
+            // keeps what it committed — the Log Viewer may already be showing it.
+            await tx.CommitAsync();
+
+            return new LogRowRange(last - logLines.Count + 1, last);
+        }
+
+        public async Task AddColumnsAsync(string tableName, IEnumerable<string> columns)
+        {
+            GuardWritable(nameof(AddColumnsAsync));
+
+            var toAdd = columns.ToList();
+            if (toAdd.Count == 0) return;
+
+            using var conn = GetConnection();
+            await conn.OpenAsync();
+            using var tx = conn.BeginTransaction();
+            foreach (var column in toAdd)
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+
+                // DEFAULT '' so the rows already there read as the empty field they would have been
+                // given had the column existed when they were written — the ingest writes "" for a
+                // field a line lacks, never NULL, and SQL typed against these columns expects that.
+                cmd.CommandText = $"ALTER TABLE [{tableName}] ADD COLUMN [{column}] TEXT DEFAULT '';";
+                await cmd.ExecuteNonQueryAsync();
+            }
             await tx.CommitAsync();
         }
 
@@ -237,22 +324,37 @@ namespace DevToolbox.Services.Services
         private async Task<(List<string> Columns, string WhereSql, string OrderBySql, List<SqliteParameter> Parameters)>
             BuildKeywordQueryAsync(string tableName, LogQuery query)
         {
-            var parameters = new List<SqliteParameter>();
-            var filters = query.Filters ?? new();
-            var searchTerm = query.SearchTerm;
-
             // Physical columns (used only to build the WHERE predicate).
             List<string> columns;
             using (var conn = GetConnection())
             {
                 await conn.OpenAsync();
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = $"PRAGMA table_info([{tableName}]);";
-                using var reader = await cmd.ExecuteReaderAsync();
-                columns = new();
-                while (await reader.ReadAsync())
-                    columns.Add(reader.GetString(1));
+                columns = await ReadColumnsAsync(conn, null, tableName, CancellationToken.None);
             }
+
+            return BuildKeywordClauses(columns, query);
+        }
+
+        /// <summary>A table's columns in physical order, on <paramref name="conn"/> — inside <paramref name="tx"/>'s snapshot when given.</summary>
+        private static async Task<List<string>> ReadColumnsAsync(SqliteConnection conn, SqliteTransaction? tx, string tableName, CancellationToken cancellationToken)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = $"PRAGMA table_info([{tableName}]);";
+            using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            var columns = new List<string>();
+            while (await reader.ReadAsync(cancellationToken))
+                columns.Add(reader.GetString(1));
+            return columns;
+        }
+
+        /// <summary><see cref="BuildKeywordQueryAsync"/> over a column list the caller already has.</summary>
+        private static (List<string> Columns, string WhereSql, string OrderBySql, List<SqliteParameter> Parameters)
+            BuildKeywordClauses(List<string> columns, LogQuery query)
+        {
+            var parameters = new List<SqliteParameter>();
+            var filters = query.Filters ?? new();
+            var searchTerm = query.SearchTerm;
 
             var where = new List<string>();
 
@@ -304,13 +406,20 @@ namespace DevToolbox.Services.Services
             return (columns, whereSql, orderBySql, parameters);
         }
 
-        public async Task<(IEnumerable<Dictionary<string, string>> Results, int TotalCount)> SearchLogsAsync(string tableName, LogQuery query)
+        /// <summary>
+        /// The count and page statements for <paramref name="query"/> and the parameters they bind.
+        /// One builder for <see cref="SearchLogsAsync"/> and <see cref="CountLogsAsync"/>, so a count
+        /// can never describe a different set of rows than the page beside it.
+        /// </summary>
+        private async Task<(string CountSql, string DataSql, List<SqliteParameter> Parameters, List<SqliteParameter> Paging)>
+            BuildSearchAsync(string tableName, LogQuery query)
         {
             var page = query.Page ?? 0;
             var pageSize = query.PageSize;
             bool usePaging = pageSize.HasValue && pageSize.Value > 0;
 
             var parameters = new List<SqliteParameter>();
+            var paging = new List<SqliteParameter>();
             string countSql;
             string dataSql;
 
@@ -333,14 +442,7 @@ namespace DevToolbox.Services.Services
                 }
 
                 countSql = $"SELECT COUNT(*) FROM ({inner}){tabWhere}";
-                var sb = new StringBuilder($"SELECT * FROM ({inner}){tabWhere}");
-                if (usePaging)
-                {
-                    sb.Append(" LIMIT @limit OFFSET @offset");
-                    parameters.Add(new SqliteParameter("@limit", pageSize!.Value));
-                    parameters.Add(new SqliteParameter("@offset", page * pageSize.Value));
-                }
-                dataSql = sb.ToString();
+                dataSql = $"SELECT * FROM ({inner}){tabWhere}" + (usePaging ? " LIMIT @limit OFFSET @offset" : "");
             }
             else
             {
@@ -348,58 +450,232 @@ namespace DevToolbox.Services.Services
                 parameters.AddRange(builtParams);
 
                 countSql = $"SELECT COUNT(*) FROM [{tableName}] {whereSql};";
-
-                var dsb = new StringBuilder();
-                dsb.Append($"SELECT * FROM [{tableName}] {whereSql} ");
-                dsb.Append($"{orderBySql} ");
-                if (usePaging)
-                {
-                    dsb.Append("LIMIT @limit OFFSET @offset;");
-                    parameters.Add(new SqliteParameter("@limit", pageSize!.Value));
-                    parameters.Add(new SqliteParameter("@offset", page * pageSize.Value));
-                }
-                dataSql = dsb.ToString();
+                dataSql = $"SELECT {(query.PhysicalColumnOrder ? PhysicalList(columns) : SelectList(columns))} FROM [{tableName}] {whereSql} {orderBySql}" +
+                          (usePaging ? " LIMIT @limit OFFSET @offset;" : ";");
             }
 
-            int totalCount;
+            if (usePaging)
+            {
+                paging.Add(new SqliteParameter("@limit", pageSize!.Value));
+                paging.Add(new SqliteParameter("@offset", page * pageSize.Value));
+            }
+
+            return (countSql, dataSql, parameters, paging);
+        }
+
+        public async Task<(IEnumerable<Dictionary<string, string>> Results, int TotalCount)> SearchLogsAsync(
+            string tableName, LogQuery query, CancellationToken cancellationToken = default)
+        {
+            var (countSql, dataSql, parameters, paging) = await BuildSearchAsync(tableName, query);
+
+            var totalCount = 0;
             var results = new List<Dictionary<string, string>>();
 
-            using (var conn = GetConnection())
+            using var conn = GetConnection();
+            await conn.OpenAsync(cancellationToken);
+            using var interrupt = InterruptOn(conn, cancellationToken);
+
+            try
             {
-                await conn.OpenAsync();
-
-                using (var countCmd = conn.CreateCommand())
+                if (query.IncludeCount)
                 {
+                    using var countCmd = conn.CreateCommand();
                     countCmd.CommandText = countSql;
-                    countCmd.Parameters.AddRange(parameters.Where(p => p.ParameterName != "@limit" && p.ParameterName != "@offset").ToArray());
-                    totalCount = Convert.ToInt32(await countCmd.ExecuteScalarAsync());
+                    countCmd.Parameters.AddRange(parameters.ToArray());
+                    totalCount = Convert.ToInt32(await countCmd.ExecuteScalarAsync(cancellationToken));
                 }
 
-                using (var dataCmd = conn.CreateCommand())
-                {
-                    dataCmd.CommandText = dataSql;
-                    dataCmd.Parameters.AddRange(parameters.ToArray());
-                    using var reader = await dataCmd.ExecuteReaderAsync();
+                // A SQL query that projects the table's columns exactly as they lie — a SELECT * — gets
+                // them in display order, as keyword mode does. The ingest adds an overflow column after
+                // the provenance ones, so without this "SELECT * FROM logs" showed Message3 after
+                // SourcePath where it had always come before Location.
+                List<string>? wholeTable = null;
+                if (!string.IsNullOrWhiteSpace(query.RawQuery))
+                    wholeTable = await ReadColumnsAsync(conn, null, tableName, cancellationToken);
 
-                    // Column names from the actual result set, so custom SELECTs (computed columns) render correctly.
-                    var fieldNames = new List<string>(reader.FieldCount);
-                    for (int i = 0; i < reader.FieldCount; i++)
-                        fieldNames.Add(reader.GetName(i));
-
-                    while (await reader.ReadAsync())
-                    {
-                        var dict = new Dictionary<string, string>(fieldNames.Count);
-                        for (int i = 0; i < fieldNames.Count; i++)
-                        {
-                            var val = reader.GetValue(i);
-                            dict[fieldNames[i]] = val is DBNull ? "" : val.ToString() ?? "";
-                        }
-                        results.Add(dict);
-                    }
-                }
+                using var dataCmd = conn.CreateCommand();
+                dataCmd.CommandText = dataSql;
+                dataCmd.Parameters.AddRange(parameters.ToArray());
+                dataCmd.Parameters.AddRange(paging.ToArray());
+                using var reader = await dataCmd.ExecuteReaderAsync(cancellationToken);
+                results = await ReadRowsAsync(reader, cancellationToken, wholeTable);
+            }
+            catch (SqliteException ex) when (IsInterrupt(ex, cancellationToken))
+            {
+                throw new OperationCanceledException(cancellationToken);
             }
 
             return (results, totalCount);
+        }
+
+        public async Task<int> CountLogsAsync(string tableName, LogQuery query, CancellationToken cancellationToken = default)
+        {
+            var (countSql, _, parameters, _) = await BuildSearchAsync(tableName, query);
+
+            using var conn = GetConnection();
+            await conn.OpenAsync(cancellationToken);
+            using var interrupt = InterruptOn(conn, cancellationToken);
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = countSql;
+            cmd.Parameters.AddRange(parameters.ToArray());
+
+            try
+            {
+                return Convert.ToInt32(await cmd.ExecuteScalarAsync(cancellationToken));
+            }
+            catch (SqliteException ex) when (IsInterrupt(ex, cancellationToken))
+            {
+                throw new OperationCanceledException(cancellationToken);
+            }
+        }
+
+        public async Task<LogLiveSlice> ReadLiveSliceAsync(string tableName, LogLiveRequest request, CancellationToken cancellationToken = default)
+        {
+            if (request.GroupColumn is { } requestedGroup && !LogSplitColumns.IsAllowed(requestedGroup))
+                throw new ArgumentException($"'{requestedGroup}' is not a groupable column.", nameof(request));
+
+            using var conn = GetConnection();
+            await conn.OpenAsync(cancellationToken);
+            using var interrupt = InterruptOn(conn, cancellationToken);
+
+            try
+            {
+                // Deferred: the snapshot starts with the first read below and every statement after it
+                // sees the same table, while the writer goes on committing batches the next refresh gets.
+                using var tx = conn.BeginTransaction(deferred: true);
+
+                long maxRowid;
+                using (var maxCmd = conn.CreateCommand())
+                {
+                    maxCmd.Transaction = tx;
+                    maxCmd.CommandText = $"SELECT COALESCE(MAX(rowid), 0) FROM [{tableName}];";
+                    maxRowid = Convert.ToInt64(await maxCmd.ExecuteScalarAsync(cancellationToken));
+                }
+
+                // The columns inside the same snapshot as the rows. Read before it, an overflow column
+                // the writer added in between would be missing from the select and the filter, for rows
+                // the snapshot does contain — and the cursor has moved past them for good.
+                var columns = await ReadColumnsAsync(conn, tx, tableName, cancellationToken);
+
+                // The counted rows (filter and tab) and the grouped rows (filter only) are built exactly
+                // as a search builds them, so a live count can never disagree with the grid a later
+                // search shows. Arrival order unless a sort is given: InsertionOrder is what makes "no
+                // sort" mean rowid ASC.
+                var (_, rowWhere, orderBy, rowParams) = BuildKeywordClauses(columns, new LogQuery
+                {
+                    Criteria = request.Criteria,
+                    Filters = request.Split?.ToFilters(),
+                    Sort = request.Sort,
+                    InsertionOrder = true
+                });
+
+                // A table without the column has nothing to group, the same as GetGroupCountsAsync says.
+                string? groupColumn = null;
+                string groupWhere = "";
+                var groupParams = new List<SqliteParameter>();
+                if (request.GroupColumn is { } requested && columns.Contains(requested, StringComparer.OrdinalIgnoreCase))
+                {
+                    groupColumn = requested;
+                    (_, groupWhere, _, groupParams) = BuildKeywordClauses(columns, new LogQuery { Criteria = request.Criteria });
+                }
+
+                // The rowid range is what makes every figure here cost the new rows, not the table:
+                // a range on rowid is a seek into the table's own b-tree.
+                const string range = "rowid > @liveAfter AND rowid <= @liveMax";
+                SqliteParameter[] RangeParams() => new[]
+                {
+                    new SqliteParameter("@liveAfter", request.AfterRowid),
+                    new SqliteParameter("@liveMax", maxRowid)
+                };
+                static string And(string whereSql, string clause) =>
+                    string.IsNullOrEmpty(whereSql) ? $"WHERE {clause}" : $"{whereSql} AND {clause}";
+
+                int count;
+                using (var countCmd = conn.CreateCommand())
+                {
+                    countCmd.Transaction = tx;
+                    countCmd.CommandText = $"SELECT COUNT(*) FROM [{tableName}] {And(rowWhere, range)};";
+                    countCmd.Parameters.AddRange(rowParams.ToArray());
+                    countCmd.Parameters.AddRange(RangeParams());
+                    count = Convert.ToInt32(await countCmd.ExecuteScalarAsync(cancellationToken));
+                }
+
+                var groups = new List<LogSplitGroup>();
+                if (groupColumn is not null)
+                {
+                    using var groupCmd = conn.CreateCommand();
+                    groupCmd.Transaction = tx;
+                    groupCmd.CommandText =
+                        $"SELECT [{groupColumn}] AS v, COUNT(*) AS n FROM [{tableName}] {And(groupWhere, range)} GROUP BY [{groupColumn}] ORDER BY v;";
+                    groupCmd.Parameters.AddRange(groupParams.ToArray());
+                    groupCmd.Parameters.AddRange(RangeParams());
+                    using var reader = await groupCmd.ExecuteReaderAsync(cancellationToken);
+                    while (await reader.ReadAsync(cancellationToken))
+                    {
+                        groups.Add(new LogSplitGroup
+                        {
+                            Value = reader.IsDBNull(0) ? "" : reader.GetValue(0).ToString() ?? "",
+                            Count = reader.IsDBNull(1) ? 0 : Convert.ToInt32(reader.GetValue(1))
+                        });
+                    }
+                }
+
+                var rows = new List<Dictionary<string, string>>();
+                if (request.Take > 0)
+                {
+                    using var dataCmd = conn.CreateCommand();
+                    dataCmd.Transaction = tx;
+                    dataCmd.CommandText =
+                        $"SELECT {SelectList(columns)} FROM [{tableName}] {And(rowWhere, range)} {orderBy} LIMIT @liveTake OFFSET @liveSkip;";
+                    dataCmd.Parameters.AddRange(rowParams.ToArray());
+                    dataCmd.Parameters.AddRange(RangeParams());
+                    dataCmd.Parameters.Add(new SqliteParameter("@liveTake", request.Take));
+                    dataCmd.Parameters.Add(new SqliteParameter("@liveSkip", Math.Max(0, request.Skip)));
+                    using var reader = await dataCmd.ExecuteReaderAsync(cancellationToken);
+                    rows = await ReadRowsAsync(reader, cancellationToken);
+                }
+
+                tx.Commit();
+                return new LogLiveSlice { MaxRowid = maxRowid, Count = count, Groups = groups, Rows = rows };
+            }
+            catch (SqliteException ex) when (IsInterrupt(ex, cancellationToken))
+            {
+                throw new OperationCanceledException(cancellationToken);
+            }
+        }
+
+        /// <summary>Every row a reader returns, as column-name → text; NULL reads as empty.</summary>
+        /// <param name="wholeTable">
+        /// The table's physical columns. When the result's columns are exactly those, in that order,
+        /// each row is filled in display order instead (see <see cref="LogProvenanceColumns.InDisplayOrder"/>).
+        /// </param>
+        private static async Task<List<Dictionary<string, string>>> ReadRowsAsync(
+            SqliteDataReader reader, CancellationToken cancellationToken, IReadOnlyList<string>? wholeTable = null)
+        {
+            // Column names from the actual result set, so custom SELECTs (computed columns) render correctly.
+            var fieldNames = new List<string>(reader.FieldCount);
+            for (int i = 0; i < reader.FieldCount; i++)
+                fieldNames.Add(reader.GetName(i));
+
+            var order = Enumerable.Range(0, fieldNames.Count).ToList();
+            if (wholeTable is not null && fieldNames.SequenceEqual(wholeTable, StringComparer.OrdinalIgnoreCase))
+            {
+                var display = LogProvenanceColumns.InDisplayOrder(fieldNames);
+                order = display.Select(name => fieldNames.IndexOf(name)).ToList();
+            }
+
+            var results = new List<Dictionary<string, string>>();
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var dict = new Dictionary<string, string>(fieldNames.Count);
+                foreach (var i in order)
+                {
+                    var val = reader.GetValue(i);
+                    dict[fieldNames[i]] = val is DBNull ? "" : val.ToString() ?? "";
+                }
+                results.Add(dict);
+            }
+            return results;
         }
 
         public async Task DropTableAsync(string tableName)
@@ -423,6 +699,32 @@ namespace DevToolbox.Services.Services
             cmd.CommandText = $"DELETE FROM [{tableName}] WHERE [{column}] = @value;";
             cmd.Parameters.AddWithValue("@value", value);
             await cmd.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        public async Task<int> DeleteRowRangesAsync(string tableName, IReadOnlyList<LogRowRange> ranges, CancellationToken cancellationToken = default)
+        {
+            GuardWritable(nameof(DeleteRowRangesAsync));
+            if (ranges.Count == 0) return 0;
+
+            using var conn = GetConnection();
+            await conn.OpenAsync(cancellationToken);
+            using var tx = conn.BeginTransaction();
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = $"DELETE FROM [{tableName}] WHERE rowid BETWEEN @first AND @last;";
+            var first = cmd.Parameters.Add("@first", SqliteType.Integer);
+            var last = cmd.Parameters.Add("@last", SqliteType.Integer);
+
+            var deleted = 0;
+            foreach (var range in ranges)
+            {
+                first.Value = range.First;
+                last.Value = range.Last;
+                deleted += await cmd.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await tx.CommitAsync(CancellationToken.None);
+            return deleted;
         }
 
         public async Task<(int Rows, List<string> Columns)> CreateTableFromQueryAsync(
@@ -456,9 +758,11 @@ namespace DevToolbox.Services.Services
             }
             else
             {
-                var (_, whereSql, orderBySql, builtParams) = await BuildKeywordQueryAsync(source, query);
+                // The display order, not SELECT *: the collapsed table then has its columns the way the
+                // grid showed them, even when the ingest added an overflow column after the provenance ones.
+                var (sourceColumns, whereSql, orderBySql, builtParams) = await BuildKeywordQueryAsync(source, query);
                 parameters.AddRange(builtParams);
-                selectSql = $"SELECT * FROM [{source}] {whereSql} {orderBySql}";
+                selectSql = $"SELECT {SelectList(sourceColumns)} FROM [{source}] {whereSql} {orderBySql}";
             }
 
             using var conn = GetConnection();

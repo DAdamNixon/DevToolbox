@@ -13,10 +13,11 @@ namespace DevToolbox.Mcp.Core;
 /// error the agent can read and act on, and the session stays usable.
 /// </para>
 /// <para>
-/// <b>What this does not do</b>: stop the statement. SQLite's execution is synchronous, and
+/// <b>What this does not do</b>: promise the statement stops. SQLite's execution is synchronous, and
 /// Microsoft.Data.Sqlite's <c>CommandTimeout</c> governs retry-on-busy rather than aborting a
-/// long computation — so cancelling the wait does not cancel the work. The abandoned statement
-/// runs to completion on a thread-pool thread.
+/// long computation. The log storage's own searches, counts and group counts do stop — they tie
+/// the token passed to <c>work</c> to <c>sqlite3_interrupt</c> — but work that does not
+/// hand the token to storage like that runs to completion on a thread-pool thread once abandoned.
 /// </para>
 /// <para>
 /// That is accepted rather than hidden, because the leak is bounded by the thing it is a leak in:

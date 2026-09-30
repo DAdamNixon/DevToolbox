@@ -1,6 +1,10 @@
 // Column resizing for the Log Viewer results table.
+//
+// owner/method, when given, hear the final width of every drag (by the th's data-col), so the page
+// can keep it: the <col> width is Blazor's to render, and on the next re-measure it would otherwise
+// write its own computed width straight over the one the user dragged.
 window.logTools = {
-    initColumnResize: function (tableId) {
+    initColumnResize: function (tableId, owner, method) {
         const table = document.getElementById(tableId);
         if (!table) return;
 
@@ -27,6 +31,10 @@ window.logTools = {
                 document.removeEventListener('mousemove', onMouseMove);
                 document.removeEventListener('mouseup', onMouseUp);
                 document.body.style.userSelect = '';
+
+                if (owner && method && th.dataset.col) {
+                    owner.invokeMethodAsync(method, th.dataset.col, Math.round(th.offsetWidth)).catch(function () { });
+                }
             };
 
             handle.addEventListener('mousedown', function (e) {
@@ -43,6 +51,12 @@ window.logTools = {
             handle.addEventListener('click', function (e) { e.stopPropagation(); });
         });
     }
+};
+
+// Back to the first row, for a new page, sort or filter. The grid stays up while a query
+// replaces its rows now, rather than being rebuilt at the top each time.
+window.logTools.scrollResultsTop = function () {
+    document.querySelectorAll('.log-results-scroll').forEach(function (el) { el.scrollTop = 0; });
 };
 
 // The visible viewport, so the row context menu can be kept on screen. MouseEventArgs

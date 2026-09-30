@@ -16,6 +16,7 @@ namespace DevToolbox.Tests.Mcp;
 /// keep that distinction honest by demonstrating both halves.
 /// </para>
 /// </summary>
+[Collection(LoadLockCollection.Name)]
 public sealed class LogFileNamePolicyTests
 {
     [Fact]

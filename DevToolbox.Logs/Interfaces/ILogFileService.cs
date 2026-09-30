@@ -61,6 +61,17 @@ namespace DevToolbox.Services.Interfaces
             CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// What a table still being filled by <see cref="PrepareLogTableAsync"/> holds after
+        /// <see cref="LogLiveRequest.AfterRowid"/>, read in one snapshot — how the Log Viewer shows rows
+        /// while a load is still running, at a cost proportional to the rows that are new. Keyword
+        /// criteria only.
+        /// </summary>
+        Task<LogLiveSlice> ReadLiveSliceAsync(
+            string tableName,
+            LogLiveRequest request,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Distinct values of the split column with their row counts, for building
         /// the tab strip. Respects the active keyword filter, so tab counts always
         /// add up to what the All tab shows.

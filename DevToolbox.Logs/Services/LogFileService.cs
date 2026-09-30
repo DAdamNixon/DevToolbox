@@ -50,6 +50,9 @@ namespace DevToolbox.Services.Services
         public Task<int> CountLogEntriesAsync(string tableName, LogSearchCriteria? criteria, LogSplitFilter? split = null, CancellationToken cancellationToken = default)
             => throw new NotSupportedException("Use DbLogService.");
 
+        public Task<LogLiveSlice> ReadLiveSliceAsync(string tableName, LogLiveRequest request, CancellationToken cancellationToken = default)
+            => throw new NotSupportedException("Use DbLogService.");
+
         public Task<string> DownloadLogCsvAsync(string tableName, string templateName, List<SortColumn>? sortColumns, LogSearchCriteria? criteria, string? outputPath = null, LogSplitFilter? split = null, CancellationToken cancellationToken = default)
             => throw new NotSupportedException("Use DbLogService.");
 

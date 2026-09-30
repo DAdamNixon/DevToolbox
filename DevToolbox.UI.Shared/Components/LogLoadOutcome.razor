@@ -1,0 +1,96 @@
+@using DevToolbox.Services.Models
+@using DevToolbox.UI.Services
+@inject LogSearchStateService State
+
+@* How the last load ended, where the drawer was while it ran: inside whichever card is showing, so
+   full screen — which covers everything else on the page — still says when the rows are partial.
+
+   "Loaded 1,204,331 rows from 380 files in 2m 14s", or, when something is missing, what: the files
+   not read, the ones a Cancel cut short. A cancelled load keeps its rows, so which files those rows
+   are complete for is the thing to know about them. *@
+@if (!State.IsIngesting && State.LastLoad is { } load)
+{
+    var missing = State.LastPrepareResult?.NotIngested ?? Array.Empty<NotIngestedFile>();
+    var partial = load.Cancelled || load.Failed || missing.Count > 0;
+    <section class="log-outcome @(partial ? "is-partial" : null)" aria-label="How the last load ended">
+        <div class="log-outcome-line" role="status">
+            <i class="bi @(partial ? "bi-exclamation-triangle" : "bi-check2-circle")" aria-hidden="true"></i>
+            <span class="log-outcome-text">@Describe(load, missing)</span>
+            @if (missing.Count > 0)
+            {
+                <button type="button" @onclick="() => _showFiles = !_showFiles"
+                        aria-expanded="@(_showFiles ? "true" : "false")" aria-controls="logOutcomeFiles">
+                    <span>@(_showFiles ? "Hide files" : "Which files")</span>
+                    <i class="bi @(_showFiles ? "bi-chevron-up" : "bi-chevron-down")" aria-hidden="true"></i>
+                </button>
+            }
+            <button type="button" @onclick="State.DismissLoadSummary" aria-label="Dismiss" title="Dismiss">
+                <i class="bi bi-x-lg" aria-hidden="true"></i>
+            </button>
+        </div>
+        @* Always rendered when there are files to list, hidden when folded, so the toggle's
+           aria-controls names something that exists. *@
+        @if (missing.Count > 0)
+        {
+            <ul id="logOutcomeFiles" class="log-outcome-files" hidden="@(!_showFiles)">
+                @foreach (var file in missing)
+                {
+                    <li>@file.FileName (@file.LocationName) — @file.Reason@Bytes(file)</li>
+                }
+            </ul>
+        }
+    </section>
+}
+
+@code {
+    private bool _showFiles;
+
+    private string Describe(LogSearchStateService.LoadSummary load, IReadOnlyList<NotIngestedFile> missing)
+    {
+        var rows = $"{load.Rows:N0} row{(load.Rows == 1 ? "" : "s")}";
+
+        if (load.Cancelled && load.TableReplaced && load.Rows == 0)
+            return "Load cancelled before any rows were read.";
+
+        if (load.Cancelled && !load.TableReplaced)
+        {
+            return State.HasSearched
+                ? "Load cancelled before any rows were read — the rows below are from the previous load."
+                : "Load cancelled before any rows were read.";
+        }
+
+        if (load.Failed)
+        {
+            return load.TableReplaced
+                ? $"The load stopped with an error — showing the {rows} read before it did."
+                : "The load stopped with an error before it read anything.";
+        }
+
+        var partly = missing.Count(f => f.Reason == NotIngestedFile.CancelledPartwayReason);
+        var unread = missing.Count - partly;
+
+        if (load.Cancelled)
+        {
+            var parts = new List<string>();
+            if (partly > 0) parts.Add($"{partly} file{(partly == 1 ? "" : "s")} partly read");
+            if (unread > 0) parts.Add($"{unread} not read");
+            return $"Load cancelled — showing the {rows} read before it stopped" +
+                   (parts.Count > 0 ? $"; {string.Join(", ", parts)}." : ".");
+        }
+
+        if (missing.Count > 0)
+            return $"Partial results — {missing.Count} file{(missing.Count == 1 ? "" : "s")} not read. A missing row is not evidence it did not happen.";
+
+        return $"Loaded {rows} from {load.Files:N0} file{(load.Files == 1 ? "" : "s")} in {LogIngestProgressText.FormatDuration(load.Elapsed)}.";
+    }
+
+    /// <summary>" (12,000 rows kept · 1.2 MB of 3 MB)" — how far it got, and what of that is in the table.</summary>
+    private static string Bytes(NotIngestedFile file)
+    {
+        var parts = new List<string>();
+        if (file.RowsInTable > 0) parts.Add($"{file.RowsInTable:N0} row{(file.RowsInTable == 1 ? "" : "s")} kept");
+        if (file.BytesRead > 0 && file.BytesTotal > 0)
+            parts.Add($"{LogIngestProgressText.FormatBytes(file.BytesRead)} of {LogIngestProgressText.FormatBytes(file.BytesTotal)}");
+        return parts.Count > 0 ? $" ({string.Join(" · ", parts)})" : "";
+    }
+}

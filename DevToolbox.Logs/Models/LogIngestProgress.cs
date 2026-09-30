@@ -20,8 +20,11 @@ namespace DevToolbox.Services.Models
         Listing,
 
         /// <summary>
-        /// Reading the head of each matched file to work out the columns. Separate
-        /// from ingest because it happens before a single row is stored.
+        /// Reading the head of each matched file to work out the columns. No longer entered by
+        /// <c>DbLogService</c>: the table now starts with the template's columns and gains an
+        /// overflow column the first time a line needs one, so rows can be stored — and shown —
+        /// from the first file on, and no file is opened twice. Kept so a caller naming the value
+        /// still compiles.
         /// </summary>
         Scanning,
 
@@ -52,7 +55,25 @@ namespace DevToolbox.Services.Models
         public long BytesTotal { get; init; }
         public long BytesDone { get; init; }
 
+        /// <summary>Rows committed to the table so far — including any a skip has since taken back out.</summary>
         public long RowsIngested { get; init; }
+
+        /// <summary>
+        /// Rows deleted again because the file they came from was skipped (D4). The table holds
+        /// <see cref="RowsIngested"/> minus this; see <see cref="RowsInTable"/>.
+        /// </summary>
+        public long RowsPurged { get; init; }
+
+        /// <summary>What the table holds right now: committed rows less the ones a skip purged.</summary>
+        public long RowsInTable => Math.Max(0, RowsIngested - RowsPurged);
+
+        /// <summary>
+        /// Rises by one on every insert batch and every purge the writer commits, and never
+        /// otherwise. Two snapshots with the same value describe the same table contents, which is
+        /// what lets a live view skip a refresh that could not show anything new — and notice a
+        /// purge, which neither row count on its own would.
+        /// </summary>
+        public long TableVersion { get; init; }
 
         /// <summary>
         /// Directory entries looked at during <see cref="LogIngestPhase.Listing"/>.

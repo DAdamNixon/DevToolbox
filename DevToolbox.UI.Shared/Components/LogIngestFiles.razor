@@ -1,0 +1,37 @@
+@using DevToolbox.Services.Models
+@using DevToolbox.UI.Services
+
+@* The files a load has open right now, one line each, with Skip on the stalled ones. Shared by the
+   big loading card and the drawer over streaming results, so a stalled file offers the same way out
+   wherever the progress happens to be showing. *@
+@if (Files.Count > 0)
+{
+    <div class="@Class">
+        @foreach (var file in Files)
+        {
+            var stalled = file.State == FileIngestState.Stalled;
+            @* Keyed by file, so a file opening above a stalled one between aiming and clicking
+               cannot move a different file under the Skip button. *@
+            <div @key="file.FileKey" class="log-ingest-file @(stalled ? "is-stalled" : null)">
+                <span title="@file.FileName">@LogIngestProgressText.DescribeFile(file)</span>
+                @if (stalled)
+                {
+                    <button type="button"
+                            title="Stop waiting on this file — its rows will be absent from the results"
+                            @onclick="() => OnSkip.InvokeAsync(file.FileKey)">
+                        Skip
+                    </button>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<FileProgressSnapshot> Files { get; set; } = Array.Empty<FileProgressSnapshot>();
+
+    /// <summary>Raised with <see cref="FileProgressSnapshot.FileKey"/> when Skip is clicked.</summary>
+    [Parameter] public EventCallback<string> OnSkip { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+}

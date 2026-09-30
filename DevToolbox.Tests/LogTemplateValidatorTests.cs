@@ -107,6 +107,17 @@ public class LogTemplateValidatorTests
     }
 
     [Theory]
+    [InlineData("rowid")]
+    [InlineData("RowId")]
+    [InlineData("OID")]
+    [InlineData("_rowid_")]
+    public void A_column_named_after_the_databases_own_row_id_is_refused(string column)
+    {
+        // The ingest purges and reads by rowid; a column by that name would take the name over.
+        Assert.Contains(Check(Valid("DateTime", column)), p => p.Contains("keeps for itself"));
+    }
+
+    [Theory]
     [InlineData("Message1")]
     [InlineData("message1")]
     [InlineData("Message42")]

@@ -56,6 +56,10 @@ public sealed class ColumnProfiler
                 columns.Add(reader.GetString(1));
         }
 
+        // Template, overflow, provenance — the order a caller has always seen. Physically the ingest can
+        // now add an overflow column after the provenance ones, the first time a line needs it.
+        columns = LogProvenanceColumns.InDisplayOrder(columns);
+
         var rows = 0;
         using (var count = conn.CreateCommand())
         {

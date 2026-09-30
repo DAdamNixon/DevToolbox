@@ -26,5 +26,19 @@ namespace DevToolbox.Services.Models
         /// the inner query's own order (or lack of one) always decides.
         /// </summary>
         public bool InsertionOrder { get; set; }
+
+        /// <summary>
+        /// False skips the COUNT a search otherwise runs alongside its page. A caller that only
+        /// wants rows — a page, a CSV — would pay a second full pass for a number it throws away,
+        /// and with a keyword filter that pass evaluates LIKE on every column of every row.
+        /// </summary>
+        public bool IncludeCount { get; set; } = true;
+
+        /// <summary>
+        /// Return keyword-mode columns in the table's own order rather than with provenance moved to
+        /// the end. For the <c>results</c> table, whose order a collapse already chose — display order
+        /// for a keyword collapse, the SELECT's for a SQL one.
+        /// </summary>
+        public bool PhysicalColumnOrder { get; set; }
     }
 }

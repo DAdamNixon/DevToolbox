@@ -32,5 +32,25 @@ namespace DevToolbox.Services.Models
 
         public static bool IsProvenance(string? column) =>
             column is not null && All.Contains(column, StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// <paramref name="columns"/> with the provenance columns moved to the end, in
+        /// <see cref="All"/>'s order, and everything else left in the order given.
+        /// <para>
+        /// The ingest creates a table with the template's columns and provenance, and adds an
+        /// overflow column (<c>Message1</c>, …) the first time a line needs one — which SQLite can
+        /// only put after the columns already there. Physically, then, <c>Message3</c> can follow
+        /// <c>SourcePath</c>. Every reader that shows columns runs them through this so they still
+        /// read template, overflow, provenance, the order they always had.
+        /// </para>
+        /// </summary>
+        public static List<string> InDisplayOrder(IEnumerable<string> columns)
+        {
+            var list = columns.ToList();
+            var ordered = list.Where(c => !IsProvenance(c)).ToList();
+            foreach (var provenance in All)
+                ordered.AddRange(list.Where(c => string.Equals(c, provenance, StringComparison.OrdinalIgnoreCase)));
+            return ordered;
+        }
     }
 }

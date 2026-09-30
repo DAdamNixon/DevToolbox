@@ -58,8 +58,11 @@ namespace DevToolbox.Services.Services
 
         private long _bytesDone;
         private long _rowsIngested;
+        private long _rowsPurged;
+        private long _tableVersion;
         private long _itemsExamined;
         private int _filesDone;
+        private long _openOrder;
         private string? _currentFile;
 
         private LogIngestPhase _phase = LogIngestPhase.Scanning;
@@ -89,6 +92,27 @@ namespace DevToolbox.Services.Services
             internal FileIngestState State = FileIngestState.Opening;
             internal string? Reason;
             internal required FileStallTracker Stall;
+
+            /// <summary>
+            /// When the file was opened, relative to the others. The in-flight list is shown in this
+            /// order: the dictionary's own order moves as files come and go, and a list that reorders
+            /// between aiming at Skip and clicking it skips the wrong file.
+            /// </summary>
+            internal long Order;
+
+            /// <summary>Rows of this file now in the table: committed, less any purged.</summary>
+            internal long RowsCommitted;
+
+            /// <summary>
+            /// Batches the parser handed the writer, and batches the writer committed. A file is Done
+            /// once it has read to the end, which can be a moment before its last batches reach the
+            /// table; if a Cancel stops the writer in that moment, the gap is what says the file is
+            /// not complete after all.
+            /// </summary>
+            internal int BatchesSent;
+            internal int BatchesCommitted;
+
+            internal bool IsTerminal => State is FileIngestState.Done or FileIngestState.Skipped or FileIngestState.Failed;
         }
 
         /// <summary>
@@ -161,14 +185,19 @@ namespace DevToolbox.Services.Services
 
             foreach (var (fileKey, slot) in _files)
             {
-                if (slot.State is FileIngestState.Done or FileIngestState.Skipped or FileIngestState.Failed)
-                    continue;
+                if (slot.IsTerminal) continue;
 
                 if (!slot.Stall.IsStalled) continue;
 
                 if (slot.State != FileIngestState.Stalled)
                 {
-                    slot.State = FileIngestState.Stalled;
+                    // Re-checked under the slot's lock: the file may have finished since the check
+                    // above, and Stalled must never overwrite Done.
+                    lock (slot)
+                    {
+                        if (slot.IsTerminal) continue;
+                        slot.State = FileIngestState.Stalled;
+                    }
                     changed = true;
                 }
 
@@ -187,10 +216,42 @@ namespace DevToolbox.Services.Services
             Publish(force: false);
         }
 
-        internal void AddRows(long rows)
+        /// <summary>The parser is handing the writer a batch of this file's rows.</summary>
+        internal void BatchSent(string fileKey)
         {
-            if (rows > 0) Interlocked.Add(ref _rowsIngested, rows);
+            if (_files.TryGetValue(fileKey, out var slot)) Interlocked.Increment(ref slot.BatchesSent);
+        }
+
+        /// <summary>A batch of <paramref name="fileKey"/>'s rows was committed. Called by the writer only.</summary>
+        internal void AddRows(string fileKey, long rows)
+        {
+            if (_files.TryGetValue(fileKey, out var slot))
+            {
+                Interlocked.Increment(ref slot.BatchesCommitted);
+                if (rows > 0) Interlocked.Add(ref slot.RowsCommitted, rows);
+            }
+            if (rows > 0)
+            {
+                Interlocked.Add(ref _rowsIngested, rows);
+            }
+            Interlocked.Increment(ref _tableVersion);
             Publish(force: false);
+        }
+
+        /// <summary>
+        /// A skipped file's committed rows were deleted again (D4). Forced past the throttle: it is
+        /// the one change that makes the table smaller, and a live view has to hear about it before
+        /// it shows the next page.
+        /// </summary>
+        internal void RowsPurged(string fileKey, long rows)
+        {
+            if (rows > 0)
+            {
+                Interlocked.Add(ref _rowsPurged, rows);
+                if (_files.TryGetValue(fileKey, out var slot)) Interlocked.Add(ref slot.RowsCommitted, -rows);
+            }
+            Interlocked.Increment(ref _tableVersion);
+            Publish(force: true);
         }
 
         /// <summary>
@@ -214,7 +275,8 @@ namespace DevToolbox.Services.Services
                 FileName = fileName,
                 LocationName = locationName,
                 BytesTotal = bytesTotal,
-                Stall = new FileStallTracker(TimeSpan.FromSeconds(_control.Settings.StallThresholdSeconds), _time)
+                Stall = new FileStallTracker(TimeSpan.FromSeconds(_control.Settings.StallThresholdSeconds), _time),
+                Order = Interlocked.Increment(ref _openOrder)
             };
             FileStarted(fileName);
         }
@@ -228,7 +290,13 @@ namespace DevToolbox.Services.Services
             if (delta > 0)
             {
                 if (slot.State is FileIngestState.Opening or FileIngestState.Stalled)
-                    slot.State = FileIngestState.Reading;
+                {
+                    lock (slot)
+                    {
+                        if (slot.State is FileIngestState.Opening or FileIngestState.Stalled)
+                            slot.State = FileIngestState.Reading;
+                    }
+                }
                 slot.Stall.RecordProgress(bytesReadSoFar);
                 AddBytes(delta);
             }
@@ -252,8 +320,9 @@ namespace DevToolbox.Services.Services
         internal void FileDone(string fileKey)
         {
             if (_files.TryGetValue(fileKey, out var slot))
-                slot.State = FileIngestState.Done;
-            FileCompleted();
+                Finish(slot, FileIngestState.Done, reason: null);
+            else
+                FileCompleted();
         }
 
         /// <summary>
@@ -261,30 +330,72 @@ namespace DevToolbox.Services.Services
         /// skipped before this phase ever opened it (control already said so from an earlier phase)
         /// has none yet.
         /// </summary>
-        internal void FileSkipped(string fileKey, string fileName, string locationName, string reason)
-        {
-            var slot = Upsert(fileKey, fileName, locationName);
-            slot.State = FileIngestState.Skipped;
-            slot.Reason = reason;
-            FileCompleted();
-        }
+        internal void FileSkipped(string fileKey, string fileName, string locationName, string reason) =>
+            Finish(Upsert(fileKey, fileName, locationName), FileIngestState.Skipped, reason);
 
         /// <summary>A file could not be opened or read; the load continues without it (D5).</summary>
-        internal void FileFailed(string fileKey, string fileName, string locationName, string reason)
+        internal void FileFailed(string fileKey, string fileName, string locationName, string reason) =>
+            Finish(Upsert(fileKey, fileName, locationName), FileIngestState.Failed, reason);
+
+        /// <summary>
+        /// Moves a file to its end state once, and counts it as finished once. A file skipped while
+        /// it was reading is reported twice — by the abandon path, and again by its orphaned read when
+        /// that wakes — and counting both put "381 of 380 files" on the headline. The first report
+        /// wins, reason included.
+        /// </summary>
+        private void Finish(FileSlot slot, FileIngestState state, string? reason)
         {
-            var slot = Upsert(fileKey, fileName, locationName);
-            slot.State = FileIngestState.Failed;
-            slot.Reason = reason;
+            lock (slot)
+            {
+                if (slot.IsTerminal) return;
+                slot.State = state;
+                slot.Reason = reason;
+            }
             FileCompleted();
         }
 
-        private FileSlot Upsert(string fileKey, string fileName, string locationName) =>
+        private FileSlot Upsert(string fileKey, string fileName, string locationName, long bytesTotal = 0) =>
             _files.GetOrAdd(fileKey, _ => new FileSlot
             {
                 FileName = fileName,
                 LocationName = locationName,
-                Stall = new FileStallTracker(TimeSpan.FromSeconds(_control.Settings.StallThresholdSeconds), _time)
+                BytesTotal = bytesTotal,
+                Stall = new FileStallTracker(TimeSpan.FromSeconds(_control.Settings.StallThresholdSeconds), _time),
+                Order = Interlocked.Increment(ref _openOrder)
             });
+
+        internal const string CancelledBeforeReading = NotIngestedFile.CancelledBeforeReadingReason;
+
+        internal const string CancelledPartway = NotIngestedFile.CancelledPartwayReason;
+
+        /// <summary>
+        /// On a cancel, accounts for every file the load had not finished, so the result can say
+        /// which of the rows on screen are complete. A file with rows in the table is "partly read" —
+        /// those rows stay — and one without is "not read", however much of it had been read into a
+        /// batch that never reached the table. Files skipped by hand or failed keep their own reason.
+        /// A file that read to its end but still had batches waiting for the writer when the Cancel
+        /// stopped it is not complete either, whatever its Done said.
+        /// </summary>
+        internal void CancelOutstanding(IEnumerable<(string FileKey, string FileName, string LocationName, long Length)> files)
+        {
+            foreach (var file in files)
+            {
+                var slot = Upsert(file.FileKey, file.FileName, file.LocationName, file.Length);
+                lock (slot)
+                {
+                    if (slot.State is FileIngestState.Failed) continue;
+                    if (slot.State is FileIngestState.Done &&
+                        Volatile.Read(ref slot.BatchesCommitted) >= Volatile.Read(ref slot.BatchesSent)) continue;
+
+                    // SkipAll's own abandon path already filed it as "not read"; that is only true
+                    // if not a byte of it arrived.
+                    if (slot.State == FileIngestState.Skipped && slot.Reason != CancelledBeforeReading) continue;
+
+                    slot.State = FileIngestState.Skipped;
+                    slot.Reason = Interlocked.Read(ref slot.RowsCommitted) > 0 ? CancelledPartway : CancelledBeforeReading;
+                }
+            }
+        }
 
         /// <summary>Every file that ended this phase Skipped or Failed, for the partial-result banner.</summary>
         internal IReadOnlyList<NotIngestedFile> GetNotIngested() =>
@@ -297,6 +408,7 @@ namespace DevToolbox.Services.Services
                     State = slot.State,
                     BytesRead = slot.Stall.BytesRead,
                     BytesTotal = slot.BytesTotal,
+                    RowsInTable = Math.Max(0, Interlocked.Read(ref slot.RowsCommitted)),
                     Reason = slot.Reason ?? "not read"
                 })
                 .ToList();
@@ -309,11 +421,33 @@ namespace DevToolbox.Services.Services
             Publish(force: true);
         }
 
-        public void Dispose() => StopHeartbeat();
+        /// <summary>
+        /// Publishes one last snapshot past the throttle, for a load ending some other way than
+        /// <see cref="Complete"/> — a cancel or a failure. Without it, rows committed in the final
+        /// quarter-second never reach the sink, and the count shown for the cancelled load trails the
+        /// table it describes.
+        /// </summary>
+        internal void Flush()
+        {
+            StopHeartbeat();
+            Publish(force: true);
+        }
+
+        /// <summary>
+        /// Stops publishing for good. A read abandoned by this load can wake long after it ended — during
+        /// the next one — and report bytes; a snapshot from it then would describe the wrong load.
+        /// </summary>
+        public void Dispose()
+        {
+            StopHeartbeat();
+            _closed = true;
+        }
+
+        private volatile bool _closed;
 
         private void Publish(bool force)
         {
-            if (_sink is null) return;
+            if (_sink is null || _closed) return;
 
             LogIngestProgress snapshot;
             lock (_publishLock)
@@ -334,6 +468,7 @@ namespace DevToolbox.Services.Services
 
                 var inFlight = _files
                     .Where(kv => kv.Value.State is FileIngestState.Opening or FileIngestState.Reading or FileIngestState.Stalled)
+                    .OrderBy(kv => kv.Value.Order)
                     .Select(kv => new FileProgressSnapshot
                     {
                         FileKey = kv.Key,
@@ -358,6 +493,8 @@ namespace DevToolbox.Services.Services
                     BytesTotal = _bytesTotal,
                     BytesDone = bytesDone,
                     RowsIngested = Interlocked.Read(ref _rowsIngested),
+                    RowsPurged = Interlocked.Read(ref _rowsPurged),
+                    TableVersion = Interlocked.Read(ref _tableVersion),
                     ItemsExamined = Interlocked.Read(ref _itemsExamined),
                     CurrentFile = _currentFile,
                     Elapsed = now,
@@ -367,9 +504,13 @@ namespace DevToolbox.Services.Services
                     FilesSkipped = skipped,
                     FilesFailed = failed
                 };
-            }
 
-            _sink.Report(snapshot);
+                // Inside the lock, so snapshots reach the sink in the order they were taken. Outside
+                // it, a heartbeat built a moment before a purge could land after it, and a live view
+                // keyed on TableVersion would see the table appear to go backwards. Report is only
+                // ever a post to a synchronization context, so holding the lock across it is cheap.
+                _sink.Report(snapshot);
+            }
         }
 
         /// <summary>

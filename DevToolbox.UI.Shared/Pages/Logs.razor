@@ -78,7 +78,8 @@
                         <i class="bi bi-sliders"></i>
                     </button>
                 </div>
-                <select id="templateSelect" class="input-modern w-full" @bind="State.SelectedTemplateName" @bind:after="OnTemplateChanged">
+                <select id="templateSelect" class="input-modern w-full" @bind="State.SelectedTemplateName" @bind:after="OnTemplateChanged"
+                        disabled="@State.IsIngesting" title="@SourceLockedTitle">
                     @foreach (var template in State.AvailableTemplates)
                     {
                         <option value="@template.Name">@template.Name</option>
@@ -105,11 +106,12 @@
                    value is false, and a missing aria-expanded reads as "not expandable" rather
                    than as "collapsed". *@
                 <button type="button" class="input-modern w-full text-left flex items-center justify-between"
-                        @onclick="ToggleLocationMenu" aria-expanded="@(LocationMenuOpen ? "true" : "false")">
+                        @onclick="ToggleLocationMenu" aria-expanded="@(LocationMenuOpen ? "true" : "false")"
+                        disabled="@State.IsIngesting" title="@SourceLockedTitle">
                     <span class="truncate">@State.LocationSummary</span>
                     <span class="dropdown-chevron ml-2 @(LocationMenuOpen ? "is-open" : null)"></span>
                 </button>
-                @if (LocationMenuOpen)
+                @if (LocationMenuOpen && !State.IsIngesting)
                 {
                     <div class="absolute z-20 mt-1 w-full bg-dark-surface border border-dark-border rounded-lg shadow-lg max-h-64 overflow-auto">
                         <label class="flex items-center space-x-2 px-3 py-2 hover:bg-dark-surface-hover cursor-pointer border-b border-dark-border">
@@ -128,11 +130,13 @@
             </div>
             <div>
                 <label for="startDate" class="block text-sm font-medium text-dark-text mb-2">Start Date</label>
-                <input id="startDate" type="date" class="input-modern w-full" @bind="State.StartDate" max="@DateTime.Today.ToString("yyyy-MM-dd")" />
+                <input id="startDate" type="date" class="input-modern w-full" @bind="State.StartDate" max="@DateTime.Today.ToString("yyyy-MM-dd")"
+                       disabled="@State.IsIngesting" title="@SourceLockedTitle" />
             </div>
             <div>
                 <label for="endDate" class="block text-sm font-medium text-dark-text mb-2">End Date</label>
-                <input id="endDate" type="date" class="input-modern w-full" @bind="State.EndDate" max="@DateTime.Today.ToString("yyyy-MM-dd")" />
+                <input id="endDate" type="date" class="input-modern w-full" @bind="State.EndDate" max="@DateTime.Today.ToString("yyyy-MM-dd")"
+                       disabled="@State.IsIngesting" title="@SourceLockedTitle" />
             </div>
             <div>
                 <label for="logFile" class="flex items-center justify-between text-sm font-medium text-dark-text mb-2">
@@ -167,8 +171,9 @@
                        value, and bound on change it only turned up once the field lost focus —
                        which is a while after there is something to clear. *@
                     <input id="logFile" class="input-modern log-input-with-list w-full" list="logFiles"
-                           placeholder="Log file..." @bind="State.LogFile" @bind:event="oninput" />
-                    @if (!string.IsNullOrEmpty(State.LogFile))
+                           placeholder="Log file..." @bind="State.LogFile" @bind:event="oninput"
+                           disabled="@State.IsIngesting" title="@SourceLockedTitle" />
+                    @if (!string.IsNullOrEmpty(State.LogFile) && !State.IsIngesting)
                     {
                         <button type="button" class="log-input-clear" title="Clear the log file name" aria-label="Clear the log file name"
                                 @onclick="ClearLogFile">
@@ -177,7 +182,7 @@
                     }
                     @* tabindex=-1 on purpose: Down in the box already opens the list, so a tab stop
                        here would only duplicate a key that already works. *@
-                    <button type="button" class="log-input-list" tabindex="-1" aria-hidden="true"
+                    <button type="button" class="log-input-list" tabindex="-1" aria-hidden="true" disabled="@State.IsIngesting"
                             title="Show the names found in the selected locations"
                             @onclick="ShowLogFileList">
                         <span class="dropdown-chevron"></span>
@@ -220,15 +225,16 @@
             }
         </div>
 
-        @if (State.IsLoading)
+        @* Until the rows are on screen. After that the drawer over the results carries it. *@
+        @if (State.IsIngesting && !State.IsLive)
         {
             <div class="mt-4">
                 <div class="flex items-center justify-between text-sm text-dark-text-muted mb-2">
                     <span class="flex items-center space-x-2 min-w-0">
                         <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-accent-blue flex-none"></div>
-                        <span class="truncate">@ProgressHeadline()</span>
+                        <span class="truncate">@LogIngestProgressText.Headline(State.Progress)</span>
                     </span>
-                    <span class="flex-none ml-4">@ProgressEta()</span>
+                    <span class="flex-none ml-4">@LogIngestProgressText.Eta(State.Progress)</span>
                 </div>
 
                 @* Determinate whenever there is something to be determinate about. The
@@ -260,7 +266,7 @@
     @if (State.HasSearched)
     {
         <div class="log-source-lip" role="button" tabindex="0"
-             aria-expanded="@(!State.SourceCollapsed)"
+             aria-expanded="@(State.SourceCollapsed ? "false" : "true")"
              title="@(State.SourceCollapsed ? "Show the search source" : "Collapse the search source")"
              @onclick="ToggleSourceCollapsed"
              @onkeypress="@(e => { if (e.Key == "Enter" || e.Key == " ") ToggleSourceCollapsed(); })">
@@ -283,7 +289,7 @@
 {
     <LogFilterCard Filter="State.Logs" CardId="logFilterCard" EditorId="advExpr"
                    SavedQueryMenuId="logSavedQueries"
-                   Floating="@FilterPanelFloating"
+                   Floating="@FilterPanelFloating" BelowBanner="@ResultsBannerShown"
                    OnOpenSaveQuery="ShowSaveQueryDialog" OnOpenManageQueries="ShowManageQueriesDialog"
                    OnCriteriaInput="OnCriteriaInput" OnCriteriaKeyPress="OnCriteriaKeyPress">
         @* The bottom-edge lip that copies the filter's current result into `results`. An action,
@@ -315,74 +321,47 @@ else
 
     <LogFilterCard Filter="State.Results" CardId="resultsFilterCard" EditorId="resultsAdvExpr"
                    SavedQueryMenuId="resultsSavedQueries"
-                   Floating="@FilterPanelFloating" FloatingLabel="Filters · results"
+                   Floating="@FilterPanelFloating" BelowBanner="@ResultsBannerShown" FloatingLabel="Filters · results"
                    OnOpenSaveQuery="ShowSaveQueryDialog" OnOpenManageQueries="ShowManageQueriesDialog"
                    OnCriteriaInput="OnCriteriaInput" OnCriteriaKeyPress="OnCriteriaKeyPress" />
 }
 
-@if (!State.IsLoading && State.LastPrepareResult is { IsComplete: false } partial)
-{
-    <div class="modern-card p-4 mb-4 border border-warning/40">
-        <p class="text-dark-text font-medium">
-            <i class="bi bi-exclamation-triangle text-warning"></i>
-            Partial results — @partial.NotIngested.Count file@(partial.NotIngested.Count == 1 ? "" : "s") not read.
-            A missing row is not evidence it did not happen.
-        </p>
-        <ul class="mt-2 text-sm text-dark-text-muted list-disc list-inside">
-            @foreach (var file in partial.NotIngested)
-            {
-                <li>@file.FileName (@file.LocationName) — @file.Reason</li>
-            }
-        </ul>
-    </div>
-}
-
-@if (State.IsLoading)
+@* The big card is for a load with nothing on screen yet. Once its rows are showing the grid takes
+   this space and the drawer at the top of the results carries the progress. A page query no longer
+   comes here at all: the grid it is replacing stays up, dimmed, until the new rows arrive. *@
+@if (State.IsIngesting && !State.IsLive)
 {
     <div class="modern-card text-center py-16">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-blue mx-auto"></div>
-        <p class="mt-4 text-dark-text">@ProgressHeadline()</p>
+        <p class="mt-4 text-dark-text">@LogIngestProgressText.Headline(State.Progress)</p>
         @if (State.Progress is { } p && p.Phase != LogIngestPhase.Listing)
         {
             @* Separator keyed off the rendered text, not off Eta having a value:
                the querying phase has an Eta but deliberately renders nothing for
                it, which left a dangling "·" at the end of the line. *@
-            var eta = ProgressEta();
+            var eta = LogIngestProgressText.Eta(p);
             <p class="mt-1 text-sm text-dark-text-muted">
-                @p.RowsIngested.ToString("N0") rows so far@(eta.Length == 0 ? "" : $" · {eta}")
+                @p.RowsInTable.ToString("N0") rows so far@(eta.Length == 0 ? "" : $" · {eta}")
             </p>
 
-            @if (p.InFlight.Count > 0)
-            {
-                <div class="mt-6 mx-auto max-w-xl text-left">
-                    @foreach (var file in p.InFlight)
-                    {
-                        var stalled = file.State == FileIngestState.Stalled;
-                        <div class="flex items-center justify-between py-1.5 px-3 rounded @(stalled ? "bg-warning/10" : "")">
-                            <span class="truncate @(stalled ? "text-warning" : "text-dark-text-muted")" title="@file.FileName">
-                                @(file.State == FileIngestState.Opening ? $"{file.FileName} — connecting…" : DescribeFileProgress(file))
-                            </span>
-                            @if (stalled)
-                            {
-                                <button class="btn-ghost text-xs text-warning ml-2 flex-none"
-                                        title="Stop waiting on this file — its rows will be absent from the results"
-                                        @onclick="() => State.SkipFile(file.FileKey)">
-                                    Skip
-                                </button>
-                            }
-                        </div>
-                    }
-                </div>
-            }
+            <LogIngestFiles Files="p.InFlight" OnSkip="State.SkipFile" Class="mt-6 mx-auto max-w-xl text-left" />
         }
         <button class="btn-secondary mt-6" @onclick="CancelSearch" disabled="@State.IsCancelling">
             @(State.IsCancelling ? "Cancelling…" : "Cancel")
         </button>
     </div>
 }
+else if (State.FilteredLogLines.Count == 0 && State.IsBusy && State.HasSearched && !State.IsLive)
+{
+    <div class="modern-card text-center py-16" aria-busy="true">
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-blue mx-auto"></div>
+        <p class="mt-4 text-dark-text-muted">Searching…</p>
+    </div>
+}
 else if (State.FilteredLogLines.Count == 0 && !State.HasSearched)
 {
     <div class="modern-card text-center py-16">
+        <div class="text-left"><LogLoadOutcome /></div>
         <i class="bi bi-box-arrow-in-down text-6xl text-dark-text-muted"></i>
         <p class="text-dark-text-muted mt-4">Pick a template, location and date range, then click <strong>Load Logs</strong>.</p>
         <p class="text-dark-text-muted text-sm mt-1">Keywords filter the rows once they are loaded.</p>
@@ -390,31 +369,84 @@ else if (State.FilteredLogLines.Count == 0 && !State.HasSearched)
 }
 else if (State.FilteredLogLines.Count == 0)
 {
-    <div class="modern-card text-center py-16">
-        <i class="bi bi-inbox text-6xl text-dark-text-muted"></i>
-        <p class="text-dark-text-muted mt-4">No logs found matching your criteria. Try adjusting your filters or date range.</p>
-        @* Discard must survive an empty results grid (F10) — the toolbar it usually lives on
-           does not render here, and a results filter that matches nothing is exactly when
-           someone wants their way back to logs. *@
-        @if (State.Results is not null)
+    <div class="modern-card">
+        @if (State.IsLive)
         {
-            <button type="button" class="btn-secondary mt-4 flex items-center space-x-2 mx-auto" @onclick="DiscardResults"
-                    title="Drop the results table and search logs again — your logs filter comes back as it was">
-                <i class="bi bi-x-circle"></i>
-                <span>Discard results</span>
-            </button>
+            <LogIngestDrawer />
         }
+        else
+        {
+            <LogLoadOutcome />
+        }
+        <div class="text-center py-16">
+            <i class="bi bi-inbox text-6xl text-dark-text-muted"></i>
+            @if (State.IsLive)
+            {
+                @* Name the filter: one carried over from the last load is the usual reason, and without
+                   it this reads as "the files are empty". *@
+                <p class="text-dark-text-muted mt-4">
+                    @(State.IsBusy ? "Searching…" : $"No rows match {ActiveFilterDescription()} yet — the drawer above shows how far the load has got.")
+                </p>
+            }
+            else if (State.LastLoad is { Cancelled: true, TableReplaced: true, Rows: > 0 })
+            {
+                <p class="text-dark-text-muted mt-4">None of the @State.LastLoad.Rows.ToString("N0") rows read before the load stopped match @ActiveFilterDescription().</p>
+            }
+            else if (State.LastLoad is { Cancelled: true, TableReplaced: true, Rows: 0 })
+            {
+                <p class="text-dark-text-muted mt-4">The load was cancelled before any rows were read.</p>
+            }
+            else
+            {
+                <p class="text-dark-text-muted mt-4">No logs found matching your criteria. Try adjusting your filters or date range.</p>
+            }
+            @if (LogSearchStateService.BuildCriteria(State.Active).HasContent)
+            {
+                <button type="button" class="btn-secondary mt-4 flex items-center space-x-2 mx-auto" @onclick="ClearFilter"
+                        title="Remove the keywords or SQL and show every row">
+                    <i class="bi bi-funnel"></i>
+                    <span>Clear filter</span>
+                </button>
+            }
+            @* Discard must survive an empty results grid (F10) — the toolbar it usually lives on
+               does not render here, and a results filter that matches nothing is exactly when
+               someone wants their way back to logs. *@
+            @if (State.Results is not null)
+            {
+                <button type="button" class="btn-secondary mt-4 flex items-center space-x-2 mx-auto" @onclick="DiscardResults"
+                        title="Drop the results table and search logs again — your logs filter comes back as it was">
+                    <i class="bi bi-x-circle"></i>
+                    <span>Discard results</span>
+                </button>
+            }
+        </div>
     </div>
 }
 else
 {
     EnsureColumnMetrics();
 
-    <div class="modern-card log-results-card @(State.ResultsFullscreen ? "is-fullscreen" : null)">
+    <div class="modern-card log-results-card @(State.ResultsFullscreen ? "is-fullscreen" : null) @(ResultsBannerShown ? "has-banner" : null)">
+        @if (State.IsLive)
+        {
+            <LogIngestDrawer />
+        }
+        else
+        {
+            <LogLoadOutcome />
+        }
         <div class="log-toolbar">
             <div class="log-toolbar-group">
                 <i class="bi bi-table text-accent-blue"></i>
-                <span class="log-page-range"><strong>@State.CurrentTableName</strong> · Showing <strong>@PageRangeStart().ToString("N0")–@PageRangeEnd().ToString("N0")</strong> of <strong>@State.TotalRecords.ToString("N0")</strong></span>
+                <span class="log-page-range"><strong>@State.CurrentTableName</strong> · Showing <strong>@PageRangeStart().ToString("N0")–@PageRangeEnd().ToString("N0")</strong> of <strong>@State.TotalRecords.ToString("N0")</strong>@(State.IsLive ? " so far" : "")</span>
+                @if (State.IsLive && LiveOrderNote() is { } note)
+                {
+                    <span class="log-toolbar-label" title="@note.Detail">· @note.Text</span>
+                }
+                @if (State.IsBusy)
+                {
+                    <span class="animate-spin rounded-full h-4 w-4 border-b-2 border-accent-blue flex-none" role="status" aria-label="Searching"></span>
+                }
                 @if (State.Results is not null)
                 {
                     <button type="button" class="btn-secondary flex items-center space-x-2" @onclick="DiscardResults"
@@ -426,17 +458,17 @@ else
             </div>
             <div class="log-toolbar-group">
                 <div class="log-segmented" role="group" aria-label="Results view">
-                    <button type="button" class="@(!State.PlainTextView ? "active" : null)" @onclick="() => SetPlainTextView(false)" aria-pressed="@(!State.PlainTextView)">
+                    <button type="button" class="@(!State.PlainTextView ? "active" : null)" @onclick="() => SetPlainTextView(false)" aria-pressed="@AriaBool(!State.PlainTextView)">
                         <i class="bi bi-table"></i> Table
                     </button>
-                    <button type="button" class="@(State.PlainTextView ? "active" : null)" @onclick="() => SetPlainTextView(true)" aria-pressed="@State.PlainTextView">
+                    <button type="button" class="@(State.PlainTextView ? "active" : null)" @onclick="() => SetPlainTextView(true)" aria-pressed="@AriaBool(State.PlainTextView)">
                         <i class="bi bi-text-left"></i> Text
                     </button>
                 </div>
                 @if (State.PlainTextView)
                 {
                     <div class="log-segmented" role="group" aria-label="Line wrapping">
-                        <button type="button" class="@(State.PlainTextWrap ? "active" : null)" @onclick="ToggleTextWrap" aria-pressed="@State.PlainTextWrap" title="Wrap long lines">
+                        <button type="button" class="@(State.PlainTextWrap ? "active" : null)" @onclick="ToggleTextWrap" aria-pressed="@AriaBool(State.PlainTextWrap)" title="Wrap long lines">
                             <i class="bi bi-arrow-return-left"></i> Wrap
                         </button>
                     </div>
@@ -444,7 +476,7 @@ else
                 else if (_emptyColumns.Count > 0)
                 {
                     <div class="log-segmented" role="group" aria-label="Empty columns">
-                        <button type="button" class="@(State.ShowEmptyColumns ? "active" : null)" @onclick="ToggleEmptyColumns" aria-pressed="@State.ShowEmptyColumns"
+                        <button type="button" class="@(State.ShowEmptyColumns ? "active" : null)" @onclick="ToggleEmptyColumns" aria-pressed="@AriaBool(State.ShowEmptyColumns)"
                                 title="@_emptyColumns.Count columns hold nothing on this page">
                             <i class="bi bi-eye"></i> @_emptyColumns.Count empty
                         </button>
@@ -465,8 +497,8 @@ else
                             <button type="button"
                                     class="@(State.SplitMode == option.Mode ? "active" : null)"
                                     @onclick="() => State.SetSplitModeAsync(option.Mode)"
-                                    disabled="@State.IsLoading"
-                                    aria-pressed="@(State.SplitMode == option.Mode)">
+                                    disabled="@(!State.CanQuery)"
+                                    aria-pressed="@AriaBool(State.SplitMode == option.Mode)">
                                 @option.Label
                             </button>
                         }
@@ -487,7 +519,7 @@ else
                 {
                     <button type="button" class="btn-secondary flex items-center space-x-2" @onclick="ToggleFilterPanel"
                             title="@(State.FilterOverlayVisible ? "Hide the filters (Esc)" : "Show the filters over the results (Ctrl+F)")"
-                            aria-pressed="@State.FilterOverlayVisible">
+                            aria-pressed="@AriaBool(State.FilterOverlayVisible)">
                         <i class="bi bi-funnel"></i>
                     </button>
                 }
@@ -495,10 +527,11 @@ else
                    at once, rather than off with the row counts. *@
                 <button type="button" class="btn-secondary flex items-center space-x-2" @onclick="ToggleResultsFullscreen"
                         title="@(State.ResultsFullscreen ? "Exit full screen (Esc)" : "Fill the window with the results")"
-                        aria-pressed="@State.ResultsFullscreen">
+                        aria-pressed="@AriaBool(State.ResultsFullscreen)">
                     <i class="bi @(State.ResultsFullscreen ? "bi-fullscreen-exit" : "bi-arrows-fullscreen")"></i>
                 </button>
-                <button class="btn-secondary flex items-center space-x-2" @onclick="DownloadCsv" disabled="@(State.IsLoading || State.FilteredLogLines.Count == 0)" title="Download the current view as CSV">
+                <button class="btn-secondary flex items-center space-x-2" @onclick="DownloadCsv" disabled="@(State.IsLoading || State.FilteredLogLines.Count == 0)"
+                        title="@(State.IsIngesting ? "Available once loading finishes — until then it would hold only some of the rows" : "Download the current view as CSV")">
                     <i class="bi bi-download"></i>
                     <span>CSV</span>
                 </button>
@@ -517,10 +550,10 @@ else
                     var isActive = index == State.ActiveTabIndex;
                     <button type="button"
                             role="tab"
-                            aria-selected="@isActive"
+                            aria-selected="@AriaBool(isActive)"
                             class="flex-none px-4 py-2 text-sm whitespace-nowrap border-b-2 -mb-px transition-colors @(isActive ? "border-accent-blue text-accent-blue font-medium" : "border-transparent text-dark-text-muted hover:text-dark-text")"
                             @onclick="() => State.SelectTabAsync(index)"
-                            disabled="@State.IsLoading"
+                            disabled="@(!State.CanQuery)"
                             title="@tab.Label">
                         @tab.Label
                         <span class="ml-2 text-xs text-dark-text-muted">@tab.RowCount.ToString("N0")</span>
@@ -529,7 +562,8 @@ else
             </div>
         }
 
-        <div class="border border-dark-border rounded-lg overflow-hidden log-results-frame">
+        <div class="border border-dark-border rounded-lg overflow-hidden log-results-frame @(State.IsBusy ? "is-busy" : null)"
+             aria-busy="@AriaBool(State.IsBusy)">
             @if (State.PlainTextView)
             {
                 @* The same rows, template order, rejoined with the template's own
@@ -572,7 +606,7 @@ else
                                 {
                                     var sortEntry = State.ActiveSorts.FirstOrDefault(s => s.Column == col);
                                     var sortIndex = State.ActiveSorts.FindIndex(s => s.Column == col);
-                                    <th class="relative px-4 py-3 text-left text-xs font-medium text-dark-text uppercase tracking-wider border-r border-dark-border cursor-pointer hover:bg-dark-surface-hover transition-colors"
+                                    <th data-col="@col" class="relative px-4 py-3 text-left text-xs font-medium text-dark-text uppercase tracking-wider border-r border-dark-border cursor-pointer hover:bg-dark-surface-hover transition-colors"
                                         @onclick="(e) => SortByColumn(col, e.ShiftKey)"
                                         @onkeypress="@(async (e) => { if (e.Key == "Enter" || e.Key == " ") await SortByColumn(col, false); })"
                                         tabindex="0"
@@ -644,10 +678,10 @@ else
 
         <div class="log-pagination" role="navigation" aria-label="Pagination">
             <div class="log-toolbar-group">
-                <button class="btn-secondary" @onclick="FirstPage" disabled="@(State.IsLoading || State.CurrentPage == 0)" aria-label="First page" title="First page">
+                <button class="btn-secondary" @onclick="FirstPage" disabled="@(!State.CanQuery || State.CurrentPage == 0)" aria-label="First page" title="First page">
                     <i class="bi bi-chevron-double-left"></i>
                 </button>
-                <button class="btn-secondary flex items-center space-x-2" @onclick="PrevPage" disabled="@(State.IsLoading || State.CurrentPage == 0)" aria-label="Previous page">
+                <button class="btn-secondary flex items-center space-x-2" @onclick="PrevPage" disabled="@(!State.CanQuery || State.CurrentPage == 0)" aria-label="Previous page">
                     <i class="bi bi-chevron-left"></i>
                     <span>Previous</span>
                 </button>
@@ -670,11 +704,11 @@ else
             </div>
 
             <div class="log-toolbar-group">
-                <button class="btn-secondary flex items-center space-x-2" @onclick="NextPage" disabled="@(State.IsLoading || !State.HasMorePages)" aria-label="Next page">
+                <button class="btn-secondary flex items-center space-x-2" @onclick="NextPage" disabled="@(!State.CanQuery || !State.HasMorePages)" aria-label="Next page">
                     <span>Next</span>
                     <i class="bi bi-chevron-right"></i>
                 </button>
-                <button class="btn-secondary" @onclick="LastPage" disabled="@(State.IsLoading || State.CurrentPage >= State.TotalPages - 1)" aria-label="Last page" title="Last page">
+                <button class="btn-secondary" @onclick="LastPage" disabled="@(!State.CanQuery || State.CurrentPage >= State.TotalPages - 1)" aria-label="Last page" title="Last page">
                     <i class="bi bi-chevron-double-right"></i>
                 </button>
             </div>
@@ -965,10 +999,26 @@ else
 
     /// <summary>The page of rows the widths below were measured against.</summary>
     private List<Dictionary<string, string>>? _measuredRows;
+
+    /// <summary>How many of those rows were measured. A live page grows by appending, and only the new rows need measuring.</summary>
+    private int _measuredCount;
+
+    /// <summary>The column list those rows were measured under.</summary>
+    private List<string>? _measuredColumns;
+
+    private readonly Dictionary<string, int> _maxLengths = new();
     private readonly Dictionary<string, int> _columnWidths = new();
+
+    /// <summary>
+    /// Widths the user dragged a column to, by name. They win over measurement: before this, any
+    /// page change re-measured the columns and Blazor wrote the computed width straight over the
+    /// dragged one — which during a load, with rows arriving every second, would be constantly.
+    /// </summary>
+    private readonly Dictionary<string, int> _manualWidths = new();
+
     private readonly HashSet<string> _emptyColumns = new();
     private string? _flexColumn;
-    private HashSet<Dictionary<string, string>> _expandedRows = new();
+    private readonly HashSet<Dictionary<string, string>> _expandedRows = new();
 
     /// <summary>
     /// The columns the table actually renders: everything, minus the ones that
@@ -987,39 +1037,85 @@ else
     /// longest content — almost always the message — flexes to take whatever
     /// space is left, and columns that hold nothing at all are noted so the
     /// table can drop them. Re-measured only when the page of rows changes.
+    /// <para>
+    /// A live page that only grew — the same rows in the same places, more after them — measures
+    /// just the new rows, and its layout only ever widens: a column that shrank, one that vanished
+    /// as empty, or a flex column that moved would slide the grid sideways under someone reading
+    /// it every time a batch arrived.
+    /// </para>
     /// </summary>
     private void EnsureColumnMetrics()
     {
-        if (ReferenceEquals(_measuredRows, State.FilteredLogLines)) return;
-        _measuredRows = State.FilteredLogLines;
-        _expandedRows = new HashSet<Dictionary<string, string>>();
-        _columnWidths.Clear();
-        _emptyColumns.Clear();
-        _flexColumn = null;
+        var rows = State.FilteredLogLines;
+        var columns = State.TableColumns;
+        if (ReferenceEquals(_measuredRows, rows) && _measuredCount == rows.Count && ReferenceEquals(_measuredColumns, columns)) return;
+
+        var grew = State.IsLive && _measuredRows is not null && ReferenceEquals(_measuredColumns, columns) &&
+                   rows.Count >= _measuredCount && StartsWith(rows, _measuredRows, _measuredCount);
+
+        if (!grew)
+        {
+            _maxLengths.Clear();
+            _measuredCount = 0;
+            if (!State.IsLive) _flexColumn = null;
+        }
+
+        // Expanded rows that are still on the page stay expanded — a live refresh, or a final query
+        // that brought the same rows back, keeps the row objects. The rest went with their rows.
+        _expandedRows.IntersectWith(rows);
+
+        foreach (var col in columns)
+            _maxLengths.TryAdd(col, 0);
 
         // Every row, not a sample: a column with its one value on row 900 must
         // not be dropped as empty. Length checks over a 1000-row page are cheap.
-        var maxLengths = State.TableColumns.ToDictionary(c => c, c => 0);
-        foreach (var row in State.FilteredLogLines)
+        for (var i = _measuredCount; i < rows.Count; i++)
         {
-            foreach (var col in State.TableColumns)
+            foreach (var col in columns)
             {
-                var length = row.GetValueOrDefault(col, "").Length;
-                if (length > maxLengths[col]) maxLengths[col] = length;
+                var length = rows[i].GetValueOrDefault(col, "").Length;
+                if (length > _maxLengths[col]) _maxLengths[col] = length;
             }
         }
 
-        foreach (var (col, length) in maxLengths)
+        _measuredRows = rows;
+        _measuredCount = rows.Count;
+        _measuredColumns = columns;
+
+        _columnWidths.Clear();
+        _emptyColumns.Clear();
+        if (_flexColumn is not null && (!columns.Contains(_flexColumn) || _maxLengths[_flexColumn] == 0)) _flexColumn = null;
+        var keepFlex = grew && _flexColumn is not null;
+
+        foreach (var col in columns)
         {
+            var length = _maxLengths[col];
             if (length == 0) _emptyColumns.Add(col);
             // ~7.2px per character of 12px mono, plus cell padding; the header
             // needs room for its own name too.
             _columnWidths[col] = Math.Clamp((int)(Math.Max(length, col.Length) * 7.2) + 20, 72, 480);
-            if (length > 0 && (_flexColumn is null || length > maxLengths[_flexColumn])) _flexColumn = col;
+            if (!keepFlex && length > 0 && (_flexColumn is null || length > _maxLengths[_flexColumn])) _flexColumn = col;
         }
     }
 
-    private int ColumnWidth(string col) => _columnWidths.GetValueOrDefault(col, 160);
+    private static bool StartsWith(List<Dictionary<string, string>> rows, List<Dictionary<string, string>> prefix, int count)
+    {
+        if (ReferenceEquals(rows, prefix)) return true;
+        if (prefix.Count < count) return false;
+        for (var i = 0; i < count; i++)
+            if (!ReferenceEquals(rows[i], prefix[i])) return false;
+        return true;
+    }
+
+    private int ColumnWidth(string col) =>
+        _manualWidths.TryGetValue(col, out var dragged) ? dragged : _columnWidths.GetValueOrDefault(col, 160);
+
+    /// <summary>A column's resize handle was let go — see wwwroot/js/logTools.js.</summary>
+    [JSInvokable]
+    public void ColumnResized(string column, int width)
+    {
+        if (!string.IsNullOrEmpty(column) && width > 0) _manualWidths[column] = width;
+    }
 
     private bool IsRowExpanded(Dictionary<string, string> row) => _expandedRows.Contains(row);
 
@@ -1058,7 +1154,51 @@ else
 
     private void ToggleEmptyColumns() => State.ShowEmptyColumns = !State.ShowEmptyColumns;
 
-    private void ToggleSourceCollapsed() => State.SourceCollapsed = !State.SourceCollapsed;
+    private void ToggleSourceCollapsed() => State.ToggleSourceCollapsed();
+
+    // --- loading and its outcome ---
+
+    /// <summary>The drawer or the outcome line is at the top of the results card, taking its height out of the grid.</summary>
+    private bool ResultsBannerShown => State.IsLive || (!State.IsIngesting && State.LastLoad is not null);
+
+    /// <summary>Why the source fields are greyed out mid-load.</summary>
+    private string? SourceLockedTitle => State.IsIngesting
+        ? "Locked while the logs load — Cancel to change what is loaded"
+        : null;
+
+    /// <summary>
+    /// aria-pressed, aria-expanded and aria-selected as strings: Blazor drops an attribute whose value
+    /// is false, and a missing one reads as "not a toggle" rather than as "off".
+    /// </summary>
+    private static string AriaBool(bool value) => value ? "true" : "false";
+
+    /// <summary>
+    /// What order the rows are in while a load is still running — not the template's until it
+    /// finishes, and a grid that did not say so would look mis-sorted.
+    /// </summary>
+    private (string Text, string Detail)? LiveOrderNote()
+    {
+        if (State.Results is not null) return null;
+        if (State.AdvancedRawMode)
+            return ("as of when your query ran", "SQL results are not refreshed while the logs load. Run the query again to include the rows read since.");
+        if (State.ActiveSorts.Count > 0)
+            return ("sorted as of your click", "Rows read since are counted, and join this sort when you sort again or the load finishes.");
+        return ("in the order read", "Rows show up as they are read. Once every file is in, the grid sorts the way the template says.");
+    }
+
+    /// <summary>The filter in words, for "No rows match … yet": the keywords, or "your SQL query".</summary>
+    private string ActiveFilterDescription()
+    {
+        var criteria = LogSearchStateService.BuildCriteria(State.Active);
+        if (!criteria.HasContent) return "this view";
+        if (criteria.UseAdvanced) return "your SQL query";
+
+        var parts = criteria.Groups.Select((g, i) =>
+            (i > 0 || string.Equals(g.Gate, "NOT", StringComparison.OrdinalIgnoreCase) ? $"{g.Gate} " : "") + string.Join(", ", g.Terms));
+        return $"“{string.Join(" ", parts)}”";
+    }
+
+    private async Task ClearFilter() => await State.ClearFilterAsync();
 
     // --- pagination helpers ---
 
@@ -1267,94 +1407,6 @@ else
             ? $"{file} — {count:N0} file{(count == 1 ? "" : "s")}"
             : file;
 
-    /// <summary>
-    /// One line saying what is happening and how far in. Reads as
-    /// "Reading 142 of 380 files · 1.2 GB of 3.4 GB".
-    /// </summary>
-    private string ProgressHeadline()
-    {
-        if (State.Progress is not { } p) return "Preparing search…";
-
-        if (p.Phase == LogIngestPhase.Querying) return "Querying results…";
-
-        // Listing has no denominator — the directory size is unknown until the walk
-        // ends — so it reports what it has looked at instead of a fraction.
-        if (p.Phase == LogIngestPhase.Listing)
-        {
-            var where = string.IsNullOrEmpty(p.CurrentFile) ? "" : $" in {p.CurrentFile}";
-            return p.ItemsExamined == 0
-                ? $"Listing files{where}…"
-                : $"Listing files{where} — {p.ItemsExamined:N0} checked, {p.FilesDone:N0} matched";
-        }
-
-        var verb = p.Phase == LogIngestPhase.Scanning ? "Scanning" : "Reading";
-        if (p.FilesTotal == 0) return $"{verb}…";
-
-        var text = $"{verb} {p.FilesDone:N0} of {p.FilesTotal:N0} files";
-        if (p.BytesTotal > 0) text += $" · {FormatBytes(p.BytesDone)} of {FormatBytes(p.BytesTotal)}";
-        return text;
-    }
-
-    /// <summary>
-    /// "~40s left · 1 stalled", or just "2 stalled" once nothing is moving — the reporter nulls
-    /// Eta itself once every in-flight file is stalled, so this only has to add the count.
-    /// </summary>
-    private string ProgressEta()
-    {
-        if (State.Progress is not { } p) return "";
-        // Listing has no total to work towards, so it gets no estimate — the other
-        // phases now do, including Scanning, which measures itself in files.
-        if (p.Phase is LogIngestPhase.Querying or LogIngestPhase.Listing) return "";
-
-        // Null means the reporter does not yet have enough evidence. Saying so is
-        // better than showing a number that is about to change by minutes.
-        var eta = p.Eta is not { } remaining ? "estimating…" : $"~{FormatDuration(remaining)} left";
-        var stalled = p.FilesStalled > 0 ? $"{p.FilesStalled} stalled" : "";
-
-        return (eta, stalled) switch
-        {
-            ("estimating…", "") => "estimating…",
-            (_, "") => eta,
-            _ when p.Eta is null => stalled,
-            _ => $"{eta} · {stalled}"
-        };
-    }
-
-    /// <summary>"File.txt — 1.2 MB of 3.4 MB", or just the bytes read when the size is unknown.</summary>
-    private string DescribeFileProgress(FileProgressSnapshot file)
-    {
-        var bytes = file.BytesTotal > 0
-            ? $"{FormatBytes(file.BytesRead)} of {FormatBytes(file.BytesTotal)}"
-            : FormatBytes(file.BytesRead);
-
-        var stalled = file.State == FileIngestState.Stalled
-            ? $" — last progress {(int)file.SinceLastAdvance.TotalSeconds}s ago"
-            : "";
-
-        return $"{file.FileName} — {bytes}{stalled}";
-    }
-
-    private static string FormatBytes(long bytes)
-    {
-        string[] units = { "B", "KB", "MB", "GB", "TB" };
-        double value = bytes;
-        int unit = 0;
-        while (value >= 1024 && unit < units.Length - 1)
-        {
-            value /= 1024;
-            unit++;
-        }
-        return unit == 0 ? $"{bytes} B" : $"{value:0.#} {units[unit]}";
-    }
-
-    private static string FormatDuration(TimeSpan span)
-    {
-        if (span.TotalSeconds < 5) return "a few seconds";
-        if (span.TotalMinutes < 1) return $"{(int)span.TotalSeconds}s";
-        if (span.TotalHours < 1) return $"{(int)span.TotalMinutes}m {span.Seconds}s";
-        return $"{(int)span.TotalHours}h {span.Minutes}m";
-    }
-
     private async Task NextPage() => await State.NextPageAsync();
 
     private async Task PrevPage() => await State.PrevPageAsync();
@@ -1391,68 +1443,60 @@ else
             }
         }
 
-        if (!State.IsLoading && !State.PlainTextView && State.FilteredLogLines.Count > 0)
+        var gridShown = !State.PlainTextView && State.FilteredLogLines.Count > 0 && !(State.IsIngesting && !State.IsLive);
+
+        // Only when the header changed. It used to run after every render, which once rows stream
+        // in is several JS round trips a second for handles that are already bound.
+        var resizeKey = gridShown ? string.Join('\u001f', VisibleColumns) : null;
+        if (resizeKey is not null && resizeKey != _resizeBoundFor)
         {
             try
             {
-                await JS.InvokeVoidAsync("logTools.initColumnResize", "logResultsTable");
+                await JS.InvokeVoidAsync("logTools.initColumnResize", "logResultsTable", _self, nameof(ColumnResized));
             }
             catch
             {
                 // Non-fatal: column resizing is a progressive enhancement.
             }
         }
-    }
+        _resizeBoundFor = resizeKey;
 
-    private async Task DownloadCsv()
-    {
-        if (State.IsLoading || !State.HasSearched) return;
-
-        var templateEntry = State.AvailableTemplates.FirstOrDefault(t => t.Name == State.SelectedTemplateName);
-        if (templateEntry == null)
+        // A new page, sort or filter opens at the top. The grid is no longer torn down and rebuilt
+        // for every query, so without this it kept the old page's scroll offset.
+        if (State.ViewVersion != _scrolledForView)
         {
-            State.SetError("No template selected for CSV download.");
-            return;
-        }
-
-        var wasLoading = State.IsLoading;
-        State.IsLoading = true;
-        StateHasChanged();
-
-        try
-        {
-            var sorts = State.AdvancedRawMode ? null : (State.ActiveSorts.Count > 0 ? State.ActiveSorts : null);
-            var criteria = State.BuildCriteria();
-            var criteriaArg = criteria.HasContent ? criteria : null;
-
-            // Exports the active tab, not the whole table — the CSV should hold
-            // what the grid is showing.
-            var filePath = await LogFileService.DownloadLogCsvAsync(
-                State.CurrentTableName,
-                templateEntry.Name,
-                sorts,
-                criteriaArg,
-                null,
-                State.CurrentSplitFilter);
-
-            // Show the file in the platform's file manager — selected in Explorer on Windows.
-            if (!string.IsNullOrWhiteSpace(filePath) && File.Exists(filePath))
+            _scrolledForView = State.ViewVersion;
+            try
             {
-                var shown = await SystemService.OpenInExplorerAsync(filePath);
-                if (!shown.Success)
-                {
-                    State.SetError($"The CSV was saved to {filePath}, but its folder could not be opened: {shown.Error}");
-                }
+                await JS.InvokeVoidAsync("logTools.scrollResultsTop");
+            }
+            catch (JSException)
+            {
+                // Non-fatal: the rows are right, only where the scroller sits is not.
             }
         }
-        catch (Exception ex)
+    }
+
+    /// <summary>The header the resize handles were last bound to, or null while the grid is not showing.</summary>
+    private string? _resizeBoundFor;
+
+    /// <summary>The <see cref="LogSearchStateService.ViewVersion"/> the grid was last scrolled to the top for.</summary>
+    private int _scrolledForView;
+
+    /// <summary>
+    /// Writes the current view to CSV, then shows the file in the platform's file manager —
+    /// selected in Explorer on Windows. The service holds the view while it writes, so a query asked
+    /// for meanwhile waits for it rather than being dropped.
+    /// </summary>
+    private async Task DownloadCsv()
+    {
+        var filePath = await State.DownloadCsvAsync();
+        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath)) return;
+
+        var shown = await SystemService.OpenInExplorerAsync(filePath);
+        if (!shown.Success)
         {
-            State.SetError($"CSV download failed: {ex.Message}");
-        }
-        finally
-        {
-            State.IsLoading = wasLoading;
-            StateHasChanged();
+            State.SetError($"The CSV was saved to {filePath}, but its folder could not be opened: {shown.Error}");
         }
     }
 

@@ -1,0 +1,120 @@
+@using DevToolbox.Services.Models
+@using DevToolbox.UI.Services
+@implements IDisposable
+@inject LogSearchStateService State
+
+@* The load's progress while its rows are already on screen. The big loading card said all of this
+   while there was nothing to show; once rows stream in, the grid takes that space and this takes
+   over — at the top of the results card rather than beside it, so full screen, which covers
+   everything else on the page, still shows how far the load has got.
+
+   Folded, it is one line and a bar: what is being read, how many rows so far, how long is left,
+   and Cancel. Unfolded, it drops the files open right now over the top of the grid, with Skip on
+   the stalled ones — over it, not above it, so opening it never shoves the rows down. A stall shows
+   on the folded line too, as a button: Skip is the thing a stall needs, and it lives inside.
+
+   It re-renders itself on ProgressChanged; the page does not re-render for progress once rows are
+   showing, which would redraw the whole grid several times a second. *@
+@if (State.Progress is { } p)
+{
+    var stalled = p.FilesStalled;
+    var querying = p.Phase == LogIngestPhase.Querying;
+    <section class="log-ingest-drawer" aria-label="Loading progress">
+        <div class="log-ingest-summary">
+            <span class="log-ingest-spinner" aria-hidden="true"></span>
+
+            @* Outside the toggle: a focused button whose name changed four times a second would be
+               read out four times a second. *@
+            <span class="log-ingest-headline" title="@LogIngestProgressText.Headline(p)">@LogIngestProgressText.Headline(p)</span>
+
+            <span class="log-ingest-meta">@p.RowsInTable.ToString("N0") rows so far</span>
+
+            @if (LogIngestProgressText.Eta(p, includeStalled: false) is { Length: > 0 } eta)
+            {
+                <span class="log-ingest-meta log-ingest-eta">@eta</span>
+            }
+
+            @if (stalled > 0)
+            {
+                @* Stays a button when the list is open, so activating it never drops focus on the floor. *@
+                <button type="button" class="log-ingest-stalled" @onclick="ToggleOpen"
+                        aria-expanded="@(State.IngestDrawerOpen ? "true" : "false")" aria-controls="logIngestDetail"
+                        title="@(State.IngestDrawerOpen ? "Hide the files being read" : $"Show the stalled {(stalled == 1 ? "file" : "files")}, to skip {(stalled == 1 ? "it" : "them")}")">
+                    <i class="bi bi-exclamation-triangle" aria-hidden="true"></i> @stalled stalled
+                </button>
+            }
+
+            <span class="log-ingest-actions">
+                @if (!querying)
+                {
+                    <button type="button" class="is-danger" @onclick="State.CancelSearch" disabled="@State.IsCancelling"
+                            title="Stop reading files. The rows already loaded stay, and can still be searched.">
+                        <i class="bi bi-x-circle" aria-hidden="true"></i>
+                        <span>@(State.IsCancelling ? "Cancelling…" : "Cancel")</span>
+                    </button>
+                }
+                <button type="button" class="log-ingest-toggle" @onclick="ToggleOpen"
+                        aria-label="Files being read" aria-expanded="@(State.IngestDrawerOpen ? "true" : "false")" aria-controls="logIngestDetail"
+                        title="@(State.IngestDrawerOpen ? "Hide the files being read" : "Show the files being read")">
+                    <i class="bi @(State.IngestDrawerOpen ? "bi-chevron-up" : "bi-chevron-down")" aria-hidden="true"></i>
+                </button>
+            </span>
+        </div>
+
+        @* Determinate whenever there is something to be determinate about; the final query has
+           no measurable size, so it gets the sweep. *@
+        @* No aria-valuenow while there is nothing to measure: a progressbar without one is announced as
+           indeterminate, which is the truth, where 0 would read as "nothing done". *@
+        <div class="log-ingest-bar" role="progressbar" aria-label="Loading progress"
+             aria-valuemin="0" aria-valuemax="100"
+             aria-valuenow="@(p.PercentComplete > 0 && !querying ? ((int)p.PercentComplete).ToString() : null)">
+            @if (p.PercentComplete > 0 && !querying)
+            {
+                <div style="width: @p.PercentComplete.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)%"></div>
+            }
+            else
+            {
+                <div class="is-indeterminate"></div>
+            }
+        </div>
+
+        @if (State.LiveError is { Length: > 0 } liveError)
+        {
+            <p class="log-ingest-error"><i class="bi bi-exclamation-circle" aria-hidden="true"></i> Could not refresh the rows loaded so far: @liveError</p>
+        }
+
+        @* Always in the DOM, hidden when folded, so aria-controls always names something that exists. *@
+        <div id="logIngestDetail" class="log-ingest-detail" hidden="@(!State.IngestDrawerOpen)">
+            @if (p.InFlight.Count > 0)
+            {
+                <LogIngestFiles Files="p.InFlight" OnSkip="State.SkipFile" />
+            }
+            else
+            {
+                <p class="log-ingest-note">@(querying ? "Every file has been read." : "Waiting on the next file…")</p>
+            }
+            @if (p.FilesSkipped + p.FilesFailed > 0)
+            {
+                <p class="log-ingest-note">
+                    @(p.FilesSkipped + p.FilesFailed) file@(p.FilesSkipped + p.FilesFailed == 1 ? "" : "s") not read so far — listed when the load finishes.
+                </p>
+            }
+        </div>
+
+        @* Milestones only — the rows starting, a stall, a stall clearing. The figures that tick
+           several times a second are left to be read on demand. *@
+        <span class="sr-only" role="status" aria-live="polite">
+            @(stalled > 0 ? $"{stalled} {(stalled == 1 ? "file has" : "files have")} stalled" : "Rows are appearing as files are read")
+        </span>
+    </section>
+}
+
+@code {
+    protected override void OnInitialized() => State.ProgressChanged += OnProgress;
+
+    private void OnProgress() => _ = InvokeAsync(StateHasChanged);
+
+    private void ToggleOpen() => State.IngestDrawerOpen = !State.IngestDrawerOpen;
+
+    public void Dispose() => State.ProgressChanged -= OnProgress;
+}
