@@ -368,7 +368,7 @@ public sealed class DbLogServiceLiveIngestTests : IDisposable
         var sql = new LogSearchCriteria { UseAdvanced = true, AdvancedExpression = "SELECT Sequence, SourceFile, Message FROM logs" };
         await service.MaterializeResultsAsync("logs", TemplateName, null, sql, null);
 
-        var rows = await service.QueryLogPageAsync(DbLogService.ResultsTableName, TemplateName, 0, 10, null, null);
+        var rows = await service.QueryLogPageAsync(service.ResultsTableName, TemplateName, 0, 10, null, null);
         Assert.Equal(new[] { "Sequence", "SourceFile", "Message" }, rows[0].Keys);
     }
 

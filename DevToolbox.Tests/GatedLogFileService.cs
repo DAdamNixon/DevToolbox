@@ -41,7 +41,7 @@ internal sealed class GatedLogFileService : ILogFileService
     public Task<string> DownloadLogCsvAsync(string tableName, string templateName, List<SortColumn>? sortColumns, LogSearchCriteria? criteria,
         string? outputPath = null, LogSplitFilter? split = null, CancellationToken cancellationToken = default) =>
         _inner.DownloadLogCsvAsync(tableName, templateName, sortColumns, criteria, outputPath, split, cancellationToken);
-    public Task<(int Rows, List<string> Columns)> MaterializeResultsAsync(string sourceTable, string templateName, List<SortColumn>? sorts,
+    public Task<(string TableName, int Rows, List<string> Columns)> MaterializeResultsAsync(string sourceTable, string templateName, List<SortColumn>? sorts,
         LogSearchCriteria? criteria, LogSplitFilter? split, CancellationToken cancellationToken = default) =>
         _inner.MaterializeResultsAsync(sourceTable, templateName, sorts, criteria, split, cancellationToken);
     public Task DropResultsAsync() => _inner.DropResultsAsync();

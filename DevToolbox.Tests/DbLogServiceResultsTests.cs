@@ -55,22 +55,22 @@ public sealed class DbLogServiceResultsTests : IDisposable
 
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => service.MaterializeResultsAsync(
-                DbLogService.ResultsTableName, TemplateName, sorts: null, criteria: null, split: null));
+                service.ResultsTableName, TemplateName, sorts: null, criteria: null, split: null));
     }
 
     [Fact]
     public async Task A_page_query_on_results_ignores_the_templates_configured_sort()
     {
         var (service, storage) = Build();
-        await storage.EnsureTableAsync(DbLogService.ResultsTableName, new[] { "Message" });
-        await storage.InsertLogLinesAsync(DbLogService.ResultsTableName, new[]
+        await storage.EnsureTableAsync(service.ResultsTableName, new[] { "Message" });
+        await storage.InsertLogLinesAsync(service.ResultsTableName, new[]
         {
             new Dictionary<string, string> { ["Message"] = "first" },
             new Dictionary<string, string> { ["Message"] = "second" },
         });
 
         var page = await service.QueryLogPageAsync(
-            DbLogService.ResultsTableName, TemplateName, pageNumber: 0, pageSize: 500,
+            service.ResultsTableName, TemplateName, pageNumber: 0, pageSize: 500,
             sortColumns: null, criteria: null);
 
         // Insertion order (rowid ASC), not the template's "Message desc" — which would read
@@ -82,15 +82,15 @@ public sealed class DbLogServiceResultsTests : IDisposable
     public async Task A_header_click_still_sorts_a_results_page()
     {
         var (service, storage) = Build();
-        await storage.EnsureTableAsync(DbLogService.ResultsTableName, new[] { "Message" });
-        await storage.InsertLogLinesAsync(DbLogService.ResultsTableName, new[]
+        await storage.EnsureTableAsync(service.ResultsTableName, new[] { "Message" });
+        await storage.InsertLogLinesAsync(service.ResultsTableName, new[]
         {
             new Dictionary<string, string> { ["Message"] = "b" },
             new Dictionary<string, string> { ["Message"] = "a" },
         });
 
         var page = await service.QueryLogPageAsync(
-            DbLogService.ResultsTableName, TemplateName, pageNumber: 0, pageSize: 500,
+            service.ResultsTableName, TemplateName, pageNumber: 0, pageSize: 500,
             sortColumns: new() { new SortColumn { Column = "Message", Direction = "asc" } }, criteria: null);
 
         Assert.Equal(new[] { "a", "b" }, page.Select(r => r["Message"]));

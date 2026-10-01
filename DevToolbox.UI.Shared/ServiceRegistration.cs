@@ -53,7 +53,11 @@ namespace DevToolbox.UI
             services.AddScoped<CardStateService>();
             services.AddScoped<IConfigurationService, ConfigurationService>();
             services.AddScoped<IScriptExecutionService, ScriptExecutionService>();
-            services.AddScoped<ILogFileService, DbLogService>();
+            // Tables of its own per scope: the window and every browser view share logs.db, and on one
+            // shared table a load in any of them dropped it out from under the others. Dropped again
+            // when the scope ends — a browser view closing.
+            services.AddScoped<ILogFileService>(sp => DbLogService.ForScope(
+                sp.GetRequiredService<IYamlStorageService>(), sp.GetRequiredService<ILogStorageService>()));
             services.AddScoped<ILogStorageService, SqliteLogStorageService>();
             // Reads and writes the same YAML DbLogService reads. Scoped alongside it because it holds
             // nothing between calls — every method goes to the file.

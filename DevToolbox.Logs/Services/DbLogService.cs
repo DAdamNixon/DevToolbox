@@ -13,7 +13,7 @@ using System.Threading.Tasks;
 
 namespace DevToolbox.Services.Services
 {
-    public class DbLogService : ILogFileService
+    public class DbLogService : ILogFileService, IDisposable
     {
         private readonly IYamlStorageService _yamlStorage;
         private readonly ILogStorageService _logStorage;
@@ -21,15 +21,18 @@ namespace DevToolbox.Services.Services
 
         /// <summary>The table this instance ingests into and returns from a prepare.</summary>
         /// <remarks>
-        /// The UI leaves this at <see cref="DefaultTableName"/>: it runs one search at a time, and
-        /// one table dropped and recreated per search is exactly right for it.
+        /// An instance field rather than a constant because nothing that uses this runs one search
+        /// at a time. An agent investigating a bug prepares log A, then log B, then wants to go back
+        /// to A — against a single shared table, A was silently destroyed by the second prepare, and
+        /// the query that followed returned real rows from the wrong file with no error to notice.
+        /// The interface already anticipated this: PrepareLogTableAsync RETURNS a table name and
+        /// every query method TAKES one. The constant was the anomaly.
         /// <para>
-        /// It is an instance field rather than a constant because a headless caller does NOT run
-        /// one search at a time. An agent investigating a bug prepares log A, then log B, then
-        /// wants to go back to A — against a single shared table, A was silently destroyed by the
-        /// second prepare, and the query that followed returned real rows from the wrong file with
-        /// no error to notice. The interface already anticipated this: PrepareLogTableAsync
-        /// RETURNS a table name and every query method TAKES one. The constant was the anomaly.
+        /// Nor does the UI, which is less obvious: the window and every browser view of it each have
+        /// a Log Viewer of their own, on one database file. Sharing <c>logs</c>, one view's load
+        /// dropped and recreated the table under another, which then showed the first one's rows or
+        /// failed with "no such table". So each DI scope gets tables of its own (<see cref="ForScope"/>),
+        /// and SQL mode goes on calling them <c>logs</c> and <c>results</c> (<see cref="LogSqlTableNames"/>).
         /// </para>
         /// <para>
         /// <see cref="_loadSemaphore"/> stays static, so concurrent prepares still queue
@@ -39,16 +42,30 @@ namespace DevToolbox.Services.Services
         /// </remarks>
         private readonly string TableName;
 
-        /// <summary>What the table is called when a caller does not name one.</summary>
-        public const string DefaultTableName = "logs";
+        /// <summary>
+        /// The table <see cref="MaterializeResultsAsync"/> collapses a filter into — this instance's
+        /// own, like <see cref="TableName"/>, so a collapse in one window never replaces another's.
+        /// <see cref="QueryLogPageAsync"/> and <see cref="DownloadLogCsvAsync"/> recognise it and skip
+        /// the template-sort fallback: a page over results orders itself by when it was collapsed, not
+        /// by a template that may not even describe its columns.
+        /// </summary>
+        public string ResultsTableName { get; }
 
         /// <summary>
-        /// What the Log Viewer's collapsed filter is called. A constant, never a literal, so
-        /// <see cref="QueryLogPageAsync"/> and <see cref="DownloadLogCsvAsync"/> can recognise it and
-        /// skip the template-sort fallback — a page over <c>results</c> orders itself by when it was
-        /// collapsed, not by a template that may not even describe its columns.
+        /// What SQL mode calls the ingested table, whatever it is really named. <c>FROM logs</c> is
+        /// what the SQL box's placeholder and every saved query say, and it has to go on meaning this
+        /// instance's table.
         /// </summary>
-        public const string ResultsTableName = "results";
+        public const string LogsSqlName = "logs";
+
+        /// <summary>What SQL mode calls the collapsed table, whatever it is really named.</summary>
+        public const string ResultsSqlName = "results";
+
+        /// <summary>What the table is called when a caller does not name one.</summary>
+        public const string DefaultTableName = LogsSqlName;
+
+        /// <summary>What the collapsed table is called when a caller does not name one.</summary>
+        public const string DefaultResultsTableName = ResultsSqlName;
 
         /// <summary>
         /// Column holding each row's originating file path. Public so the UI can
@@ -56,15 +73,95 @@ namespace DevToolbox.Services.Services
         /// </summary>
         public const string SourcePathColumn = LogProvenanceColumns.SourcePath;
 
+        /// <summary>
+        /// Letters, digits and underscores, not starting with a digit. Every statement quotes a table
+        /// as <c>[name]</c>, which a <c>]</c> would end, and the index names are built from it too.
+        /// </summary>
+        private static readonly Regex PlainIdentifier = new(@"^[A-Za-z_][A-Za-z0-9_]*\z", RegexOptions.Compiled);
+
+        /// <summary>The names SQL mode writes, and the tables they mean here.</summary>
+        private readonly Dictionary<string, string> _sqlNames;
+
+        /// <summary>Set by <see cref="ForScope"/>: these tables are this instance's alone, and go when it does.</summary>
+        private bool _ownsTables;
+        private int _disposed;
+
         /// <param name="tableName">
         /// The table to ingest into. Null keeps <see cref="DefaultTableName"/> — see the remarks on
         /// <see cref="TableName"/> for when a caller should pass its own.
         /// </param>
-        public DbLogService(IYamlStorageService yamlStorage, ILogStorageService logStorage, string? tableName = null)
+        /// <param name="resultsTableName">The table to collapse into. Null keeps <see cref="DefaultResultsTableName"/>.</param>
+        public DbLogService(IYamlStorageService yamlStorage, ILogStorageService logStorage, string? tableName = null, string? resultsTableName = null)
         {
             _yamlStorage = yamlStorage;
             _logStorage = logStorage;
-            TableName = string.IsNullOrWhiteSpace(tableName) ? DefaultTableName : tableName;
+            TableName = RequirePlainIdentifier(tableName, DefaultTableName, nameof(tableName));
+            ResultsTableName = RequirePlainIdentifier(resultsTableName, DefaultResultsTableName, nameof(resultsTableName));
+            if (string.Equals(TableName, ResultsTableName, StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("The results table cannot be the logs table.", nameof(resultsTableName));
+
+            _sqlNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                [LogsSqlName] = TableName,
+                [ResultsSqlName] = ResultsTableName
+            };
+        }
+
+        /// <summary>
+        /// A DbLogService with tables of its own, for one DI scope of a host where several Log Viewers
+        /// share a database — see the remarks on <see cref="TableName"/>. Disposing it drops them.
+        /// </summary>
+        public static DbLogService ForScope(IYamlStorageService yamlStorage, ILogStorageService logStorage)
+        {
+            // The MCP server's handle shape (PreparedTables): lower-case hex after a prefix, so the
+            // name is a plain identifier however it is generated.
+            var suffix = Guid.NewGuid().ToString("n")[..16];
+            return new DbLogService(yamlStorage, logStorage, $"logs_{suffix}", $"results_{suffix}") { _ownsTables = true };
+        }
+
+        private static string RequirePlainIdentifier(string? name, string fallback, string parameter)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return fallback;
+            if (!PlainIdentifier.IsMatch(name))
+                throw new ArgumentException($"'{name}' is not a usable table name: letters, digits and underscores only.", parameter);
+            return name;
+        }
+
+        /// <summary>Finished once <see cref="Dispose"/>'s drop has run. For tests.</summary>
+        internal Task TablesDropped { get; private set; } = Task.CompletedTask;
+
+        /// <summary>
+        /// Drops this instance's tables if they are its own (<see cref="ForScope"/>) — a browser view
+        /// closing, say. Left behind, every view ever opened would keep a full copy of what it loaded
+        /// until the next start, which is the disk-filling <see cref="LogDatabase"/> exists to prevent.
+        /// <para>
+        /// In the background, and only once no load holds <see cref="_loadSemaphore"/>: the scope's
+        /// own load may still be unwinding from the cancel its state service just sent, and a drop
+        /// landing before that load's create would leave the table behind after all. Waiting here
+        /// instead would hold up the window closing behind another view's load.
+        /// </para>
+        /// </summary>
+        public void Dispose()
+        {
+            if (!_ownsTables || Interlocked.Exchange(ref _disposed, 1) == 1) return;
+
+            TablesDropped = Task.Run(async () =>
+            {
+                await _loadSemaphore.WaitAsync().ConfigureAwait(false);
+                try
+                {
+                    await _logStorage.DropTableAsync(ResultsTableName).ConfigureAwait(false);
+                    await _logStorage.DropTableAsync(TableName).ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // Best effort: the file is thrown away at the next start regardless.
+                }
+                finally
+                {
+                    _loadSemaphore.Release();
+                }
+            });
         }
 
         /// <summary>
@@ -1038,7 +1135,7 @@ namespace DevToolbox.Services.Services
             }
         }
 
-        public async Task<(int Rows, List<string> Columns)> MaterializeResultsAsync(
+        public async Task<(string TableName, int Rows, List<string> Columns)> MaterializeResultsAsync(
             string sourceTable,
             string templateName,
             List<SortColumn>? sorts,
@@ -1056,7 +1153,8 @@ namespace DevToolbox.Services.Services
 
             try
             {
-                return await _logStorage.CreateTableFromQueryAsync(sourceTable, ResultsTableName, query, cancellationToken);
+                var (rows, columns) = await _logStorage.CreateTableFromQueryAsync(sourceTable, ResultsTableName, query, cancellationToken);
+                return (ResultsTableName, rows, columns);
             }
             catch (OperationCanceledException)
             {
@@ -1070,14 +1168,15 @@ namespace DevToolbox.Services.Services
 
         public Task DropResultsAsync() => _logStorage.DropTableAsync(ResultsTableName);
 
-        private static void ApplyCriteria(LogQuery query, LogSearchCriteria? criteria)
+        private void ApplyCriteria(LogQuery query, LogSearchCriteria? criteria)
         {
             if (criteria == null)
                 return;
             if (criteria.UseAdvanced)
             {
+                // The user writes logs and results; this instance's tables may be called otherwise.
                 if (!string.IsNullOrWhiteSpace(criteria.AdvancedExpression))
-                    query.RawQuery = criteria.AdvancedExpression;
+                    query.RawQuery = LogSqlTableNames.Resolve(criteria.AdvancedExpression, _sqlNames);
             }
             else
             {
@@ -1085,12 +1184,18 @@ namespace DevToolbox.Services.Services
             }
         }
 
-        // Raw SQL errors are shown verbatim; other failures get a generic message.
-        private static Exception ToUserFacing(Exception ex, LogQuery query, string genericMessage)
+        // Raw SQL errors are shown verbatim — in the names the user wrote, not the tables they were
+        // pointed at ("no such table: results", not results_3f9a…). Other failures get a generic message.
+        private Exception ToUserFacing(Exception ex, LogQuery query, string genericMessage)
         {
-            if (!string.IsNullOrWhiteSpace(query.RawQuery))
-                return new InvalidOperationException(ex.Message, ex);
-            return new InvalidOperationException(genericMessage, ex);
+            if (string.IsNullOrWhiteSpace(query.RawQuery))
+                return new InvalidOperationException(genericMessage, ex);
+
+            var message = ex.Message;
+            foreach (var (written, actual) in _sqlNames)
+                if (!string.Equals(written, actual, StringComparison.OrdinalIgnoreCase))
+                    message = message.Replace(actual, written, StringComparison.OrdinalIgnoreCase);
+            return new InvalidOperationException(message, ex);
         }
 
         public async Task<string> DownloadLogCsvAsync(

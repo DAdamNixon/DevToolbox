@@ -58,10 +58,15 @@ public sealed class LogSearchStateService : IDisposable
 
     // --- the two table views ---
 
-    /// <summary>The always-present view over the ingested <c>logs</c> table.</summary>
+    /// <summary>
+    /// The always-present view over the ingested <c>logs</c> table. Its <see cref="LogFilterState.TableName"/>
+    /// is a placeholder until the first load reports the scope's own (<see cref="AdoptTable"/>) —
+    /// nothing queries it before then.
+    /// </summary>
     public LogFilterState Logs { get; } = new()
     {
         TableName = DbLogService.DefaultTableName,
+        SqlName = DbLogService.LogsSqlName,
         SavedQueryTarget = SavedQueryTargets.Logs
     };
 
@@ -2045,7 +2050,7 @@ public sealed class LogSearchStateService : IDisposable
         await RunBusyAsync(async () =>
         {
             var criteria = BuildCriteria(Logs);
-            var (rows, columns) = await _logFileService.MaterializeResultsAsync(
+            var (table, rows, columns) = await _logFileService.MaterializeResultsAsync(
                 Logs.TableName, TemplateFor(Logs), Logs.ActiveSorts, criteria, Logs.CurrentSplitFilter);
 
             if (rows == 0)
@@ -2057,7 +2062,8 @@ public sealed class LogSearchStateService : IDisposable
 
             var results = new LogFilterState
             {
-                TableName = DbLogService.ResultsTableName,
+                TableName = table,
+                SqlName = DbLogService.ResultsSqlName,
                 SavedQueryTarget = SavedQueryTargets.Results,
                 TableColumns = columns,
                 CollapsedRowCount = rows

@@ -438,7 +438,7 @@ else
         <div class="log-toolbar">
             <div class="log-toolbar-group">
                 <i class="bi bi-table text-accent-blue"></i>
-                <span class="log-page-range"><strong>@State.CurrentTableName</strong> · Showing <strong>@PageRangeStart().ToString("N0")–@PageRangeEnd().ToString("N0")</strong> of <strong>@State.TotalRecords.ToString("N0")</strong>@(State.IsLive ? " so far" : "")</span>
+                <span class="log-page-range"><strong>@State.Active.SqlName</strong> · Showing <strong>@PageRangeStart().ToString("N0")–@PageRangeEnd().ToString("N0")</strong> of <strong>@State.TotalRecords.ToString("N0")</strong>@(State.IsLive ? " so far" : "")</span>
                 @if (State.IsLive && LiveOrderNote() is { } note)
                 {
                     <span class="log-toolbar-label" title="@note.Detail">· @note.Text</span>
@@ -1345,7 +1345,7 @@ else
         }
 
         return LogFilterSummary.Describe(
-            logs.TableName, LogSearchStateService.BuildCriteria(logs), logs.ActiveSavedQueryLabel, tabLabel, logs.TotalRecords);
+            logs.SqlName, LogSearchStateService.BuildCriteria(logs), logs.ActiveSavedQueryLabel, tabLabel, logs.TotalRecords);
     }
 
     /// <summary>Which filter card Ctrl+F should raise and focus — the only one that is ever unlocked.</summary>

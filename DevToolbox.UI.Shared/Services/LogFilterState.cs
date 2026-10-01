@@ -19,12 +19,19 @@ namespace DevToolbox.UI.Services;
 public sealed class LogFilterState
 {
     /// <summary>
-    /// The SQLite table this view queries — <c>logs</c> or
-    /// <see cref="DevToolbox.Services.Services.DbLogService.ResultsTableName"/>. Settable rather
-    /// than <c>init</c>: a prepare reports back the table name it actually used, and
-    /// <see cref="LogSearchStateService.Logs"/> has to be updateable after construction to receive it.
+    /// The SQLite table this view queries: whatever a prepare or a collapse reported back, which in
+    /// the app is a name of this scope's own (<see cref="DbLogService.ForScope"/>). Settable rather
+    /// than <c>init</c>: <see cref="LogSearchStateService.Logs"/> exists before any prepare has run,
+    /// and has to be updateable after construction to receive it. Not for showing anyone — see
+    /// <see cref="SqlName"/>.
     /// </summary>
     public required string TableName { get; set; }
+
+    /// <summary>
+    /// What this table is called in SQL mode and everywhere it is shown — <see cref="DbLogService.LogsSqlName"/>
+    /// or <see cref="DbLogService.ResultsSqlName"/> — whatever <see cref="TableName"/> really is.
+    /// </summary>
+    public required string SqlName { get; init; }
 
     /// <summary>Which saved-query list this card's picker and Manage dialog read — <see cref="SavedQueryTargets.Logs"/> or <see cref="SavedQueryTargets.Results"/>.</summary>
     public required string SavedQueryTarget { get; set; }

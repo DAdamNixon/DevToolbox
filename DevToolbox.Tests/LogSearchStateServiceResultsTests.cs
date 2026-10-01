@@ -104,7 +104,7 @@ public sealed class LogSearchStateServiceResultsTests : IDisposable
         await state.CollapseToResultsAsync();
 
         Assert.NotNull(state.Results);
-        Assert.Equal(DbLogService.ResultsTableName, state.Active.TableName);
+        Assert.Equal(DbLogService.DefaultResultsTableName, state.Active.TableName);
         Assert.Equal(2, state.TotalRecords);
         Assert.Equal(2, state.Results!.CollapsedRowCount);
     }

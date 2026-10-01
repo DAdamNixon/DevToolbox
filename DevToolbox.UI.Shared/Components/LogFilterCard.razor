@@ -32,7 +32,7 @@
             <input type="checkbox" @bind="State.AdvancedRawMode" @bind:after="OnAdvancedToggled" />
             <span class="text-sm font-medium text-dark-text">Advanced query mode (SQL)</span>
         </label>
-        <span class="text-xs text-dark-text-muted">@(State.AdvancedRawMode ? $"Full SQL against the table named {Filter.TableName}." : "Filters the loaded rows as you type (Enter or 500ms). Rows combine with AND / OR / NOT.")</span>
+        <span class="text-xs text-dark-text-muted">@(State.AdvancedRawMode ? $"Full SQL against the table named {Filter.SqlName}." : "Filters the loaded rows as you type (Enter or 500ms). Rows combine with AND / OR / NOT.")</span>
     </div>
 
     @if (State.AdvancedRawMode)
@@ -115,7 +115,7 @@
                        ValueChanged="OnAdvancedExpressionChanged"
                        OnValueInput="OnCriteriaInput" />
 
-            <div class="text-xs text-dark-text-muted mt-1">Full SQL against the table <code>@Filter.TableName</code>. Sorting and keyword groups are ignored in this mode. Runs as you type (500ms) or on Enter.</div>
+            <div class="text-xs text-dark-text-muted mt-1">Full SQL against the table <code>@Filter.SqlName</code>. Sorting and keyword groups are ignored in this mode. Runs as you type (500ms) or on Enter.</div>
         </div>
     }
     else

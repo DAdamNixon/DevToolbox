@@ -93,13 +93,16 @@ namespace DevToolbox.Services.Interfaces
 
         /// <summary>
         /// Collapses a filter's current result — keyword or SQL mode, every page, only
-        /// <paramref name="split"/>'s tab — into the <c>results</c> table
+        /// <paramref name="split"/>'s tab — into this service's <c>results</c> table
         /// (<see cref="DbLogService.ResultsTableName"/>), replacing whatever was there.
         /// Refuses when <paramref name="sourceTable"/> already <em>is</em> <c>results</c>: one level
         /// only.
         /// </summary>
-        /// <returns>The row count and column names of the new table.</returns>
-        Task<(int Rows, List<string> Columns)> MaterializeResultsAsync(
+        /// <returns>
+        /// The new table's name — to query it by, as with <see cref="PrepareLogTableAsync"/>; SQL mode
+        /// still calls it <c>results</c> — with its row count and column names.
+        /// </returns>
+        Task<(string TableName, int Rows, List<string> Columns)> MaterializeResultsAsync(
             string sourceTable,
             string templateName,
             List<SortColumn>? sorts,
@@ -107,7 +110,7 @@ namespace DevToolbox.Services.Interfaces
             LogSplitFilter? split,
             CancellationToken cancellationToken = default);
 
-        /// <summary>Drops the <c>results</c> table. Not an error when there is none.</summary>
+        /// <summary>Drops this service's <c>results</c> table. Not an error when there is none.</summary>
         Task DropResultsAsync();
     }
 }
