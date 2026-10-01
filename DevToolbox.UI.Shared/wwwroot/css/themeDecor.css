@@ -232,6 +232,18 @@
     z-index: 20;
 }
 
+/* The two Log Viewer cards that leave page flow keep doing so. The full-screen results and
+   the filters raised over them are modern-cards made position:fixed in dashboard.css, by
+   two-class selectors that the three-part one above outranks. Without this, under any of
+   these four themes, full screen did not cover the window: the results card stayed where it
+   was on the page, grown to the height of every row on it, and Ctrl+F's panel stayed with
+   it. Written against any theme rather than these four, so a fifth that positions its cards
+   cannot bring it back. */
+:root[data-theme] .log-results-card.is-fullscreen,
+:root[data-theme] .log-filter-card.is-floating {
+    position: fixed;
+}
+
 
 /* ══ Easter ═════════════════════════════════════════════════════════════════════ */
 
