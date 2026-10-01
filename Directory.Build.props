@@ -243,8 +243,23 @@
     DevToolbox.Installer.zip (Install-DevToolbox.ps1 and TaskbarLayoutModification.xml were
     behind it).
   -->
+  <!--
+    1.0.0: the release channel, which the table at the top of this file reserves 1.x for. No
+    VersionSuffix, so AppVersion reads it as a release: the beta tag leaves the status bar and
+    Settings, and so does the pre-release note under the version there.
+
+    What is new since 0.9.11.1 is mostly the Log Viewer. Rows appear while the files are still
+    being read, with the load's progress in a drawer over them; Cancel keeps what was read and
+    says which files are incomplete; each window loads into tables of its own, so two loading at
+    once no longer clobber each other; and full screen covers the window again under the seasonal
+    themes, which Halloween's season starting on October 1st had broken. Besides that, Stop on
+    the Scripts page ends the run even when PowerShell drops the request.
+
+    Three parts here, not the four this file has used since 0.9.5.1, so the version reads 1.0.0
+    rather than 1.0.0.0. The SDK pads AssemblyVersion and FileVersion to four, so the package is
+    still 1.0.0.0, which rises above 0.9.11.1 and is what Build-Installer.ps1 reads back.
+  -->
   <PropertyGroup>
-    <VersionPrefix>0.9.11.1</VersionPrefix>
-    <VersionSuffix>beta.22</VersionSuffix>
+    <VersionPrefix>1.0.0</VersionPrefix>
   </PropertyGroup>
 </Project>
