@@ -138,7 +138,7 @@
                             <option value="NOT">NOT</option>
                         </select>
                     }
-                    <input class="input-modern flex-1" placeholder="Interchangeable terms (any match), comma-separated"
+                    <input class="input-modern flex-1" placeholder="Text to find in any column, commas included"
                            @bind="row.Text" @bind:event="oninput" @bind:after="RaiseCriteriaInput" @onkeypress="OnCriteriaKeyPress" />
                     <button type="button" class="btn-ghost p-2"
                             title="@(State.KeywordRows.Count == 1 ? "Clear" : "Remove group")"
@@ -226,7 +226,15 @@
 
     private Task RemoveKeywordRow(int index) => State.RemoveKeywordRowAsync(index);
 
-    private void HideFilterPanel() => State.FilterOverlayVisible = false;
+    /// <summary>
+    /// Whether the card floats is Logs.razor's call, and a click here only re-renders this
+    /// component — so the page has to be told, or the flag flips and the card stays up.
+    /// </summary>
+    private void HideFilterPanel()
+    {
+        State.FilterOverlayVisible = false;
+        State.Notify();
+    }
 
     private Task RaiseCriteriaInput() => OnCriteriaInput.InvokeAsync();
 }

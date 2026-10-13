@@ -1814,13 +1814,13 @@ public sealed class LogSearchStateService : IDisposable
         }
         else
         {
+            // Each row is one literal phrase, commas included: the only operators are the
+            // AND / OR / NOT gates between rows, so "Smith, John" finds exactly that.
             foreach (var row in state.KeywordRows)
             {
-                var terms = (row.Text ?? string.Empty)
-                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                    .ToList();
-                if (terms.Count == 0) continue;
-                criteria.Groups.Add(new KeywordGroup { Gate = row.Gate, Terms = terms });
+                var phrase = (row.Text ?? string.Empty).Trim();
+                if (phrase.Length == 0) continue;
+                criteria.Groups.Add(new KeywordGroup { Gate = row.Gate, Terms = new() { phrase } });
             }
         }
         return criteria;
